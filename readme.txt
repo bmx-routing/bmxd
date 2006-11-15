@@ -31,12 +31,12 @@ to avoid confusion.
 
 
 Although the core routing concept is similar to the main batman
-protocol this thread incorporates a number of experimental features
+protocol this branch incorporates a number of experimental features
 and a complete rewrite of the data structure maintained by each batman
 node to keep track of received originator messages and identified
 routes.
 
-Also it offers additional information to a node (and its users) when trying to
+Also it offers a few additional information to a node (and its users) when trying to
 find optimal metrics (and hazards) for selecting the best next hop towards the final
 destination of a packet.
 
