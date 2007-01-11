@@ -66,7 +66,7 @@
 
 #define diffOf(a, b) ( maxOf((a),(b)) - minOf((a),(b))  )
 
-
+// the following timer-macros are taken from the GNU C Library.
 # define timerisset(tvp)	((tvp)->tv_sec || (tvp)->tv_usec)
 # define timerclear(tvp)	((tvp)->tv_sec = (tvp)->tv_usec = 0)
 # define timercmp(a, b, CMP) 						      \
@@ -117,21 +117,6 @@ int forward_old;
 #define YES 0x01
 #define NO 0x00
 
-#define EVENT_NO             0x00
-#define EVENT_ORIG_INTERVAL  0x01
-#define EVENT_TX_INTERVAL    0x02
-#define EVENT_PURGE_INTERVAL 0x03
-#define EVENT_FW_JITTER      0x04
-
-char * debug_event( int event ) {
-	if( event == EVENT_NO ) return "EVENT_NO";
-	else if( event == EVENT_ORIG_INTERVAL ) return "EVENT_ORIG_INTERVAL";
-	else if( event == EVENT_TX_INTERVAL ) return "EVENT_TX_INTERVAL";
-	else if( event == EVENT_PURGE_INTERVAL ) return "EVENT_PURGE_INTERVAL";
-	else if( event == EVENT_FW_JITTER ) return "EVENT_FW_JITTER";
-
- return "INVALID EVENT";
-}
 
 // originator treatment flags:
 #define ORIG_RCVD_UNI_FLAG 0x01    // originator message received with unidirectional flag
@@ -248,8 +233,9 @@ int arg_forward_policy = FORWARD_POLICY_BEST_NB;
 
 
 
-
-
+/********************************************************************
+ * Data Structures for maintaining known origs, OGMs, BNTOGs, and PNTOGs
+ */
  
 unsigned int my_rcv_addr = 0;   /* this node's ip adress */
 
@@ -287,9 +273,6 @@ struct pack_node
   unsigned char  flags; 
   unsigned char  ttl;
 };
-
-
-
 
 #define MAX_DEVICE_LIST_SIZE 3
 int device_list_size = 0;
@@ -337,8 +320,6 @@ struct best_route
 };
 
 int best_device_index ( unsigned short *best_device_nodes );
-
-  
 
 struct device_node {
   struct list_head list; 
@@ -412,15 +393,6 @@ struct orig_node
   struct device_node *this_device_node;
 };
 
-
-struct to_node 
-{ 
-  struct list_head list; 
-  struct timeval to;
-  short event;
-  struct device_node *datap;
-};
-
 struct forw_node 
 { 
   struct list_head list; 
@@ -428,34 +400,18 @@ struct forw_node
   struct pack_node *pack_node;
 };
 
-
 static LIST_HEAD(orig_list);
 
 static LIST_HEAD(to_list);
 
 static LIST_HEAD(summary_list);
 
-//static LIST_HEAD(device_list);
-
-/*
-static LIST_HEAD(forw_list);
-
-*/
 
 
 
-
-/* 
-struct list_head *list_pos;
-*/
-
-/*
-  struct orig_node *orig_node;
-  struct to_node *to_node;
-*/
-
-
-
+/********************************************************************
+ * Helper functions and stuff
+ */
 
              char   aGreaterB_us_wraparounds( unsigned short a_us, unsigned short b_us);
 
@@ -491,8 +447,6 @@ struct list_head *list_pos;
 
              void   abs2relTv(  struct timeval *tv_abs,  struct timeval *tv_rel );
 
-             void   debug_event_list( void );
-
       static void   get_time_internal(struct timeval *tv);
 
 static unsigned long   get_time( struct timeval *tv );
@@ -505,16 +459,6 @@ static unsigned long   get_time( struct timeval *tv );
 
               int   jitter( int jitter );
 
-
-
-             void   add_event_to( int event, 
-				  struct device_node *datap, /*data not to be removed after event*/ 
-				  unsigned long to_ms );   /* register event timeout in to_list */
-
-              int   get_pend_event( struct device_node **datap ); /* gets pending and removes event from to_list */
-
-             void   get_next_to( struct timeval *tv );     /* get next scheduled to in ms from to_list */
-
               int   init_device( char *arg_device );
 
              void   apply_init_args( int argc, char** argv);
@@ -523,12 +467,74 @@ static unsigned long   get_time( struct timeval *tv );
 
              void   help();
 
-
-
              void   add_del_route( struct orig_node *dest_node, 
 				   struct orig_node *router_node, 
 				   int del,
 				   struct device_node *via_device_node );
+
+             void   output_route( char *orig_str, char* hop_str, struct orig_node *orig_node, int hmvdaPos, struct summary_node *summary_node);
+
+             void   showRoutes( struct list_head *debug_orig_list );
+
+             void   updateRoutes( struct orig_node *orig_node, struct best_route *best_route );
+
+             void   delAllRoutes( void );
+
+             void   closeAllSockets( void );
+
+              int   batman(void);
+
+              int   main(int ac, char **av);
+
+
+/********************************************************************
+ * Structures and Functions for orig-data processing and maintainance
+ */
+
+    unsigned char   origTreatmentFunc(struct orig_node *orig_node, 
+				     struct packet_orig *in, 
+				     struct orig_node *neigh_node, 
+				     int rcvd_via_device_node_index );
+
+ struct orig_node  *get_orig_node( unsigned int addr );
+
+ struct orig_node  *update_neighbour(struct packet_orig *in, 
+				     unsigned int neigh, 
+				     int via_device_node_index,
+				     struct timeval *received );
+
+             void   purgePackNodes( struct orig_node *orig_node );
+
+struct summary_node *getMetricNode( struct orig_node *orig_node );
+
+
+             long   get_tripTimePlusConst ( struct pack_node *pack_node );
+
+              int   updateHelperMetricsForOrig( struct orig_node *orig_node );
+
+             void   findBestNeigh( struct orig_node *orig_node, struct best_route *best_route );
+
+             void   updateOrigAPacketAForwARouteList( unsigned int neigh, 
+						      struct packet_orig *in, 
+						      short rcvd_via_device_node_item );
+             void   purgePacketsAOrigsARoutes();
+
+
+/********************************************************************
+ * Functions for packet reception and sending
+ */
+
+             void   addToForwList( struct pack_node *pack_node, int delay, short via_device_node_item );
+
+             void   addToAllForwLists( struct pack_node *pack_node, int delay );
+
+              int   wait_for_packet(unsigned char *buff, 
+				    int len, unsigned int *neigh,
+				    int *rcvd_via_device_node_item,
+				    struct timeval *tv_to_abs,
+				    int *more_data );
+
+             void   broadcastFwList( struct device_node *device_node );
 
               int   send_packet( unsigned char *buff, int len, struct device_node *device_node);
 
@@ -550,60 +556,44 @@ or -1 if exceeded or timed out
 
  struct pack_node  *generateOwnPackNode( struct device_node * device_node );
 
-    unsigned char   origTreatmentFunc(struct orig_node *orig_node, 
-				     struct packet_orig *in, 
-				     struct orig_node *neigh_node, 
-				     int rcvd_via_device_node_index );
+
+/********************************************************************
+ * Functions related to the state machine and its events
+ */
 
 
-             void   addToForwList( struct pack_node *pack_node, int delay, short via_device_node_item );
+#define EVENT_NO             0x00
+#define EVENT_ORIG_INTERVAL  0x01
+#define EVENT_TX_INTERVAL    0x02
+#define EVENT_PURGE_INTERVAL 0x03
+#define EVENT_FW_JITTER      0x04
 
-             void   addToAllForwLists( struct pack_node *pack_node, int delay );
+char * debug_event( int event ) {
+	if( event == EVENT_NO ) return "EVENT_NO";
+	else if( event == EVENT_ORIG_INTERVAL ) return "EVENT_ORIG_INTERVAL";
+	else if( event == EVENT_TX_INTERVAL ) return "EVENT_TX_INTERVAL";
+	else if( event == EVENT_PURGE_INTERVAL ) return "EVENT_PURGE_INTERVAL";
+	else if( event == EVENT_FW_JITTER ) return "EVENT_FW_JITTER";
 
-              int   wait_for_packet(unsigned char *buff, 
-				    int len, unsigned int *neigh,
-				    int *rcvd_via_device_node_item,
-				    struct timeval *tv_to_abs,
-				    int *more_data );
+ return "INVALID EVENT";
+}
 
-             void   broadcastFwList( struct device_node *device_node );
+struct to_node 
+{ 
+  struct list_head list; 
+  struct timeval to;
+  short event;
+  struct device_node *datap;
+};
 
- struct orig_node  *get_orig_node( unsigned int addr );
+             void   debug_event_list( void );
 
- struct orig_node  *update_neighbour(struct packet_orig *in, 
-				     unsigned int neigh, 
-				     int via_device_node_index,
-				     struct timeval *received );
+             void   add_event_to( int event, 
+				  struct device_node *datap, /*data not to be removed after event*/ 
+				  unsigned long to_ms );   /* register event timeout in to_list */
 
-             void   purgePackNodes( struct orig_node *orig_node );
+              int   get_pend_event( struct device_node **datap ); /* gets pending and removes event from to_list */
 
-struct summary_node *getMetricNode( struct orig_node *orig_node );
-
-
-             long   get_tripTimePlusConst ( struct pack_node *pack_node );
-
-              int   updateHelperMetricsForOrig( struct orig_node *orig_node );
-
-             void   output_route( char *orig_str, char* hop_str, struct orig_node *orig_node, int hmvdaPos, struct summary_node *summary_node);
-
-             void   showRoutes( struct list_head *debug_orig_list );
-
-             void   findBestNeigh( struct orig_node *orig_node, struct best_route *best_route );
-
-             void   updateRoutes( struct orig_node *orig_node, struct best_route *best_route );
-
-             void   updateOrigAPacketAForwARouteList( unsigned int neigh, 
-						      struct packet_orig *in, 
-						      short rcvd_via_device_node_item );
-             void   purgePacketsAOrigsARoutes();
-
-             void   delAllRoutes( void );
-
-             void   closeAllSockets( void );
-
-              int   batman(void);
-
-              int   main(int ac, char **av);
-
+             void   get_next_to( struct timeval *tv );     /* get next scheduled to in ms from to_list */
 
 #endif
