@@ -1,5 +1,7 @@
 /*
  * Copyright (C) 2006 B.A.T.M.A.N. contributors:
+ * Axel Neumann, Marek Lindner, Thomas Lopatic, Corinna 'Elektra'
+ * 
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of version 2 of the GNU General Public
  * License as published by the Free Software Foundation.
@@ -26,7 +28,7 @@
 #ifndef _BMEX_BMEX_H
 #define _BMEX_BMEX_H
 
-
+/*
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -42,15 +44,20 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <linux/if.h>
+*/
+//#include <net/if.h>
+#include <netinet/in.h>
+#include <pthread.h>
 #include "list.h"
 
 /* #include "os.h" */
 
 #define BM_DEBUG
-
+#define NO_FLOAT
+#define BX_ROUTING
 
 #ifdef BM_DEBUG
-#define dbg(...) output(__VA_ARGS__)
+#define dbg(...) bx_output(__VA_ARGS__)
 #else
 #define dbg(...) 
 #endif /* BM_DEBUG */
@@ -95,13 +102,11 @@
 
 
 
-
-
-static struct timeval tv_null = {0,0};
-static struct timeval start_time_tv, now_tv, then_tv;
 //static struct sockaddr_in rcv_broad;
 //static int rcv_sock;
-static int stop;
+
+
+//static int stop;
 
 int forward_old;
 
@@ -134,61 +139,61 @@ int forward_old;
 
 #define MIN_INGW_UL_CAP 0x00
 #define MAX_INGW_UL_CAP 0x03
-int arg_ingw_ul_capacity = 0; /* 0: no internet GW, 1: > 0bit/s, 2: > 64kbit/s, 3: > 6Mbit/s */
+extern int arg_ingw_ul_capacity; /* 0: no internet GW, 1: > 0bit/s, 2: > 64kbit/s, 3: > 6Mbit/s */
 
 #define MIN_INGW_DL_CAP 0x00
 #define MAX_INGW_DL_CAP 0x03
-int arg_ingw_dl_capacity = 0;
+extern int arg_ingw_dl_capacity;
 
 #define TRIP_TIME_PLUS_CONST_RESET_THRESHOLD 10000
 
 #define MIN_DEBUG 0
 #define MAX_DEBUG 5
-int arg_debug = 1;
+extern int arg_debug;
   
 #define MIN_ORIG_INTERVAL 100
 #define MAX_ORIG_INTERVAL 100000
-int arg_orig_interval_ms = 1000; /* originator packet emission period */
+extern int arg_orig_interval_ms; /* originator packet emission period */
 
 
 #define MIN_BIDIRECT_TO 100
 #define MAX_BIDIRECT_TO 100000
-int arg_bidirect_to_ms = 3000;   /* timeout until neighbour must be confirmed bidirectional */
+extern int arg_bidirect_to_ms;   /* timeout until neighbour must be confirmed bidirectional */
 
 #define MIN_ORIG_JITTER 0
 #define MAX_ORIG_JITTER 1000
-int arg_orig_jitter_ms = 50;    /*900 originator packet emission jitter */
+extern int arg_orig_jitter_ms;    /*900 originator packet emission jitter */
 
 #define MIN_FW_JITTER 0
 #define MAX_FW_JITTER 1000
-int arg_fw_jitter_ms = 50;
+extern int arg_fw_jitter_ms;
 
 #define MIN_KEEP_FORW_ORDER 0
 #define MAX_KEEP_FORW_ORDER 1
-int arg_keep_forw_order = 1;
+extern int arg_keep_forw_order;
 
 #define MIN_FORW_AGAIN 0
 #define MAX_FORW_AGAIN 1
-int arg_forward_again = 0;       /* forward orig_messages again if same seqno received multiple times due to longer hold-back time */ 
+extern int arg_forward_again;       /* forward orig_messages again if same seqno received multiple times due to longer hold-back time */ 
 
 #define MIN_TTL 1
 #define MAX_TTL 254
-int arg_ttl = 100;				/* start ttl to be defined before the -dev argument */
+extern int arg_ttl;				/* start ttl to be defined before the -dev argument */
 #define TTL_MULTIPLE_DEVICES 1
 
 #define MIN_PURGE_INTERVAL 100
 #define MAX_PURGE_INTERVAL 10000
-int arg_purge_interval_ms = 1000; /* purge routes, orig_list, pack_list period */
+extern int arg_purge_interval_ms; /* purge routes, orig_list, pack_list period */
 
 
 // TBD: this should depend on ( originators:orig_interval * receivers:arg_received_seq_range + safety-mark)
 #define MIN_PURGE_TO  1000
 #define MAX_PURGE_TO  100000
-int arg_purge_to_ms = 20000; /* timeout for pack_nodes and orig_nodes for being removed */
+extern int arg_purge_to_ms; /* timeout for bx_ogm_nodes and bx_og_nodes for being removed */
  
 #define MIN_RECEIVED_SEQ_RANGE 1
 #define MAX_RECEIVED_SEQ_RANGE 100
-int arg_received_seq_range = 10; /* range of latest seqno considered for bestNeighbour selection */
+extern int arg_received_seq_range; /* range of latest seqno considered for bestNeighbour selection */
 
 //int arg_additional_orig_to_ms = 1000; /* additional timeout (to arg_received_pack_to_ms)  for maintaining received originators */
 
@@ -196,7 +201,7 @@ int arg_received_seq_range = 10; /* range of latest seqno considered for bestNei
  
 #define MAX_ORIG_BUNDLE 20
 #define MIN_ORIG_BUNDLE 1
-int arg_max_orig_bundle = 1;     /* maximum number of originator messages to bundle */
+extern int arg_max_orig_bundle;     /* maximum number of originator messages to bundle */
 
 /*int arg_forw_scheduler = 1*/      /* 0: no orig packet bundling, */
                                     /* 1: bundling during fw_jitter */
@@ -205,7 +210,7 @@ int arg_max_orig_bundle = 1;     /* maximum number of originator messages to bun
 #define ROUTING_METRIC_ORIGS 1
 #define ROUTING_METRIC_AVG_TTL 2
 #define MAX_ROUTING_METRIC 2
-int arg_routing_metric = ROUTING_METRIC_ORIGS;
+extern int arg_routing_metric;
 
 /*
 #define MIN_ASB_POLICY 0x01
@@ -222,14 +227,14 @@ int arg_asb_policy = 0;
 #define CONSIDER_POLICY_MAX_TTL         	0x02
 #define CONSIDER_POLICY_MAX_TTL_MINUS_ONE	0x03
 #define MAX_CONSIDER_POLICY			0x03
-int arg_consider_policy = CONSIDER_POLICY_MAX_TTL_MINUS_ONE;
+extern int arg_consider_policy;
 
 #define MIN_FORWARD_POLICY		    0x01
 #define FORWARD_POLICY_INVALID 		    0x00
 #define FORWARD_POLICY_STRICTLY_FIRST_SEEN  0x01
 #define FORWARD_POLICY_BEST_NB              0x02
 #define MAX_FORWARD_POLICY		    0x02
-int arg_forward_policy = FORWARD_POLICY_BEST_NB;
+extern int arg_forward_policy;
 
 
 
@@ -237,7 +242,7 @@ int arg_forward_policy = FORWARD_POLICY_BEST_NB;
  * Data Structures for maintaining known origs, OGMs, BNTOGs, and PNTOGs
  */
  
-unsigned int my_rcv_addr = 0;   /* this node's ip adress */
+extern unsigned int my_rcv_addr;   /* this node's ip adress */
 
 struct packet_orig
 {
@@ -251,7 +256,7 @@ struct packet_orig
 
 } __attribute__((packed));
 
-struct pack_node
+struct bx_ogm_node
 {
   struct list_head list;
   struct timeval forwarded;
@@ -266,40 +271,46 @@ struct pack_node
   unsigned char treatmentFlags;
   char already_scheduled_for_rebroadcast_via_all_devs;
   unsigned long seqno;    
-  struct orig_node *orig_node;
-  struct orig_node *via_orig_node;
-  struct device_node *via_device_node; // set in setOrigPack_node()
+  struct bx_og_node *bx_og_node;
+  struct bx_og_node *via_bx_og_node;
+  struct device_node *via_device_node; // set in setOrigbx_ogm_node()
   
   unsigned char  flags; 
   unsigned char  ttl;
 };
 
 #define MAX_DEVICE_LIST_SIZE 3
-int device_list_size = 0;
+
+extern int device_list_size;
 
 struct hmvd
 {
-  short rcvdOrigs;	
-  short rcvd1Origs;	
-  short sumTtl; // divide it by rcvdOrigs and you get avgTtl
+  unsigned short rcvdOrigs;	
+  unsigned short rcvd1Origs;	
+  unsigned long sumTtl; // divide it by rcvdOrigs and you get avgTtl
+  unsigned long maxSeqno;
+#ifdef BX_ROUTING
   unsigned char minTtl;
   unsigned char maxTtl;
   unsigned long minSeqno;
-  unsigned long maxSeqno;
   long minTtpc;
   long maxTtpc;
   long sumTtpc;
   long latestTtpc;
+#endif
   //  	struct device_node *via_device_node; // set in setOrigPack_node()
 };
 
 struct summary_node {
   struct list_head list; 
 
-  struct orig_node *orig_node; // points to next neighbor ( towards destination destination orig )
-  short rcvdOrigs; 
-  short rcvd1Origs;	
-  short sumTtl; // divide it by rcvdOrigs and you get avgTtl
+  struct bx_og_node *bx_og_node; // points to next neighbor ( towards destination destination orig )
+
+  struct hmvd hmv;
+/*
+  unsigned short rcvdOrigs; 
+  unsigned short rcvd1Origs;	
+  unsigned long sumTtl; // divide it by rcvdOrigs and you get avgTtl
   unsigned char minTtl;
   unsigned char maxTtl;
   unsigned long minSeqno;
@@ -308,13 +319,13 @@ struct summary_node {
   long maxTtpc;
   long sumTtpc;
   long latestTtpc;
-  
+  */
   struct hmvd hmvda[ MAX_DEVICE_LIST_SIZE ];
 };
 
 struct best_route
 {
-  struct orig_node *best_router;
+  struct bx_og_node *best_router;
   int best_router_device_index;
   //  unsigned short best_device_nodes[MAX_DEVICE_LIST_SIZE];
 };
@@ -324,7 +335,7 @@ int best_device_index ( unsigned short *best_device_nodes );
 struct device_node {
   struct list_head list; 
 
-  struct orig_node *orig_node;
+  struct bx_og_node *bx_og_node;
   int device_node_index;     // set at init_device(), can be used to derive corresponding position in device_node_array
 
   unsigned long seqno;     // TBD: this number must be checked for wrap arounds 
@@ -350,7 +361,7 @@ struct device_node {
 struct device_node device_node_array[MAX_DEVICE_LIST_SIZE];
 
 /* 
- * an orig_node can be a 
+ * an bx_og_node can be a 
  * a) far-away node: if ( (now - lastConfAsNb > arg_bidirectional_to_ms) && this_device_node == NULL )
  * b) neighbor node: if ( (now - lastConfAsNb < arg_bidirectional_to_ms) && this_device_node == NULL 
  * 																		&& via_device_node != NULL )
@@ -359,7 +370,7 @@ struct device_node device_node_array[MAX_DEVICE_LIST_SIZE];
  * 														&& via_device_node == NULL  )
  * 
  * */
-struct orig_node 
+struct bx_og_node 
 { 
   struct list_head list; 
   unsigned long addr; 
@@ -368,13 +379,15 @@ struct orig_node
 
   struct list_head pack_list;
   unsigned long maxSeqno;
+  
+#ifdef BX_ROUTING
   long min_originated_oview_tstmp; /* timestamp in ms since start of programm (from originator point of view) when first seen packet was originated */
   long min_originated_rview_tstmp; /* timestamp in ms since start of programm (from receiver point of view) when first seen packet was received */
   long minTtpc;
-
+#endif
 
   /* received originator specific *************************/
-  struct orig_node *configured_router; /* pointing to currently configured router (or NULL) for this node */
+  struct bx_og_node *configured_router; /* pointing to currently configured router (or NULL) for this node */
   //  struct helper_metric helper_metric;
 
   /* neighbor-node specific: ******************************/
@@ -384,20 +397,20 @@ struct orig_node
   // set while findBestNeigh() and only valid for the moment
   // unsigned short last_best_device_nodes[MAX_DEVICE_LIST_SIZE];
   
-  /* set while add_del_route(), to remember the device used for a certain route */
+  /* set while bx_ad_route(), to remember the device used for a certain route */
   struct device_node *configured_device_node;
   // unsigned short configured_device_nodes[MAX_DEVICE_LIST_SIZE];
 
   /* device specific:...***********************************/
-  /* set once at program strartup and only for own orig_nodes*/
+  /* set once at program strartup and only for own bx_og_nodes*/
   struct device_node *this_device_node;
 };
 
-struct forw_node 
+struct bx_fw_node 
 { 
   struct list_head list; 
   struct timeval order;
-  struct pack_node *pack_node;
+  struct bx_ogm_node *bx_ogm_node;
 };
 
 static LIST_HEAD(orig_list);
@@ -414,20 +427,26 @@ static LIST_HEAD(summary_list);
  */
 
              char   aGreaterB_us_wraparounds( unsigned short a_us, unsigned short b_us);
-
-            float   avgTtl( struct summary_node *summary_node );
-
-            float   avgTtl_dev( struct summary_node *summary_node, int dev_index );
-
+#ifdef NO_FLOAT
+            long    avg10Ttl( struct summary_node *summary_node );
+            long    avg10Ttl_dev( struct summary_node *summary_node, int dev_index );
+#ifdef BX_ROUTING
+            long    avgTtpc_dev( struct summary_node *summary_node, int dev_index );
+#endif
+#else
+            float   avg10Ttl( struct summary_node *summary_node );
+            float   avg10Ttl_dev( struct summary_node *summary_node, int dev_index );
+#ifdef BX_ROUTING
             float   avgTtpc_dev( struct summary_node *summary_node, int dev_index );
+#endif
+#endif
+             void   bx_output(int importance, char *format, ...);
 
-             void   output(int importance, char *format, ...);
+//      static void   handler(int sig);
 
-      static void   handler(int sig);
+             void   finishNow(void);
 
-//      static void   finish(void);
-
-      static void   usage(void);
+             void   bx_usage(void);
 
               int   is_aborted();
 
@@ -447,9 +466,9 @@ static LIST_HEAD(summary_list);
 
              void   abs2relTv(  struct timeval *tv_abs,  struct timeval *tv_rel );
 
-      static void   get_time_internal(struct timeval *tv);
+//      static void   bx_get_time_internal(struct timeval *tv);
 
-static unsigned long   get_time( struct timeval *tv );
+    unsigned long   bx_get_time( struct timeval *tv );
 
              void   set_forwarding(int state);
 
@@ -467,52 +486,53 @@ static unsigned long   get_time( struct timeval *tv );
 
              void   help();
 
-             void   add_del_route( struct orig_node *dest_node, 
-				   struct orig_node *router_node, 
+             void   bx_ad_route( struct bx_og_node *dest_node, 
+				   struct bx_og_node *router_node, 
 				   int del,
 				   struct device_node *via_device_node );
 
-             void   output_route( char *orig_str, char* hop_str, struct orig_node *orig_node, int hmvdaPos, struct summary_node *summary_node);
+             void   output_route( char *orig_str, char* hop_str, struct bx_og_node *bx_og_node, int hmvdaPos, struct summary_node *summary_node);
 
              void   showRoutes( struct list_head *debug_orig_list );
 
-             void   updateRoutes( struct orig_node *orig_node, struct best_route *best_route );
+             void   updateRoutes( struct bx_og_node *bx_og_node, struct best_route *best_route );
 
              void   delAllRoutes( void );
 
-             void   closeAllSockets( void );
+//             void   closeAllSockets( void );
 
               int   batman(void);
 
-              int   main(int ac, char **av);
+//              int   main(int ac, char **av);
 
 
 /********************************************************************
  * Structures and Functions for orig-data processing and maintainance
  */
 
-    unsigned char   origTreatmentFunc(struct orig_node *orig_node, 
+    unsigned char   origTreatmentFunc(struct bx_og_node *bx_og_node, 
 				     struct packet_orig *in, 
-				     struct orig_node *neigh_node, 
+				     struct bx_og_node *neigh_node, 
 				     int rcvd_via_device_node_index );
 
- struct orig_node  *get_orig_node( unsigned int addr );
+ struct bx_og_node  *get_bx_og_node( unsigned int addr );
 
- struct orig_node  *update_neighbour(struct packet_orig *in, 
+ struct bx_og_node  *update_neighbour(struct packet_orig *in, 
 				     unsigned int neigh, 
 				     int via_device_node_index,
 				     struct timeval *received );
 
-             void   purgePackNodes( struct orig_node *orig_node );
+             void   purgePackNodes( struct bx_og_node *bx_og_node );
 
-struct summary_node *getMetricNode( struct orig_node *orig_node );
+struct summary_node *getMetricNode( struct bx_og_node *bx_og_node );
 
 
-             long   get_tripTimePlusConst ( struct pack_node *pack_node );
+#ifdef BX_ROUTING
+             long   get_tripTimePlusConst ( struct bx_ogm_node *bx_ogm_node );
+#endif
+              int   updateHelperMetricsForOrig( struct bx_og_node *bx_og_node );
 
-              int   updateHelperMetricsForOrig( struct orig_node *orig_node );
-
-             void   findBestNeigh( struct orig_node *orig_node, struct best_route *best_route );
+             void   findBestNeigh( struct bx_og_node *bx_og_node, struct best_route *best_route );
 
              void   updateOrigAPacketAForwARouteList( unsigned int neigh, 
 						      struct packet_orig *in, 
@@ -524,9 +544,9 @@ struct summary_node *getMetricNode( struct orig_node *orig_node );
  * Functions for packet reception and sending
  */
 
-             void   addToForwList( struct pack_node *pack_node, int delay, short via_device_node_item );
+             void   addToForwList( struct bx_ogm_node *bx_ogm_node, int delay, short via_device_node_item );
 
-             void   addToAllForwLists( struct pack_node *pack_node, int delay );
+             void   addToAllForwLists( struct bx_ogm_node *bx_ogm_node, int delay );
 
               int   wait_for_packet(unsigned char *buff, 
 				    int len, unsigned int *neigh,
@@ -536,25 +556,25 @@ struct summary_node *getMetricNode( struct orig_node *orig_node );
 
              void   broadcastFwList( struct device_node *device_node );
 
-              int   send_packet( unsigned char *buff, int len, struct device_node *device_node);
+              int   bx_send_packet( unsigned char *buff, int len, struct device_node *device_node);
 
 /*
 returns remaining lifetime in ms (which is 0 in case of less than 1 ms)
 of bidirectional link to given neigh_node and device_index
 or -1 if exceeded or timed out
 */
-              long  currentlyBidirectionalNeighFunc( struct orig_node *neigh_node,
+              long  currentlyBidirectionalNeighFunc( struct bx_og_node *neigh_node,
 						      int via_device_node_index );
 
- struct pack_node  *createOtherPackNode( unsigned char treatmentFlags,
-					 struct orig_node *orig_node, 
-					 struct orig_node *neigh_node,
+ struct bx_ogm_node  *createOtherPackNode( unsigned char treatmentFlags,
+					 struct bx_og_node *bx_og_node, 
+					 struct bx_og_node *neigh_node,
 					 struct device_node *via_device_node,
 					 struct packet_orig *in, 
 /* 					 struct timeval *ooptim_originated_rview_tstmp,  */
 					 struct timeval *received );
 
- struct pack_node  *generateOwnPackNode( struct device_node * device_node );
+ struct bx_ogm_node  *generateOwnPackNode( struct device_node * device_node );
 
 
 /********************************************************************
@@ -568,15 +588,7 @@ or -1 if exceeded or timed out
 #define EVENT_PURGE_INTERVAL 0x03
 #define EVENT_FW_JITTER      0x04
 
-char * debug_event( int event ) {
-	if( event == EVENT_NO ) return "EVENT_NO";
-	else if( event == EVENT_ORIG_INTERVAL ) return "EVENT_ORIG_INTERVAL";
-	else if( event == EVENT_TX_INTERVAL ) return "EVENT_TX_INTERVAL";
-	else if( event == EVENT_PURGE_INTERVAL ) return "EVENT_PURGE_INTERVAL";
-	else if( event == EVENT_FW_JITTER ) return "EVENT_FW_JITTER";
-
- return "INVALID EVENT";
-}
+char * debug_event( int event );
 
 struct to_node 
 { 

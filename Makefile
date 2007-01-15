@@ -20,34 +20,50 @@ CC =		gcc
 CFLAGS =	-Wall -O0 -g3
 LDFLAGS =	-lpthread
 
-# export PATH=$PATH:/usr/src/openWrt/build/trunk/openwrt/staging_dir_mipsel/bin/  to ~/.bash_profile
+# export PATH=$PATH:/usr/src/openWrt/build/trunk/staging_dir_mipsel/bin/  to ~/.bash_profile
 
 MCC =		/usr/src/openWrt/build/trunk/staging_dir_mipsel/bin/mipsel-linux-uclibc-gcc
-MLDFLAGS =	-static -lpthread
-MCFLAGS =	-Wall -O0 -g3 -c -static
+MSTRIP =	/usr/src/openWrt/build/trunk/staging_dir_mipsel/bin/mipsel-linux-uclibc-strip
+
+MLDFLAGS =  -lpthread
+MCFLAGS =	-Wall -O0 -g3
 
 UNAME=$(shell uname)
 
 ifeq ($(UNAME),Linux)
-#OS_OBJ=	posix.o linux.o allocate.o
-OS_OBJ=	
-OS_SRC=		bmex.c bmex.h list.h Makefile
+#OS_OBJ=	posix-specific.o posix.o linux.o allocate.o
+
+#MOS_OBJ=	posix-m32.o linux-m32.o allocate-m32.o batman-m32.o
+
+OS_SRC_H=		bmex.h list.h os.h allocate.h
+OS_SRC_C=		bmex.c posix-specific.c posix.c linux.c allocate.c 
 endif
 
-all:		bmex-x86 bmex-m32
-
-bmex-x86:	bmex.o $(OS_OBJ)
-		$(CC)  $(LDFLAGS) -o $@ bmex.o $(OS_OBJ)
+all:		bmex bmex-x86dp bmex-m32s bmex-m32sp bmex-m32d
 
 
-bmex-m32.o:	$(OS_SRC)
-		$(MCC) $(MCFLAGS) -o $@ bmex.c
+bmex:	$(OS_SRC_C) $(OS_SRC_H) Makefile 
+		$(CC) $(CFLAGS) -o $@ $(OS_SRC_C) $(LDFLAGS)
 
-bmex-m32:	bmex-m32.o $(OS_OBJ)
-		$(MCC) $(MLDFLAGS) -o $@ bmex-m32.o $(OS_OBJ) 
+bmex-x86dp:	bmex
+			strip -o $@ bmex
 
+
+bmex-m32d:	$(OS_SRC_C) $(OS_SRC_H) Makefile
+			$(MCC) $(MCFLAGS) -o $@ $(OS_SRC_C) $(MLDFLAGS)
+
+bmex-m32dp:	bmex-m32d
+			$(MSTRIP) -o $@ bmex-m32d
+			
+bmex-m32s:	$(OS_SRC_C) $(OS_SRC_H) Makefile
+			$(MCC) $(MCFLAGS) -o $@ $(OS_SRC_C) -static $(MLDFLAGS)
+
+bmex-m32sp:	bmex-m32s
+			$(MSTRIP) -o $@ bmex-m32s
+
+		
 clean:
-		rm -f bmex-m32 bmex-x86 *.o *~
+		rm -f bmex bmex-* *.o *~
 
 
 

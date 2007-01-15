@@ -17,5 +17,7 @@
  *
  */
 
+#define batman_if device_node
+#define if_list device_list
 
 #include "bmex.h"
