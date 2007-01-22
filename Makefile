@@ -22,8 +22,8 @@ LDFLAGS =	-lpthread
 
 # export PATH=$PATH:/usr/src/openWrt/build/trunk/staging_dir_mipsel/bin/  to ~/.bash_profile
 
-MCC =		/usr/src/openWrt/build/trunk/staging_dir_mipsel/bin/mipsel-linux-uclibc-gcc
-MSTRIP =	/usr/src/openWrt/build/trunk/staging_dir_mipsel/bin/mipsel-linux-uclibc-strip
+MCC =		/usr/src/openWrt/build/kamikaze/staging_dir_mipsel/bin/mipsel-linux-uclibc-gcc
+MSTRIP =	/usr/src/openWrt/build/kamikaze/staging_dir_mipsel/bin/mipsel-linux-uclibc-strip
 
 MLDFLAGS =  -lpthread
 MCFLAGS =	-Wall -O0 -g3
@@ -39,7 +39,9 @@ OS_SRC_H=		bmex.h list.h os.h allocate.h
 OS_SRC_C=		bmex.c posix-specific.c posix.c linux.c allocate.c 
 endif
 
-all:		bmex bmex-x86dp bmex-m32s bmex-m32sp bmex-m32d
+all:		bmex 
+
+mips:		bmex-x86dp bmex-m32s bmex-m32sp bmex-m32d bmex-m32dp
 
 
 bmex:	$(OS_SRC_C) $(OS_SRC_H) Makefile 
@@ -69,8 +71,8 @@ clean:
 
 install: 	
 #		scp bmex-m32 root@ng1e:/tmp/
-		scp bmex-m32 root@ng2e:/tmp/
-		scp bmex-m32 root@ng3e:/tmp/
+		scp bmex-m32sp root@ng2e:/tmp/
+		scp bmex-m32sp root@ng3e:/tmp/
 #		scp bmex-m32 root@ng4e:/tmp/
 #		scp bmex-m32 root@ng5e:/tmp/
 #		scp bmex-m32 root@ng6e:/tmp/
