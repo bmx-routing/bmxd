@@ -18,11 +18,11 @@
 
 
 CC =			gcc
-CFLAGS =		-Wall -O1 -g3 -DDEBUG_MALLOC -DMEMORY_USAGE -DPROFILE_DATA
+CFLAGS =		-Wall -O1 -g -DDEBUG_MALLOC -DMEMORY_USAGE -DPROFILE_DATA
 STRIP=			strip
 LDFLAGS =		-lpthread
 
-CFLAGS_MIPS =	-Wall -O1 -g3 -DDEBUG_MALLOC -DMEMORY_USAGE -DPROFILE_DATA -DREVISION_VERSION=$(REVISION_VERSION)
+CFLAGS_MIPS =	-Wall -O1 -g -DDEBUG_MALLOC -DMEMORY_USAGE -DPROFILE_DATA -DREVISION_VERSION=$(REVISION_VERSION)
 LDFLAGS_MIPS =	-lpthread
 
 UNAME=		$(shell uname)
@@ -44,7 +44,7 @@ ifeq ($(UNAME),OpenBSD)
 OS_C=	bsd/bsd.c $(POSIX_C)
 endif
 
-LOG_BRANCH= trunk/batman
+LOG_BRANCH= trunk/batman-experimental
 
 SRC_C= batman.c originator.c schedule.c list-batman.c allocate.c bitarray.c hash.c profile.c $(OS_C)
 SRC_H= batman.h originator.h schedule.h list-batman.h os.h allocate.h bitarray.h hash.h profile.h
