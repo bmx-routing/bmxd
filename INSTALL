@@ -1,0 +1,271 @@
+#################################
+B.A.T.M.A.N. Installation and Use
+#################################
+
+Marek Lindner (lindner_marek-at-yahoo.de)
+Stefan Sperling (stsp-at-stsp.in-berlin.de
+Axel Neumann (neumann-at-notmail.org)
+Corinna 'Elektra' Aichele (onelektra-at-gmx.net)
+Thomas Lopatic  (thomas-at-lopatic.de)
+Felix Fietkau (nbd-at-nbd.name)
+Ludger Schmudde (lui-at-schmudde.com)
+Simon Wunderlich (siwu-at-hrz.tu-chemnitz.de)
+Andreas Langer (a.langer-at-q-dsl.de)
+
+-------
+Preface
+-------
+
+This is still a experimental piece of code to test the viability of the
+B.A.T.M.A.N. routing algorithm based on initial ideas of Thomas Lopatic
+and Corinna 'Elektra' Aichele.
+
+This is the improved B.A.T.M.A.N.-III algorithm. It
+is not unlikely that we still have to fix some bugs, though.
+
+Use - like always - at your own risk!
+
+
+--------
+Features
+--------
+
+Improved B.A.T.M.A.N.-III algorithm
+IP-Tunnels via UDP
+Gateway classes
+Multiple Interfaces support
+Support for a server that collects link-state information from each node to generate two
+dimensional or three dimensional topology graphs.
+
+
+-------
+Roadmap
+-------
+
+Testing, improvements in the documentation.
+
+Support for Free-BSD and Mac OS-X is broken at the moment since we
+introduced UDP-Tunnels - we hope this will be fixed in the near future.
+
+Develop B.A.T.M.A.N.-Advanced that routes on Layer 2 and creates a Link-Local-Illusion for higher
+OSI-Layers
+
+Read speed tables from WiFi-Cards to calculate the transfer speed of routes
+in B.A.T.M.A.N.-Advanced
+
+
+------------
+Requirements
+------------
+
+Linux with kernel-module 'tun' loaded if you want to use/be a gateway
+
+------------
+Installation
+------------
+
+You need the usual working environment to compile software. In the
+B.A.T.M.A.N. directory type
+
+make <press enter>
+
+After the compilation process is finished you'll find a executable called 'batman'. This
+executable is quite big because it is not stripped.
+
+Strip it by performing:
+
+strip batmand <press enter>
+
+Note there is no installation script at the moment. If you want to install
+it, copy the deamon (batmand) to a location somewhere in your path, for example
+/usr/sbin or /usr/local/bin.
+
+
+---------------------------------
+Installation on a Freifunk Router
+---------------------------------
+
+  Just to be sure, there has been some confusion with outdated batman packages
+  so its a good idea to check for any old package using:
+
+  ipkg status | grep batman
+
+  and then remove everything related to that by doing for example:
+
+  ipkg remove batman-iii freifunk-batman-de ...
+
+  then continue with the installation of a fresh and stable batman packages!
+
+If you use a wireless router based on Freifunk-Firmware or OpenWRT you can
+use the ipkg-package management system. Add the line:
+
+src lui http://freifunk.schmudde.com/ipkg
+
+to your package sources and update the list of available packages by
+executing:
+
+ipkg update
+
+ipkg install batmand-iii
+
+  alternatively you can get the latest stable release from 
+  http://downloads.open-mesh.net/batman/stable/
+  for example to install batmand-0.2.0rc2 on a freifunk WRT do:
+
+  ipkg install http://downloads.open-mesh.net/batman/stable/wrt-freifunk/batmand_0.2.0rc2-current_mipsel-wr-elf-32-lsb-dynamic.ipk
+
+  But be aware that, a recent batmand-...ipk from open-mesh.net should be equal to the 
+  batman-iii-...ipk from freifunk.schmudde.com/ipkg. Both packages install /usr/sbin/batmand 
+  and the last installed one will overwrite the previous one.
+
+If you use Freifunk-Firmware you can use the web user-interface for
+B.A.T.M.A.N.:
+
+ipkg install freifunk-batman
+
+
+
+------
+Useage
+------
+
+Make sure you have no firewall running that is blocking UDP port 1966.
+
+I like examples - so let's start with them. I'll assume you perform the
+following steps in the batman source directory after compilation.
+
+Typical client usage example:
+
+batmand -p <ip of preferred gateway> -r 2  -o 2000 -s <visualisation-server ip> wlan0 eth1 ath0
+
+
+Typical gateway usage example:
+
+batmand -g 7 -o 2000 -s <visualisation-server ip> ath0
+
+NOTE:
+
+You HAVE to select a routing class to connect to a gateway. The routing
+class will be used to look for a fallback gateway if the preferred gateway
+is unavailable. Level 2 or 3 is recommended. Level 1 is not really useable
+yet.
+
+Originator interval must be the same on all nodes in the mesh.
+
+Here's what you see if you start long help (with some extra comments)
+
+batmand -H
+
+Usage: batman [options] interface [interface interface]
+	
+       -a announce network(s)
+          network/netmask is expected
+	  Announce that this node is a gateway to this
+	  network
+
+	
+       -d debug level
+          default: 0, allowed values: 0 - 3
+
+       -g gateway class
+
+	  Use this feature if you want to offer a internet gateway and tell
+	  clients how much speed is available.
+
+          default:         0 -> this is not an internet gateway
+          allowed values:  1 -> modem line
+                           2 -> ISDN line
+                           3 -> double ISDN
+                           4 -> 256 KBit
+                           5 -> UMTS / 0.5 MBit
+                           6 -> 1 MBit
+                           7 -> 2 MBit
+                           8 -> 3 MBit
+                           9 -> 5 MBit
+                          10 -> 6 MBit
+                          11 -> >6 MBit
+
+       -h shorter help
+
+       -H this help
+
+       -o orginator interval in ms
+          default: 1000, allowed values: >0
+
+	Note: By default B.A.T.M.A.N. keeps track of packets received in the
+	last 60 seconds (this is called sliding window size). B.A.T.M.A.N
+	will perform it's routing decisions based on statistics about 60
+	packages for a node with an orginator interval of one second. If a
+	node manages to send us at least 1 message in 60 seconds, it will be
+	in our routing table. If the orginator interval is increased to 3
+	seconds only 20 packets will be kept in the B.A.T.M.A.N. statistic -
+	thus the node must manage to send us 1 out of 20 packets to be in
+	our routing table. If the sliding window size has more space for
+	orginator messages the range of multi-hop links will be longer and
+	therefore weaker routes will find their way into the routing table.
+	And vice versa.
+
+
+       -p preferred gateway
+
+	  This will set up an IP-Tunnel to the destination IP
+
+          default: none, allowed values: IP
+
+       -r routing class (only needed if gateway class = 0)
+
+	  If you are a gateway-client, this will select the way you choose an
+	  internet-gateway
+
+          default:         0 -> set no default route
+          allowed values:  1 -> use fast internet connection
+                           2 -> use stable internet connection
+                           3 -> use best statistic internet connection (olsr style)
+
+	  1 -> not really usable yet
+	  2 -> use best connection to gateway, faster gateway class will be
+	       preferred if connection quality is similar
+	  3 -> use nearest gateway
+
+       -s visualisation server
+
+	  The Server-IP that collects the topology information for
+	  topology-visualisation
+
+          default: none, allowed values: IP
+
+
+
+
+Switch the output of runtime debugging messages to a low level if you want
+to test the software on a slow - embedded - system.
+
+We would love to see B.A.T.M.A.N. in a match against other routing protocols
+in existing mesh networks. You can set up a virtual interface on an
+interface that you run another mesh routing protocol on.
+
+If, for example, you have olsrd running on interface wlan0 with IP address
+104.30.30.30 you could set up a virtual interface wlan0:0 with another
+IP-address within another network:
+
+ifconfig wlan0:0 103.30.30.30 netmask 255.0.0.0 broadcast 103.255.255.255
+
+The ifconfig command may not be available on your system. To perform the
+same operation using the command provided by iproute2:
+
+ip addr add 103.30.30.30/8 broadcast 103.255.255.255 dev wlan0 label wlan0:0
+
+batmand -o 2000 wlan0:0
+
+Now you can check out which protocol works better.
+
+Happy routing!
+
+The B.A.T.M.A.N. contributors
+
+
+
+
+
+
+
