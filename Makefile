@@ -49,6 +49,7 @@ LOG_BRANCH= trunk/batman-experimental
 SRC_C= batman.c originator.c schedule.c list-batman.c allocate.c bitarray.c hash.c profile.c $(OS_C)
 SRC_H= batman.h originator.h schedule.h list-batman.h os.h allocate.h bitarray.h hash.h profile.h
 
+PACKAGE_NAME=	batmand-exp
 BINARY_NAME=	batmand
 SOURCE_VERSION_HEADER= batman.h
 
@@ -59,8 +60,8 @@ IPKG_BUILD_PATH=	$(BUILD_PATH)/ipkg-build
 
 BAT_VERSION=		$(shell grep "^\#define SOURCE_VERSION " $(SOURCE_VERSION_HEADER) | sed -e '1p' -n | awk -F '"' '{print $$2}' | awk '{print $$1}')
 IPKG_VERSION=		$(BAT_VERSION)-rv$(REVISION)
-FILE_NAME=		$(BINARY_NAME)_$(BAT_VERSION)-rv$(REVISION)_$@
-FILE_CURRENT=		$(BINARY_NAME)_$(BAT_VERSION)-current_$@
+FILE_NAME=		$(PACKAGE_NAME)_$(BAT_VERSION)-rv$(REVISION)_$@
+FILE_CURRENT=		$(PACKAGE_NAME)_$(BAT_VERSION)-current_$@
 
 
 IPKG_DEPENDS=		"kmod-tun libpthread"
