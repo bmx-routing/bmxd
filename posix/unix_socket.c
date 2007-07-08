@@ -42,6 +42,7 @@ void debug_output( int8_t debug_prio, char *format, ... ) {
 	struct debug_level_info *debug_level_info;
 	int8_t debug_prio_intern;
 	va_list args;
+	char tmp_string[1024]; // TBD: must be checked for overflow when using with sprintf
 
 
 	if ( debug_prio == 0 ) {
@@ -76,7 +77,7 @@ void debug_output( int8_t debug_prio, char *format, ... ) {
 
 		if ( pthread_mutex_trylock( (pthread_mutex_t *)debug_clients.mutex[debug_prio_intern] ) == 0 ) {
 
-			va_start( args, format );
+//			va_start( args, format );
 
 			list_for_each( debug_pos, (struct list_head *)debug_clients.fd_list[debug_prio_intern] ) {
 
@@ -91,14 +92,27 @@ void debug_output( int8_t debug_prio, char *format, ... ) {
 
 				} else {
 
-					if ( ( ( debug_level != 1 ) && ( debug_level != 2 ) ) || ( debug_level_info->fd != 1 ) || ( strncmp( format, "EOD", 3 ) != 0 ) )
-						vdprintf( debug_level_info->fd, format, args );
+					if ( ( ( debug_level != 1 ) && ( debug_level != 2 ) ) || ( debug_level_info->fd != 1 ) || ( strncmp( format, "EOD", 3 ) != 0 ) ) {
+
+						va_start( args, format );
+						vsprintf( tmp_string, format, args );
+// TODO: this causes lots of errors if enabled:
+//						if( vdprintf( debug_level_info->fd, format, args ) < 0) {
+//						if(
+							dprintf( debug_level_info->fd, "%s", tmp_string );
+//														< 0) {
+//							printf("error: could not write to fd !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! \n");
+//						}
+
+						va_end( args );
+
+					}
 
 				}
 
 			}
 
-			va_end( args );
+//			va_end( args );
 
 			if ( pthread_mutex_unlock( (pthread_mutex_t *)debug_clients.mutex[debug_prio_intern] ) < 0 )
 				debug_output( 0, "Error - could not unlock mutex (debug_output): %s \n", strerror( errno ) );

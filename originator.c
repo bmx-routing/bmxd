@@ -18,7 +18,7 @@
  */
 
 
-
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include "os.h"
@@ -366,6 +366,8 @@ void debug_orig() {
 	uint16_t batman_count = 0;
 	uint32_t uptime_sec;
 	static char str[ADDR_STR_LEN], str2[ADDR_STR_LEN], orig_str[ADDR_STR_LEN];
+	int dbg_ogm_out = 0;
+	static char dbg_ogm_str[1024]; // TBD: must be checked for overflow when using with sprintf
 
 
 	if ( debug_clients.clients_num[1] > 0 ) {
@@ -378,7 +380,7 @@ void debug_orig() {
 
 		} else {
 
-			debug_output( 2, "%''12s     %''15s (%s/%i) \n", "Gateway", "Router", "#", SEQ_RANGE );
+			debug_output( 2, "%12s     %15s (%s/%i) \n", "Gateway", "Router", "#", SEQ_RANGE );  
 
 			list_for_each( orig_pos, &gw_list ) {
 
@@ -391,9 +393,9 @@ void debug_orig() {
 				addr_to_string( gw_node->orig_node->router->addr, str2, sizeof (str2) );
 
 				if ( curr_gateway == gw_node ) {
-					debug_output( 2, "=> %-15s %''15s (%3i), gw_class %2i - %s, reliability: %i \n", str, str2, gw_node->orig_node->router->packet_count, gw_node->orig_node->gwflags, gw2string[gw_node->orig_node->gwflags], gw_node->unavail_factor );
+					debug_output( 2, "=> %-15s %15s (%3i), gw_class %2i - %s, reliability: %i \n", str, str2, gw_node->orig_node->router->packet_count, gw_node->orig_node->gwflags, gw2string[gw_node->orig_node->gwflags], gw_node->unavail_factor );
 				} else {
-					debug_output( 2, "   %-15s %''15s (%3i), gw_class %2i - %s, reliability: %i \n", str, str2, gw_node->orig_node->router->packet_count, gw_node->orig_node->gwflags, gw2string[gw_node->orig_node->gwflags], gw_node->unavail_factor );
+					debug_output( 2, "   %-15s %15s (%3i), gw_class %2i - %s, reliability: %i \n", str, str2, gw_node->orig_node->router->packet_count, gw_node->orig_node->gwflags, gw2string[gw_node->orig_node->gwflags], gw_node->unavail_factor );
 				}
 
 				batman_count++;
@@ -415,8 +417,16 @@ void debug_orig() {
 		uptime_sec = (uint32_t)( get_time() / 1000 );
 
 		debug_output( 1, "BOD \n" );
-		debug_output( 1, "  %-12s %''14s (%s/%i): %''20s... [B.A.T.M.A.N. %s%s, MainIF/IP: %s/%s, UT: %id%2ih%2im] \n", "Originator", "Router", "#", SEQ_RANGE, "Potential routers", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), ((struct batman_if *)if_list.next)->dev, orig_str, uptime_sec/86400, ((uptime_sec%86400)/3600), ((uptime_sec)%3600)/60 );
-
+		
+		debug_output( 1, "  %-12s %14s (%s/%3i): %20s... [B.A.T.M.A.N. %s%s, MainIF/IP: %s %s, BDLC: %i, OGMI: %i, UT: %id%2ih%2im] \n", "Originator", "Router", "#", 
+			      SEQ_RANGE, "Potential routers", 
+			      SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), 
+			      ((struct batman_if *)if_list.next)->dev, orig_str, 
+			      BIDIRECT_TIMEOUT, originator_interval,
+			      uptime_sec/86400, ((uptime_sec%86400)/3600), ((uptime_sec)%3600)/60  );
+		
+		
+		
 		if ( debug_clients.clients_num[3] > 0 ) {
 
 			debug_output( 4, "------------------ DEBUG ------------------ \n" );
@@ -445,20 +455,24 @@ void debug_orig() {
 			addr_to_string( orig_node->orig, str, sizeof (str) );
 			addr_to_string( orig_node->router->addr, str2, sizeof (str2) );
 
-			debug_output( 1, "%-15s %''15s (%3i):", str, str2, orig_node->router->packet_count );
-			debug_output( 4, "%''15s %''15s (%3i), last_valid: %u: \n", str, str2, orig_node->router->packet_count, orig_node->last_valid );
+			dbg_ogm_out = sprintf( dbg_ogm_str, "%-15s %15s (%3i):", str, str2, orig_node->router->packet_count );
+//			debug_output( 1, "%-15s %''15s (%3i):", str, str2, orig_node->router->packet_count );
+//			debug_output( 4, "%''15s %''15s (%3i), last_valid: %u: \n", str, str2, orig_node->router->packet_count, orig_node->last_valid );
 
 			list_for_each( neigh_pos, &orig_node->neigh_list ) {
 				neigh_node = list_entry( neigh_pos, struct neigh_node, list );
 
 				addr_to_string( neigh_node->addr, str, sizeof (str) );
 
-				debug_output( 1, " %''15s (%3i)", str, neigh_node->packet_count );
-				debug_output( 4, "\t\t%''15s (%3i) \n", str, neigh_node->packet_count );
+				dbg_ogm_out = dbg_ogm_out + sprintf( (dbg_ogm_str + dbg_ogm_out), " %15s (%3i)", str, neigh_node->packet_count );
+//				debug_output( 1, " %''15s (%3i)", str, neigh_node->packet_count );
+//				debug_output( 4, "\t\t%''15s (%3i) \n", str, neigh_node->packet_count );
 
 			}
 
-			debug_output( 1, " \n" );
+			debug_output( 1, "%s \n", dbg_ogm_str );
+			debug_output( 4, "%s \n", dbg_ogm_str );
+//			debug_output( 1, " \n" );
 
 		}
 

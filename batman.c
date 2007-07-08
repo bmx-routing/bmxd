@@ -195,7 +195,7 @@ void verbose_usage( void ) {
 
 int is_batman_if( char *dev, struct batman_if **batman_if ) {
 
-	struct list_head *if_pos;
+	struct list_head *if_pos = NULL;
 
 
 	list_for_each( if_pos, &if_list ) {
