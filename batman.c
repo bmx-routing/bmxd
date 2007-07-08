@@ -95,7 +95,25 @@ uint8_t gateway_class = 0;
 uint8_t routing_class = 0;
 
 
-int16_t originator_interval = 1000;   /* originator message interval in miliseconds */
+int16_t originator_interval = DEFAULT_ORIGINATOR_INTERVAL;   /* orginator message interval in miliseconds */  
+ 
+/* bidirectional link timeout in number+1 of maximum acceptable missed (not received by this node)  
+of last send own OGMs rebroadcasted from neighbors */  
+int16_t bidirect_link_to = DEFAULT_BIDIRECT_TIMEOUT;  
+
+int16_t sequence_range = DEFAULT_SEQ_RANGE;
+uint8_t ttl = DEFAULT_TTL;
+ 
+int16_t num_words = ( DEFAULT_SEQ_RANGE / WORD_BIT_SIZE ) + ( ( DEFAULT_SEQ_RANGE % WORD_BIT_SIZE > 0)? 1 : 0 );  
+
+
+
+
+
+
+
+
+
 
 struct gw_node *curr_gateway = NULL;
 pthread_t curr_gateway_thread_id = 0;
@@ -139,6 +157,9 @@ void usage( void ) {
 	fprintf( stderr, "       -h this help\n" );
 	fprintf( stderr, "       -H verbose help\n" );
 	fprintf( stderr, "       -o originator interval in ms\n" );
+	fprintf( stderr, "       -l bidirectional link frame\n" );
+	fprintf( stderr, "       -q NBRF sequence-range\n" );
+	fprintf( stderr, "       -t ttl of originator packets\n" );
 	fprintf( stderr, "       -p preferred gateway\n" );
 	fprintf( stderr, "       -r routing class\n" );
 	fprintf( stderr, "       -s visualisation server\n" );
@@ -177,7 +198,13 @@ void verbose_usage( void ) {
 	fprintf( stderr, "       -h shorter help\n" );
 	fprintf( stderr, "       -H this help\n" );
 	fprintf( stderr, "       -o originator interval in ms\n" );
-	fprintf( stderr, "          default: 1000, allowed values: >0\n\n" );
+	fprintf( stderr, "          default: %d, allowed values: >0\n\n", DEFAULT_ORIGINATOR_INTERVAL );
+	fprintf( stderr, "       -l bidirectional link frame size as number \n" );
+	fprintf( stderr, "          default: %d, allowed values: >=1 and <= %d \n\n", DEFAULT_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT  );
+	fprintf( stderr, "       -q NBRF sequence-range size as number (WARNING) different calues in same mesh can cause LOOPS !! \n" );
+	fprintf( stderr, "          default: %d, allowed values: <=%d\n\n", DEFAULT_SEQ_RANGE, MAX_SEQ_RANGE  );
+	fprintf( stderr, "       -t ttl of originator packets as number\n" );
+	fprintf( stderr, "          default: %d, allowed values: <=%d\n\n", DEFAULT_TTL, MAX_TTL  );
 	fprintf( stderr, "       -p preferred gateway\n" );
 	fprintf( stderr, "          default: none, allowed values: IP\n\n" );
 	fprintf( stderr, "       -r routing class (only needed if gateway class = 0)\n" );
@@ -554,11 +581,11 @@ int isBntog( uint32_t neigh, struct orig_node *orig_tog_node ) {
 
 int isBidirectionalNeigh( struct orig_node *orig_neigh_node, struct batman_if *if_incoming ) {
 
-	if ( ( if_incoming->out.bat_packet.seqno - 2 - orig_neigh_node->bidirect_link[if_incoming->if_num] ) < BIDIRECT_TIMEOUT )
+	if ( ( if_incoming->out.bat_packet.seqno - 2 - orig_neigh_node->bidirect_link[if_incoming->if_num] ) < bidirect_link_to )
 		return 1;
 
 	return 0;
-
+		
 }
 
 
@@ -578,7 +605,7 @@ void generate_vis_packet() {
 
 	memcpy( vis_packet, (unsigned char *)&(((struct batman_if *)if_list.next)->addr.sin_addr.s_addr), 4 );
 	vis_packet[4] = gateway_class;
-	vis_packet[5] = SEQ_RANGE;
+	vis_packet[5] = sequence_range;
 
 
 	while ( NULL != ( hashit = hash_iterate( orig_hash, hashit ) ) ) {
@@ -694,7 +721,7 @@ int8_t batman() {
 
 		batman_if->out.bat_packet.orig = batman_if->addr.sin_addr.s_addr;
 		batman_if->out.bat_packet.flags = 0x00;
-		batman_if->out.bat_packet.ttl = TTL;
+		batman_if->out.bat_packet.ttl = ttl;
 		batman_if->out.bat_packet.seqno = 1;
 		batman_if->out.bat_packet.gwflags = gateway_class;
 		batman_if->out.bat_packet.version = COMPAT_VERSION;

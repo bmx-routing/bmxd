@@ -107,9 +107,9 @@ $(BINARY_NAME):	$(SRC_C) $(SRC_H) Makefile
 
 
 
-long:	sources i386 mipsel-kk-bc mips-kk-at mipsel-wr arm-oe nokia770-oe clean-long
+long:	i386 mipsel-kk-bc mips-kk-at mipsel-wr arm-oe nokia770-oe clean-long
 
-axel:	sources i386 mipsel-kk-bc mips-kk-at mipsel-wr arm-oe clean-long
+axel:	i386 mipsel-kk-bc mips-kk-at mipsel-wr arm-oe clean-long
 
 sources:
 	mkdir -p $(FILE_NAME)
@@ -268,4 +268,4 @@ clean:
 
 
 clean-long:
-		rm -rf batmand_*
+		rm -rf batmand-exp_*

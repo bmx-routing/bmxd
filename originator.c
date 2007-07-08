@@ -380,7 +380,7 @@ void debug_orig() {
 
 		} else {
 
-			debug_output( 2, "%12s     %15s (%s/%i) \n", "Gateway", "Router", "#", SEQ_RANGE );  
+			debug_output( 2, "%12s     %15s (%s/%i) \n", "Gateway", "Router", "#", sequence_range );  
 
 			list_for_each( orig_pos, &gw_list ) {
 
@@ -419,10 +419,10 @@ void debug_orig() {
 		debug_output( 1, "BOD \n" );
 		
 		debug_output( 1, "  %-12s %14s (%s/%3i): %20s... [B.A.T.M.A.N. %s%s, MainIF/IP: %s %s, BDLC: %i, OGMI: %i, UT: %id%2ih%2im] \n", "Originator", "Router", "#", 
-			      SEQ_RANGE, "Potential routers", 
+			      sequence_range, "Potential routers", 
 			      SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), 
 			      ((struct batman_if *)if_list.next)->dev, orig_str, 
-			      BIDIRECT_TIMEOUT, originator_interval,
+			      bidirect_link_to, originator_interval,
 			      uptime_sec/86400, ((uptime_sec%86400)/3600), ((uptime_sec)%3600)/60  );
 		
 		
@@ -439,7 +439,7 @@ void debug_orig() {
 			}
 
 			debug_output( 4, "Originator list \n" );
-			debug_output( 4, "  %-12s %''14s (%s/%i): %''20s\n", "Originator", "Router", "#", SEQ_RANGE, "Potential routers" );
+			debug_output( 4, "  %-12s %''14s (%s/%i): %''20s\n", "Originator", "Router", "#", sequence_range, "Potential routers" );
 
 		}
 
