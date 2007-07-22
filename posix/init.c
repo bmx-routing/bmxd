@@ -442,7 +442,8 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			batman_if->dev = argv[found_args];
 			batman_if->if_num = found_ifs;
-
+			batman_if->if_ttl = ttl;
+			
 			list_add_tail( &batman_if->list, &if_list );
 
 			init_interface ( batman_if );
@@ -463,10 +464,37 @@ void apply_init_args( int argc, char *argv[] ) {
 				init_interface_gw( batman_if );
 
 			}
-
+			
 			found_ifs++;
 			found_args++;
 
+			
+			if ( argc > found_args && strlen( argv[found_args] ) >= 2 && *argv[found_args] == '/') { 
+	
+				if ( (argv[found_args])[1] == 't' && argc > (found_args+1) ) {
+					
+					errno = 0;
+					uint8_t tmp_ttl = strtol ( argv[ found_args+1 ], NULL , 10 );
+
+					if ( tmp_ttl < MIN_TTL || tmp_ttl > MAX_TTL ) {
+
+						printf( "Invalid ttl specified: %i.\nThe ttl must be >= %i and <= %i.\n", tmp_ttl, MIN_TTL, MAX_TTL );
+
+						exit(EXIT_FAILURE);
+					}
+
+					batman_if->if_ttl = tmp_ttl;
+
+					found_args += 2;
+						
+				} else {
+					printf( "Invalid interface specific option specified! \n" );
+
+					exit(EXIT_FAILURE);
+				}
+
+			}
+		
 		}
 
 		if ( routing_class > 0 ) {

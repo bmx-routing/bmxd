@@ -239,6 +239,7 @@ struct batman_if
 	struct sockaddr_in broad;
 	uint32_t netaddr;
 	uint8_t netmask;
+	uint8_t if_ttl;
 	struct orig_packet out;
 };
 

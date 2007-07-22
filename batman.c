@@ -721,7 +721,7 @@ int8_t batman() {
 
 		batman_if->out.bat_packet.orig = batman_if->addr.sin_addr.s_addr;
 		batman_if->out.bat_packet.flags = 0x00;
-		batman_if->out.bat_packet.ttl = ttl;
+		batman_if->out.bat_packet.ttl = batman_if->if_ttl;
 		batman_if->out.bat_packet.seqno = 1;
 		batman_if->out.bat_packet.gwflags = gateway_class;
 		batman_if->out.bat_packet.version = COMPAT_VERSION;
