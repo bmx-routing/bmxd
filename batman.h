@@ -126,6 +126,8 @@ extern int16_t originator_interval;
 extern int16_t bidirect_link_to;
 extern int16_t sequence_range;
 extern uint8_t ttl;
+extern uint8_t mobile_device;
+
 extern int16_t num_words;
 
 extern uint32_t pref_gateway;

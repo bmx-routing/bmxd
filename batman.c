@@ -103,6 +103,8 @@ int16_t bidirect_link_to = DEFAULT_BIDIRECT_TIMEOUT;
 
 int16_t sequence_range = DEFAULT_SEQ_RANGE;
 uint8_t ttl = DEFAULT_TTL;
+
+uint8_t mobile_device = 0;
  
 int16_t num_words = ( DEFAULT_SEQ_RANGE / WORD_BIT_SIZE ) + ( ( DEFAULT_SEQ_RANGE % WORD_BIT_SIZE > 0)? 1 : 0 );  
 
@@ -160,6 +162,7 @@ void usage( void ) {
 	fprintf( stderr, "       -l bidirectional link frame\n" );
 	fprintf( stderr, "       -q NBRF sequence-range\n" );
 	fprintf( stderr, "       -t ttl of originator packets\n" );
+	fprintf( stderr, "       -m mobile device mode (asocial)\n" );
 	fprintf( stderr, "       -p preferred gateway\n" );
 	fprintf( stderr, "       -r routing class\n" );
 	fprintf( stderr, "       -s visualisation server\n" );
@@ -205,6 +208,7 @@ void verbose_usage( void ) {
 	fprintf( stderr, "          default: %d, allowed values: <=%d\n\n", DEFAULT_SEQ_RANGE, MAX_SEQ_RANGE  );
 	fprintf( stderr, "       -t ttl of originator packets as number\n" );
 	fprintf( stderr, "          default: %d, allowed values: <=%d\n\n", DEFAULT_TTL, MAX_TTL  );
+	fprintf( stderr, "       -m mobile device mode (asocial), not forwarding packets \n" );
 	fprintf( stderr, "       -p preferred gateway\n" );
 	fprintf( stderr, "          default: none, allowed values: IP\n\n" );
 	fprintf( stderr, "       -r routing class (only needed if gateway class = 0)\n" );
@@ -894,8 +898,15 @@ int8_t batman() {
 					/* is single hop (direct) neighbour */
 					if ( ((struct orig_packet *)&in)->bat_packet.orig == neigh ) {
 
+						/* we are a asocial mobile device and dont want to forward other nodes packet */
+						if( mobile_device ) {
+							
+							schedule_forward_packet( (struct orig_packet *)&in, 1, 1, hna_recv_buff, hna_buff_len, if_incoming );
+
+							debug_output( 4, "Forward packet: with mobile device policy: rebroadcast neighbour packet with direct link and unidirectional flag \n" );
+							
 						/* it is our best route towards him */
-						if ( is_bidirectional && is_bntog ) {
+						} else if ( is_bidirectional && is_bntog ) {
 
 							/* mark direct link on incoming interface */
 							schedule_forward_packet( (struct orig_packet *)&in, 0, 1, hna_recv_buff, hna_buff_len, if_incoming );
@@ -915,7 +926,7 @@ int8_t batman() {
 					/* multihop originator */
 					} else {
 
-						if ( is_bidirectional && is_bntog ) {
+						if ( is_bidirectional && is_bntog && !mobile_device ) {
 
 							if ( !is_duplicate ) {
 
@@ -964,7 +975,7 @@ int8_t batman() {
 
 						} else {
 
-							debug_output( 4, "Drop packet: received via bidirectional link: %s, BNTOG: %s !\n", ( is_bidirectional ? "YES" : "NO" ), ( is_bntog ? "YES" : "NO" ) );
+							debug_output( 4, "Drop packet: received via bidirectional link: %s, BNTOG: %s, iam a mobile device: %s !\n", ( is_bidirectional ? "YES" : "NO" ), ( is_bntog ? "YES" : "NO" ), ( mobile_device ? "YES" : "NO" ) );
 
 						}
 

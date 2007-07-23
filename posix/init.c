@@ -105,7 +105,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 	printf( "WARNING: You are using the unstable batman branch. If you are interested in *using* batman get the latest stable release !\n" );
 
-	while ( ( optchar = getopt ( argc, argv, "a:bcd:hHo:l:q:t:g:p:r:s:vV" ) ) != -1 ) {  
+	while ( ( optchar = getopt ( argc, argv, "a:bcmd:hHo:l:q:t:g:p:r:s:vV" ) ) != -1 ) {  
 	
 		switch ( optchar ) {
 
@@ -269,6 +269,14 @@ void apply_init_args( int argc, char *argv[] ) {
 				ttl=tmp_ttl;
 
 				found_args += 2;
+				break;
+
+			case 'm':
+
+				errno = 0;
+				mobile_device = 1;
+
+				found_args += 1;
 				break;
 
 			case 'p':
