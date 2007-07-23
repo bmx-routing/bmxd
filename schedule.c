@@ -88,7 +88,7 @@ void schedule_forward_packet( struct orig_packet *in, uint8_t unidirectional, ui
 
 	debug_output( 4, "schedule_forward_packet():  \n" );
 
-	if ( in->bat_packet.ttl <= 1 ) {
+	if ( !( ( in->bat_packet.ttl == 1 && directlink) || in->bat_packet.ttl > 1 ) ){
 
 		debug_output( 4, "ttl exceeded \n" );
 
@@ -152,6 +152,9 @@ void send_outstanding_packets() {
 	struct batman_if *batman_if;
 	static char orig_str[ADDR_STR_LEN];
 	uint8_t directlink;
+	uint8_t unidirectional;
+	uint8_t ttl;
+	
 	uint32_t curr_time;
 
 
@@ -169,12 +172,14 @@ void send_outstanding_packets() {
 			addr_to_string( ((struct orig_packet *)forw_node->pack_buff)->bat_packet.orig, orig_str, ADDR_STR_LEN );
 
 			directlink = ( ( ((struct orig_packet *)forw_node->pack_buff)->bat_packet.flags & DIRECTLINK ) ? 1 : 0 );
-
+			unidirectional = ( ( ((struct orig_packet *)forw_node->pack_buff)->bat_packet.flags & UNIDIRECTIONAL ) ? 1 : 0 );
+			ttl = ((struct orig_packet *)forw_node->pack_buff)->bat_packet.ttl;
+			
 			/* change sequence number to network order */
 			((struct orig_packet *)forw_node->pack_buff)->bat_packet.seqno = htons( ((struct orig_packet *)forw_node->pack_buff)->bat_packet.seqno );
 
 
-			if ( ((struct orig_packet *)forw_node->pack_buff)->bat_packet.flags & UNIDIRECTIONAL ) {
+			if ( unidirectional ) {
 
 				if ( forw_node->if_outgoing != NULL ) {
 
@@ -190,7 +195,7 @@ void send_outstanding_packets() {
 				}
 
 			/* multihomed peer assumed */
-			} else if ( ( directlink ) && ( ((struct orig_packet *)forw_node->pack_buff)->bat_packet.ttl == 1 ) ) {
+			} else if ( directlink && ttl == 0 ) {
 
 				if ( ( forw_node->if_outgoing != NULL ) ) {
 
@@ -200,6 +205,7 @@ void send_outstanding_packets() {
 				} else {
 
 					debug_output( 0, "Error - can't forward packet with IDF: outgoing iface not specified (multihomed) \n" );
+					restore_and_exit(0);
 
 				}
 
@@ -208,6 +214,7 @@ void send_outstanding_packets() {
 				if ( ( directlink ) && ( forw_node->if_outgoing == NULL ) ) {
 
 					debug_output( 0, "Error - can't forward packet with IDF: outgoing iface not specified \n" );
+					restore_and_exit(0);
 
 				} else {
 

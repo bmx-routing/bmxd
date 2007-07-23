@@ -81,7 +81,7 @@
 #define MAX_SEQ_RANGE 128
 #define MAX_BIDIRECT_TIMEOUT 5
 #define MAX_TTL 63
-#define MIN_TTL 2 /* Values smaller than two currently do not work */
+#define MIN_TTL 1 /* Values smaller than two currently do not work */
 
 
 #define MAX_NUM_WORDS ( MAX_SEQ_RANGE / WORD_BIT_SIZE ) + ( ( MAX_SEQ_RANGE % WORD_BIT_SIZE > 0)? 1 : 0 ) 

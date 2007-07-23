@@ -871,11 +871,15 @@ int8_t batman() {
 				/* if sender is a direct neighbor the sender ip equals originator ip */
 				orig_neigh_node = ( ((struct orig_packet *)&in)->bat_packet.orig == neigh ? orig_node : get_orig_node( neigh ) );
 
-				/* drop packet if sender is not a direct neighbor and if we no route towards it */
+				/* drop packet if sender is not a direct neighbor and if we have no route towards the rebroadcasting neighbor */
 				if ( ( ((struct orig_packet *)&in)->bat_packet.orig != neigh ) && ( orig_neigh_node->router == NULL ) ) {
 
 					debug_output( 4, "Drop packet: OGM via unkown neighbor! \n" );
 
+				} else if ( ((struct orig_packet *)&in)->bat_packet.ttl == 0 ) {
+					
+					debug_output( 4, "Drop packet: TTL of zero! \n" );
+				
 				} else {
 
 					is_duplicate = isDuplicate( orig_node, ((struct orig_packet *)&in)->bat_packet.seqno );
