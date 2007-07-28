@@ -101,7 +101,7 @@ int16_t originator_interval = DEFAULT_ORIGINATOR_INTERVAL;   /* orginator messag
 of last send own OGMs rebroadcasted from neighbors */  
 int16_t bidirect_link_to = DEFAULT_BIDIRECT_TIMEOUT;  
 
-int16_t sequence_range = DEFAULT_SEQ_RANGE;
+uint16_t sequence_range = DEFAULT_SEQ_RANGE;
 uint8_t ttl = DEFAULT_TTL;
 
 uint8_t mobile_device = 0;
@@ -850,7 +850,9 @@ int8_t batman() {
 
 				/* neighbour has to indicate direct link and it has to come via the corresponding interface */
 				/* if received seqno equals last send seqno save new seqno for bidirectional check */
-				if ( ( ((struct orig_packet *)&in)->bat_packet.flags & DIRECTLINK ) && ( if_incoming->addr.sin_addr.s_addr == ((struct orig_packet *)&in)->bat_packet.orig ) && ( ((struct orig_packet *)&in)->bat_packet.seqno - if_incoming->out.bat_packet.seqno + 2 == 0 ) ) {
+				if ( ( ((struct orig_packet *)&in)->bat_packet.flags & DIRECTLINK ) && 
+					( if_incoming->addr.sin_addr.s_addr == ((struct orig_packet *)&in)->bat_packet.orig ) &&
+					( ((struct orig_packet *)&in)->bat_packet.seqno - if_incoming->out.bat_packet.seqno + 2 == 0 ) ) {
 
 					orig_neigh_node->bidirect_link[if_incoming->if_num] = ((struct orig_packet *)&in)->bat_packet.seqno;
 
@@ -883,6 +885,10 @@ int8_t batman() {
 				} else if ( ((struct orig_packet *)&in)->bat_packet.ttl == 0 ) {
 					
 					debug_output( 4, "Drop packet: TTL of zero! \n" );
+					
+				} else if ( ( ((struct orig_packet *)&in)->bat_packet.seqno - orig_node->last_seqno ) > ( FULL_SEQ_RANGE - sequence_range )	 ) {
+					
+					debug_output( 4, "Drop packet: OGM with old seqno: %i, latest was: %i! \n", orig_node->last_seqno, ((struct orig_packet *)&in)->bat_packet.seqno );
 				
 				} else {
 
@@ -898,7 +904,7 @@ int8_t batman() {
 					/* is single hop (direct) neighbour */
 					if ( ((struct orig_packet *)&in)->bat_packet.orig == neigh ) {
 
-						/* we are a asocial mobile device and dont want to forward other nodes packet */
+						/* we are an asocial mobile device and dont want to forward other nodes packet */
 						if( mobile_device ) {
 							
 							schedule_forward_packet( (struct orig_packet *)&in, 1, 1, hna_recv_buff, hna_buff_len, if_incoming );
@@ -964,7 +970,11 @@ int8_t batman() {
 									schedule_forward_packet( (struct orig_packet *)&in, 0, 0, hna_recv_buff, hna_buff_len, if_incoming );
 
 									debug_output( 4, "Forward packet: duplicate packet received via best neighbour with best ttl \n" );
-
+									
+									/* this is for remembering the actual re-broadcasted non-unidirectional OGMs */
+									bit_mark( orig_node->send_seq_bits, 
+										-( ((struct orig_packet *)&in)->bat_packet.seqno - orig_node->last_seqno ) );
+										
 								} else {
 
 									debug_output( 4, "Drop packet: duplicate packet received via best neighbour but not best ttl \n" );

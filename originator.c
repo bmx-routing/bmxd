@@ -172,7 +172,6 @@ void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t n
 
 	}
 
-
 	is_new_seqno = bit_get_packet( neigh_node->seq_bits, in->seqno - orig_node->last_seqno, 1 );
 	neigh_node->packet_count = bit_packet_count( neigh_node->seq_bits );
 
@@ -183,7 +182,10 @@ void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t n
 
 	}
 
+	/* this is for remembering the actual re-broadcasted non-unidirectional OGMs */
+	bit_get_packet( orig_node->send_seq_bits, in->seqno - orig_node->last_seqno, 0 );
 
+	
 	orig_node->last_valid = rcvd_time;
 	neigh_node->last_valid = rcvd_time;
 
@@ -418,7 +420,8 @@ void debug_orig() {
 
 		debug_output( 1, "BOD \n" );
 		
-		debug_output( 1, "  %-12s %14s (%s/%3i): %20s... [B.A.T.M.A.N. %s%s, MainIF/IP: %s %s, BDLC: %i, OGMI: %i, UT: %id%2ih%2im] \n", "Originator", "Router", "#", 
+		debug_output( 1, "  %-12s %13s (new/old/%3i lseq lvld): %20s... [B.A.T.M.A.N. %s%s, MainIF/IP: %s %s, BDLC: %i, OGMI: %i, UT: %id%2ih%2im] \n",
+			      "Originator", "Router", 
 			      sequence_range, "Potential routers", 
 			      SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), 
 			      ((struct batman_if *)if_list.next)->dev, orig_str, 
@@ -439,7 +442,7 @@ void debug_orig() {
 			}
 
 			debug_output( 4, "Originator list \n" );
-			debug_output( 4, "  %-12s %''14s (%s/%i): %''20s\n", "Originator", "Router", "#", sequence_range, "Potential routers" );
+			debug_output( 4, "  %-12s %14s (%s/%3i %9s): %20s\n", "Originator", "Router", "#", sequence_range, "lastvalid", "Potential routers" );
 
 		}
 
@@ -454,8 +457,12 @@ void debug_orig() {
 
 			addr_to_string( orig_node->orig, str, sizeof (str) );
 			addr_to_string( orig_node->router->addr, str2, sizeof (str2) );
-
-			dbg_ogm_out = sprintf( dbg_ogm_str, "%-15s %15s (%3i):", str, str2, orig_node->router->packet_count );
+			
+			dbg_ogm_out = sprintf( dbg_ogm_str, "%-15s %15s (%3i %2i %5i %5i):", str, str2, 
+					       orig_node->router->packet_count, 
+					       bit_packet_count( orig_node->send_seq_bits ),
+					       orig_node->last_seqno,
+					       ( get_time() - orig_node->last_valid ) );
 //			debug_output( 1, "%-15s %''15s (%3i):", str, str2, orig_node->router->packet_count );
 //			debug_output( 4, "%''15s %''15s (%3i), last_valid: %u: \n", str, str2, orig_node->router->packet_count, orig_node->last_valid );
 

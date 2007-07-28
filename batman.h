@@ -78,6 +78,7 @@
 #define DEFAULT_ORIGINATOR_INTERVAL 1000  
 #define PURGE_TIMEOUT 200000  /* purge originators after time in ms if no valid packet comes in -> TODO: check influence on SEQ_RANGE */
 #define DEFAULT_SEQ_RANGE 128  /* NBRF: NeighBor Ranking sequence Frame) sliding packet range of received orginator messages in squence numbers (should be a multiple of our word size) */  
+#define FULL_SEQ_RANGE ((uint16_t)-1)
 #define MAX_SEQ_RANGE 128
 #define MAX_BIDIRECT_TIMEOUT 5
 #define MAX_TTL 63
@@ -124,7 +125,7 @@ extern uint8_t routing_class;
 extern uint8_t num_hna;
 extern int16_t originator_interval;
 extern int16_t bidirect_link_to;
-extern int16_t sequence_range;
+extern uint16_t sequence_range;
 extern uint8_t ttl;
 extern uint8_t mobile_device;
 
@@ -185,6 +186,7 @@ struct orig_node                 /* structure for orig_list maintaining nodes of
 	unsigned char *hna_buff;
 	int16_t  hna_buff_len;
 	uint16_t last_seqno;        /* last and best known squence number */
+	TYPE_OF_WORD send_seq_bits[ MAX_NUM_WORDS ]; /* just for debugging, indicates the re-broadcasted (non-unidirectional) OGMs for this OG */
 	struct list_head_first neigh_list;
 };
 
