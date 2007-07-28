@@ -21,6 +21,7 @@
 
 #include <stdlib.h>
 #include <unistd.h>
+#include <getopt.h>
 #include <stdio.h>
 #include <syslog.h>
 #include <errno.h>
@@ -104,11 +105,118 @@ void apply_init_args( int argc, char *argv[] ) {
 
 
 	printf( "WARNING: You are using the unstable batman branch. If you are interested in *using* batman get the latest stable release !\n" );
-
-	while ( ( optchar = getopt ( argc, argv, "a:bcmd:hHo:l:q:t:g:p:r:s:vV" ) ) != -1 ) {  
 	
+	while ( 1 ) {
+	
+		int32_t option_index = 0;
+		static struct option long_options[] = 
+		{
+		 {ADVANCED_SWITCH,  0, 0, 0},
+		 {BDLCFRAME_SWITCH, 1, 0, 0},
+		 {NBRFSIZE_SWITCH,  1, 0, 0},
+		 {TTL_SWITCH,       1, 0, 0},
+		 {ASOCIAL_SWITCH,   0, 0, 0},
+		 {TEST_SWITCH,      1, 0, 0},
+		 {0, 0, 0, 0}
+		};
+		
+		if ( ( optchar = getopt_long ( argc, argv, "a:bcmd:hHo:l:q:t:g:p:r:s:vV", long_options, &option_index ) ) == -1 )
+			break;
+		
 		switch ( optchar ) {
 
+			case 0: {
+				printf ("Long option: %s", long_options[option_index].name);
+				if (optarg)
+					printf (" with argument: %s", optarg);
+				printf ("\n");
+				
+				if( strcmp( ADVANCED_SWITCH, long_options[option_index].name ) == 0 ) {
+					
+					errno = 0;
+					
+					advanced_opts = 1;
+					found_args += 1;
+					break;
+				
+				} else if ( advanced_opts ) {
+					
+					if ( strcmp( BDLCFRAME_SWITCH, long_options[option_index].name ) == 0 ) {
+						
+						errno = 0;
+						bidirect_link_to = strtol (optarg, NULL , 10);
+
+						if ( bidirect_link_to < 1 || bidirect_link_to > 	MAX_BIDIRECT_TIMEOUT ) {
+
+							printf( "Invalid bidirectional_link_to specified: %i.\nThe timeout has to be >=1 and <= 5.\n", bidirect_link_to );
+
+							exit(EXIT_FAILURE);
+						}
+
+						found_args += 2;
+						break;
+						
+					} else if ( strcmp( NBRFSIZE_SWITCH, long_options[option_index].name ) == 0 ) {
+
+						errno = 0;
+						int16_t tmp_sequence_range = strtol (optarg, NULL , 10);
+
+						if ( tmp_sequence_range < 1 || tmp_sequence_range > MAX_SEQ_RANGE ) {
+
+							printf( "Invalid sequence_range specified: %i.\nThe sequence_range must be >= 1 and <= %i.\n", tmp_sequence_range, MAX_SEQ_RANGE );
+
+							exit(EXIT_FAILURE);
+						}
+
+						sequence_range=tmp_sequence_range;
+						num_words = ( sequence_range / WORD_BIT_SIZE ) + ( ( sequence_range % WORD_BIT_SIZE > 0)? 1 : 0 );
+
+						found_args += 2;
+						break;
+
+					} else if ( strcmp( TTL_SWITCH, long_options[option_index].name ) == 0 ) {
+						
+						errno = 0;
+						uint8_t tmp_ttl = strtol (optarg, NULL , 10);
+
+						if ( tmp_ttl < MIN_TTL || tmp_ttl > MAX_TTL ) {
+
+							printf( "Invalid ttl specified: %i.\nThe ttl must be >= %i and <= %i.\n", tmp_ttl, MIN_TTL, MAX_TTL );
+
+							exit(EXIT_FAILURE);
+						}
+
+						ttl=tmp_ttl;
+
+						found_args += 2;
+						break;
+						
+					} else if ( strcmp( ASOCIAL_SWITCH, long_options[option_index].name ) == 0 ) {
+				
+						errno = 0;
+						mobile_device = 1;
+
+						found_args += 1;
+						break;
+					
+					} else if ( strcmp( TEST_SWITCH, long_options[option_index].name ) == 0 ) {
+				
+						errno = 0;
+						printf(" test switch \n");
+
+						found_args += 2;
+						break;
+					
+					}
+				
+				}
+				
+				usage();
+				exit(EXIT_FAILURE);
+				
+			
+			}
+			
 			case 'a':
 
 				if ( ( slash_ptr = strchr( optarg, '/' ) ) == NULL ) {
@@ -220,65 +328,6 @@ void apply_init_args( int argc, char *argv[] ) {
 				found_args += 2;
 				break;
 
-
-			case 'l':
-
-				errno = 0;
-				bidirect_link_to = strtol (optarg, NULL , 10);
-
-				if ( bidirect_link_to < 1 || bidirect_link_to > MAX_BIDIRECT_TIMEOUT ) {
-
-					printf( "Invalid bidirectional_link_to specified: %i.\nThe timeout has to be >=1 and <= 5.\n", bidirect_link_to );
-
-					exit(EXIT_FAILURE);
-				}
-
-				found_args += 2;
-				break;
-
-			case 'q':
-
-				errno = 0;
-				int16_t tmp_sequence_range = strtol (optarg, NULL , 10);
-
-				if ( tmp_sequence_range < 1 || tmp_sequence_range > MAX_SEQ_RANGE ) {
-
-					printf( "Invalid sequence_range specified: %i.\nThe sequence_range must be >= 1 and <= %i.\n", tmp_sequence_range, MAX_SEQ_RANGE );
-
-					exit(EXIT_FAILURE);
-				}
-
-				sequence_range=tmp_sequence_range;
-				num_words = ( sequence_range / WORD_BIT_SIZE ) + ( ( sequence_range % WORD_BIT_SIZE > 0)? 1 : 0 );
-
-				found_args += 2;
-				break;
-
-			case 't':
-
-				errno = 0;
-				uint8_t tmp_ttl = strtol (optarg, NULL , 10);
-
-				if ( tmp_ttl < MIN_TTL || tmp_ttl > MAX_TTL ) {
-
-					printf( "Invalid ttl specified: %i.\nThe ttl must be >= %i and <= %i.\n", tmp_ttl, MIN_TTL, MAX_TTL );
-
-					exit(EXIT_FAILURE);
-				}
-
-				ttl=tmp_ttl;
-
-				found_args += 2;
-				break;
-
-			case 'm':
-
-				errno = 0;
-				mobile_device = 1;
-
-				found_args += 1;
-				break;
-
 			case 'p':
 
 				errno = 0;
@@ -340,9 +389,12 @@ void apply_init_args( int argc, char *argv[] ) {
 				exit(EXIT_SUCCESS);
 
 			case 'h':
-			default:
 				usage();
 				exit(EXIT_SUCCESS);
+				
+			default:
+				usage();
+				exit(EXIT_FAILURE);
 
 		}
 
@@ -479,7 +531,7 @@ void apply_init_args( int argc, char *argv[] ) {
 			
 			if ( argc > found_args && strlen( argv[found_args] ) >= 2 && *argv[found_args] == '/') { 
 	
-				if ( (argv[found_args])[1] == 't' && argc > (found_args+1) ) {
+				if ( advanced_opts && (argv[found_args])[1] == 't' && argc > (found_args+1) ) {
 					
 					errno = 0;
 					uint8_t tmp_ttl = strtol ( argv[ found_args+1 ], NULL , 10 );

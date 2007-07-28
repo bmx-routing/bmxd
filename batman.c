@@ -97,6 +97,9 @@ uint8_t routing_class = 0;
 
 int16_t originator_interval = DEFAULT_ORIGINATOR_INTERVAL;   /* orginator message interval in miliseconds */  
  
+int8_t advanced_opts = 0;
+
+ 
 /* bidirectional link timeout in number+1 of maximum acceptable missed (not received by this node)  
 of last send own OGMs rebroadcasted from neighbors */  
 int16_t bidirect_link_to = DEFAULT_BIDIRECT_TIMEOUT;  
@@ -159,17 +162,20 @@ void usage( void ) {
 	fprintf( stderr, "       -h this help\n" );
 	fprintf( stderr, "       -H verbose help\n" );
 	fprintf( stderr, "       -o originator interval in ms\n" );
-	fprintf( stderr, "       -l bidirectional link frame\n" );
-	fprintf( stderr, "       -q NBRF sequence-range\n" );
-	fprintf( stderr, "       -t ttl of originator packets\n" );
-	fprintf( stderr, "       -m mobile device mode (asocial)\n" );
 	fprintf( stderr, "       -p preferred gateway\n" );
 	fprintf( stderr, "       -r routing class\n" );
 	fprintf( stderr, "       -s visualisation server\n" );
 	fprintf( stderr, "       -v print version\n" );
 
+	if( advanced_opts ) {
+		fprintf( stderr, "\n advanced options (enabled with --%s as first parameter - better do not touch):\n", ADVANCED_SWITCH );
+		fprintf( stderr, "       --%s bidirectional-link-check frame size\n", BDLCFRAME_SWITCH );
+		fprintf( stderr, "       --%s NBRF size\n", NBRFSIZE_SWITCH );
+		fprintf( stderr, "       --%s ttl of originator packets\n", TTL_SWITCH );
+		fprintf( stderr, "       --%s asocial device mode (for mobile devices reluctant to help others)\n", ASOCIAL_SWITCH );
+	}
+	
 }
-
 
 
 void verbose_usage( void ) {
@@ -202,13 +208,6 @@ void verbose_usage( void ) {
 	fprintf( stderr, "       -H this help\n" );
 	fprintf( stderr, "       -o originator interval in ms\n" );
 	fprintf( stderr, "          default: %d, allowed values: >0\n\n", DEFAULT_ORIGINATOR_INTERVAL );
-	fprintf( stderr, "       -l bidirectional link frame size as number \n" );
-	fprintf( stderr, "          default: %d, allowed values: >=1 and <= %d \n\n", DEFAULT_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT  );
-	fprintf( stderr, "       -q NBRF sequence-range size as number (WARNING) different calues in same mesh can cause LOOPS !! \n" );
-	fprintf( stderr, "          default: %d, allowed values: <=%d\n\n", DEFAULT_SEQ_RANGE, MAX_SEQ_RANGE  );
-	fprintf( stderr, "       -t ttl of originator packets as number\n" );
-	fprintf( stderr, "          default: %d, allowed values: <=%d\n\n", DEFAULT_TTL, MAX_TTL  );
-	fprintf( stderr, "       -m mobile device mode (asocial), not forwarding packets \n" );
 	fprintf( stderr, "       -p preferred gateway\n" );
 	fprintf( stderr, "          default: none, allowed values: IP\n\n" );
 	fprintf( stderr, "       -r routing class (only needed if gateway class = 0)\n" );
@@ -219,6 +218,18 @@ void verbose_usage( void ) {
 	fprintf( stderr, "       -s visualisation server\n" );
 	fprintf( stderr, "          default: none, allowed values: IP\n\n" );
 	fprintf( stderr, "       -v print version\n" );
+
+
+	if( advanced_opts ) {
+		fprintf( stderr, "\n\n advanced options (enabled with --%s as first parameter - better do not touch):\n\n", ADVANCED_SWITCH );
+		fprintf( stderr, "       --%s bidirectional-link-check frame size\n", BDLCFRAME_SWITCH );
+		fprintf( stderr, "          default: %d, allowed values: >=1 and <= %d \n\n", DEFAULT_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT  );
+		fprintf( stderr, "       --%s NBRF size\n", NBRFSIZE_SWITCH );
+		fprintf( stderr, "          default: %d, allowed values: <=%d\n\n", DEFAULT_SEQ_RANGE, MAX_SEQ_RANGE  );
+		fprintf( stderr, "       --%s ttl of originator packets\n", TTL_SWITCH );
+		fprintf( stderr, "          default: %d, allowed values: <=%d\n\n", DEFAULT_TTL, MAX_TTL  );
+		fprintf( stderr, "       --%s asocial device mode (for mobile devices reluctant to help others)\n", ASOCIAL_SWITCH );
+	}
 
 }
 

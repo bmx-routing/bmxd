@@ -124,6 +124,15 @@ extern uint8_t gateway_class;
 extern uint8_t routing_class;
 extern uint8_t num_hna;
 extern int16_t originator_interval;
+
+#define ADVANCED_SWITCH  "advanced"
+#define BDLCFRAME_SWITCH "bdlcFrameSize"
+#define NBRFSIZE_SWITCH  "nbrfSize"
+#define TTL_SWITCH       "t"
+#define ASOCIAL_SWITCH   "asocialDevice"
+#define TEST_SWITCH      "test"
+
+extern int8_t advanced_opts;
 extern int16_t bidirect_link_to;
 extern uint16_t sequence_range;
 extern uint8_t ttl;
