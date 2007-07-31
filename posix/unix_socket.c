@@ -42,7 +42,7 @@ void debug_output( int8_t debug_prio, char *format, ... ) {
 	struct debug_level_info *debug_level_info;
 	int8_t debug_prio_intern;
 	va_list args;
-	char tmp_string[1024]; // TBD: must be checked for overflow when using with sprintf
+	char tmp_string[MAX_DBG_STR_SIZE + 1]; // TBD: must be checked for overflow when using with sprintf
 
 
 	if ( debug_prio == 0 ) {
@@ -95,7 +95,7 @@ void debug_output( int8_t debug_prio, char *format, ... ) {
 					if ( ( ( debug_level != 1 ) && ( debug_level != 2 ) ) || ( debug_level_info->fd != 1 ) || ( strncmp( format, "EOD", 3 ) != 0 ) ) {
 
 						va_start( args, format );
-						vsprintf( tmp_string, format, args );
+						vsnprintf( tmp_string, MAX_DBG_STR_SIZE, format, args );
 // TODO: this causes lots of errors if enabled:
 //						if( vdprintf( debug_level_info->fd, format, args ) < 0) {
 //						if(

@@ -369,7 +369,7 @@ void debug_orig() {
 	uint32_t uptime_sec;
 	static char str[ADDR_STR_LEN], str2[ADDR_STR_LEN], orig_str[ADDR_STR_LEN];
 	int dbg_ogm_out = 0;
-	static char dbg_ogm_str[1024]; // TBD: must be checked for overflow when using with sprintf
+	static char dbg_ogm_str[MAX_DBG_STR_SIZE + 1]; // TBD: must be checked for overflow when using with sprintf
 
 
 	if ( debug_clients.clients_num[1] > 0 ) {
@@ -458,7 +458,7 @@ void debug_orig() {
 			addr_to_string( orig_node->orig, str, sizeof (str) );
 			addr_to_string( orig_node->router->addr, str2, sizeof (str2) );
 			
-			dbg_ogm_out = sprintf( dbg_ogm_str, "%-15s %15s (%3i %2i %5i %5i):", str, str2, 
+			dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s %15s (%3i %2i %5i %5i):", str, str2, 
 					       orig_node->router->packet_count, 
 					       bit_packet_count( orig_node->send_seq_bits ),
 					       orig_node->last_seqno,
@@ -469,12 +469,13 @@ void debug_orig() {
 			list_for_each( neigh_pos, &orig_node->neigh_list ) {
 				neigh_node = list_entry( neigh_pos, struct neigh_node, list );
 
-				addr_to_string( neigh_node->addr, str, sizeof (str) );
+				if( neigh_node->addr != orig_node->router->addr ) {
+					addr_to_string( neigh_node->addr, str, sizeof (str) );
 
-				dbg_ogm_out = dbg_ogm_out + sprintf( (dbg_ogm_str + dbg_ogm_out), " %15s (%3i)", str, neigh_node->packet_count );
-//				debug_output( 1, " %''15s (%3i)", str, neigh_node->packet_count );
-//				debug_output( 4, "\t\t%''15s (%3i) \n", str, neigh_node->packet_count );
-
+					dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), " %15s (%3i)", str, neigh_node->packet_count );
+//					debug_output( 1, " %''15s (%3i)", str, neigh_node->packet_count );
+//					debug_output( 4, "\t\t%''15s (%3i) \n", str, neigh_node->packet_count );
+				}
 			}
 
 			debug_output( 1, "%s \n", dbg_ogm_str );

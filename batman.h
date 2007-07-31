@@ -46,6 +46,7 @@
 
 #define UNIX_PATH "/var/run/batmand.socket"
 
+#define MAX_DBG_STR_SIZE 1023
 
 
 /***
