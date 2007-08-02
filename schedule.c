@@ -46,7 +46,7 @@ void schedule_own_packet( struct batman_if *batman_if ) {
 		memcpy( forw_node_new->pack_buff, (unsigned char *)&batman_if->out, sizeof(struct orig_packet) );
 		memcpy( forw_node_new->pack_buff + sizeof(struct orig_packet), hna_buff, num_hna * 5 * sizeof(unsigned char) );
 		forw_node_new->pack_buff_len = sizeof(struct orig_packet) + num_hna * 5 * sizeof(unsigned char);
-
+	
 	} else {
 
 		forw_node_new->pack_buff = debugMalloc( sizeof(struct orig_packet), 503 );
@@ -55,6 +55,7 @@ void schedule_own_packet( struct batman_if *batman_if ) {
 
 	}
 
+	
 	prev_list_head = (struct list_head *)&forw_list;
 
 	list_for_each( list_pos, &forw_list ) {

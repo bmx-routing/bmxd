@@ -345,9 +345,13 @@ int8_t send_udp_packet( unsigned char *packet_buff, int32_t packet_buff_len, str
 
 int8_t send_raw_packet( unsigned char *packet_buff, int32_t packet_buff_len, struct batman_if *batman_if ) {
 
+	int send_bytes=0;
+	
 	memcpy( packet_buff, (unsigned char *)&batman_if->out, sizeof(struct iphdr) + sizeof(struct udphdr) );
 
-	if ( write( batman_if->udp_send_sock, packet_buff, packet_buff_len ) < 0 ) {
+	( ( struct udphdr *) (packet_buff + sizeof(struct iphdr) ) )->len = htons( (u_short) (packet_buff_len - ( sizeof(struct iphdr) ) ) );
+	
+	if ( ( send_bytes = write( batman_if->udp_send_sock, packet_buff, packet_buff_len ) ) < 0 ) {
 
 		if ( errno == 1 ) {
 
@@ -362,6 +366,7 @@ int8_t send_raw_packet( unsigned char *packet_buff, int32_t packet_buff_len, str
 		return -1;
 
 	}
+	
 	
 	return 0;
 
