@@ -1,5 +1,5 @@
 /* Copyright (C) 2006 B.A.T.M.A.N. contributors:
- * Simon Wunderlich, Marek Lindner
+ * Simon Wunderlich, Marek Lindner, Axel Neumann
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of version 2 of the GNU General Public
@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include "os.h"
 #include "batman.h"
+#include "schedule.h"
 
 
 
@@ -82,7 +83,7 @@ void schedule_own_packet( struct batman_if *batman_if ) {
 
 
 
-void schedule_forward_packet( struct orig_packet *in, uint8_t unidirectional, uint8_t directlink, unsigned char *hna_recv_buff, int16_t hna_buff_len, struct batman_if *if_outgoing ) {
+void schedule_forward_packet( struct orig_packet *in, uint8_t unidirectional, uint8_t directlink, uint8_t duplicated, unsigned char *hna_recv_buff, int16_t hna_buff_len, struct batman_if *if_outgoing ) {
 
 	prof_start( PROF_schedule_forward_packet );
 	struct forw_node *forw_node_new;
@@ -121,19 +122,24 @@ void schedule_forward_packet( struct orig_packet *in, uint8_t unidirectional, ui
 
 		forw_node_new->if_outgoing = if_outgoing;
 
+		((struct orig_packet *)forw_node_new->pack_buff)->bat_packet.flags = 0x00;
+		
 		if ( unidirectional ) {
 
-			((struct orig_packet *)forw_node_new->pack_buff)->bat_packet.flags = ( UNIDIRECTIONAL | DIRECTLINK );
+			((struct orig_packet *)forw_node_new->pack_buff)->bat_packet.flags = 
+					((struct orig_packet *)forw_node_new->pack_buff)->bat_packet.flags | ( UNIDIRECTIONAL_FLAG | DIRECTLINK_FLAG );
 
 		} else if ( directlink ) {
 
-			((struct orig_packet *)forw_node_new->pack_buff)->bat_packet.flags = DIRECTLINK;
+			((struct orig_packet *)forw_node_new->pack_buff)->bat_packet.flags = 
+					((struct orig_packet *)forw_node_new->pack_buff)->bat_packet.flags | DIRECTLINK_FLAG;
 
-		} else {
-
-			((struct orig_packet *)forw_node_new->pack_buff)->bat_packet.flags = 0x00;
-
-		}
+		} 
+		
+		if ( duplicated ) {
+			((struct orig_packet *)forw_node_new->pack_buff)->bat_packet.flags = 
+					((struct orig_packet *)forw_node_new->pack_buff)->bat_packet.flags | DUPLICATED_FLAG;
+		}			
 
 		list_add( &forw_node_new->list, &forw_list );
 
@@ -172,15 +178,15 @@ void send_outstanding_packets() {
 
 			addr_to_string( ((struct orig_packet *)forw_node->pack_buff)->bat_packet.orig, orig_str, ADDR_STR_LEN );
 
-			directlink = ( ( ((struct orig_packet *)forw_node->pack_buff)->bat_packet.flags & DIRECTLINK ) ? 1 : 0 );
-			unidirectional = ( ( ((struct orig_packet *)forw_node->pack_buff)->bat_packet.flags & UNIDIRECTIONAL ) ? 1 : 0 );
+			directlink = ( ( ((struct orig_packet *)forw_node->pack_buff)->bat_packet.flags & DIRECTLINK_FLAG ) ? 1 : 0 );
+			unidirectional = ( ( ((struct orig_packet *)forw_node->pack_buff)->bat_packet.flags & UNIDIRECTIONAL_FLAG ) ? 1 : 0 );
 			ttl = ((struct orig_packet *)forw_node->pack_buff)->bat_packet.ttl;
 			
 			/* change sequence number to network order */
 			((struct orig_packet *)forw_node->pack_buff)->bat_packet.seqno = htons( ((struct orig_packet *)forw_node->pack_buff)->bat_packet.seqno );
 
-
-			if ( unidirectional ) {
+			/* rebroadcast only to allow neighbor to detect bidirectional link */
+			if ( unidirectional || ( directlink && ttl == 0 ) ) {
 
 				if ( forw_node->if_outgoing != NULL ) {
 
@@ -191,61 +197,60 @@ void send_outstanding_packets() {
 
 				} else {
 
-					debug_output( 0, "Error - can't forward packet with UDF: outgoing iface not specified \n" );
+					debug_output( 0, "Error - can't forward packet with UDF/IDF: outgoing iface not specified \n" );
 
 				}
 
-			/* multihomed peer assumed */
-			} else if ( directlink && ttl == 0 ) {
-
-				if ( ( forw_node->if_outgoing != NULL ) ) {
-
-					if ( send_raw_packet( forw_node->pack_buff, forw_node->pack_buff_len, forw_node->if_outgoing ) < 0 )
-						restore_and_exit(0);
-
-				} else {
-
-					debug_output( 0, "Error - can't forward packet with IDF: outgoing iface not specified (multihomed) \n" );
-					restore_and_exit(0);
-
-				}
-
+			/* rebroadcast to propagate existence of path to OG*/
 			} else {
-
-				if ( ( directlink ) && ( forw_node->if_outgoing == NULL ) ) {
-
-					debug_output( 0, "Error - can't forward packet with IDF: outgoing iface not specified \n" );
-					restore_and_exit(0);
-
-				} else {
-
-					list_for_each(if_pos, &if_list) {
-
-						batman_if = list_entry(if_pos, struct batman_if, list);
-
-						if ( ( directlink ) && ( forw_node->if_outgoing == batman_if ) ) {
-							((struct orig_packet *)forw_node->pack_buff)->bat_packet.flags = DIRECTLINK;
-						} else {
-							((struct orig_packet *)forw_node->pack_buff)->bat_packet.flags = 0x00;
+				
+				int32_t send_bucket = -((int32_t)(rand_num( 100 )));
+				
+				while ( send_bucket <= send_duplicates ) {
+					
+					send_bucket = send_bucket + 100;
+					
+					if ( ( directlink ) && ( forw_node->if_outgoing == NULL ) ) {
+	
+						debug_output( 0, "Error - can't forward packet with IDF: outgoing iface not specified \n" );
+						restore_and_exit(0);
+	
+					} else {
+	
+						list_for_each(if_pos, &if_list) {
+	
+							batman_if = list_entry(if_pos, struct batman_if, list);
+	
+							if ( ( directlink ) && ( forw_node->if_outgoing == batman_if ) ) {
+								((struct orig_packet *)forw_node->pack_buff)->bat_packet.flags = 
+										((struct orig_packet *)forw_node->pack_buff)->bat_packet.flags | DIRECTLINK_FLAG;
+							} else {
+								((struct orig_packet *)forw_node->pack_buff)->bat_packet.flags = 
+										((struct orig_packet *)forw_node->pack_buff)->bat_packet.flags & ~DIRECTLINK_FLAG;
+							}
+	
+							debug_output( 4, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s\n", orig_str, ntohs( ((struct orig_packet *)forw_node->pack_buff)->bat_packet.seqno ), ((struct orig_packet *)forw_node->pack_buff)->bat_packet.ttl, batman_if->dev );
+	
+							/* OGMs for non-primary interfaces do not send hna information */
+							if ( ( forw_node->own ) && ( ((struct orig_packet *)forw_node->pack_buff)->bat_packet.orig != ((struct batman_if *)if_list.next)->addr.sin_addr.s_addr ) ) {
+	
+								if ( send_raw_packet( forw_node->pack_buff, sizeof(struct orig_packet), batman_if ) < 0 )
+									restore_and_exit(0);
+	
+							} else {
+	
+								if ( send_raw_packet( forw_node->pack_buff, forw_node->pack_buff_len, batman_if ) < 0 )
+									restore_and_exit(0);
+	
+							}
+	
 						}
-
-						debug_output( 4, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s\n", orig_str, ntohs( ((struct orig_packet *)forw_node->pack_buff)->bat_packet.seqno ), ((struct orig_packet *)forw_node->pack_buff)->bat_packet.ttl, batman_if->dev );
-
-						/* non-primary interfaces do not send hna information */
-						if ( ( forw_node->own ) && ( ((struct orig_packet *)forw_node->pack_buff)->bat_packet.orig != ((struct batman_if *)if_list.next)->addr.sin_addr.s_addr ) ) {
-
-							if ( send_raw_packet( forw_node->pack_buff, sizeof(struct orig_packet), batman_if ) < 0 )
-								restore_and_exit(0);
-
-						} else {
-
-							if ( send_raw_packet( forw_node->pack_buff, forw_node->pack_buff_len, batman_if ) < 0 )
-								restore_and_exit(0);
-
-						}
-
+						
+					((struct orig_packet *)forw_node->pack_buff)->bat_packet.flags = 
+							((struct orig_packet *)forw_node->pack_buff)->bat_packet.flags | DUPLICATED_FLAG;
+					
 					}
-
+				
 				}
 
 			}

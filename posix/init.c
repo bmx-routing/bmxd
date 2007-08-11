@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2006 BATMAN contributors:
- * Thomas Lopatic, Marek Lindner
+ * Thomas Lopatic, Marek Lindner, Axel Neumann
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of version 2 of the GNU General Public
  * License as published by the Free Software Foundation.
@@ -111,12 +111,14 @@ void apply_init_args( int argc, char *argv[] ) {
 		int32_t option_index = 0;
 		static struct option long_options[] = 
 		{
-		 {ADVANCED_SWITCH,  0, 0, 0},
-		 {BDLCFRAME_SWITCH, 1, 0, 0},
-		 {NBRFSIZE_SWITCH,  1, 0, 0},
-		 {TTL_SWITCH,       1, 0, 0},
-		 {ASOCIAL_SWITCH,   0, 0, 0},
-		 {TEST_SWITCH,      1, 0, 0},
+		 {ADVANCED_SWITCH,          0, 0, 0},
+		 {BDLCFRAME_SWITCH,         1, 0, 0},
+		 {NBRFSIZE_SWITCH,          1, 0, 0},
+		 {TTL_SWITCH,               1, 0, 0},
+		 {ASOCIAL_SWITCH,           0, 0, 0},
+		 {TEST_SWITCH,              1, 0, 0},
+		 {SEND_DUPLICATES_SWITCH,   1, 0, 0},
+		 {ASYMMETRIC_WEIGHT_SWITCH, 1, 0, 0},
 		 {0, 0, 0, 0}
 		};
 		
@@ -139,7 +141,7 @@ void apply_init_args( int argc, char *argv[] ) {
 					found_args += 1;
 					break;
 				
-				} else if ( advanced_opts ) {
+				} else /* if ( advanced_opts ) */ {
 					
 					if ( strcmp( BDLCFRAME_SWITCH, long_options[option_index].name ) == 0 ) {
 						
@@ -191,6 +193,40 @@ void apply_init_args( int argc, char *argv[] ) {
 						found_args += 2;
 						break;
 						
+					} else if ( strcmp( SEND_DUPLICATES_SWITCH, long_options[option_index].name ) == 0 ) {
+						
+						errno = 0;
+						int tmp_send_duplicates = strtol (optarg, NULL , 10);
+
+						if ( tmp_send_duplicates < MIN_SEND_DUPLICATES || tmp_send_duplicates > MAX_SEND_DUPLICATES ) {
+
+							printf( "Invalid send-duplicates specified: %i.\n The value must be >= %i and <= %i.\n", tmp_send_duplicates, MIN_SEND_DUPLICATES, MAX_SEND_DUPLICATES );
+
+							exit(EXIT_FAILURE);
+						}
+
+						send_duplicates = tmp_send_duplicates;
+
+						found_args += 2;
+						break;
+						
+					} else if ( strcmp( ASYMMETRIC_WEIGHT_SWITCH, long_options[option_index].name ) == 0 ) {
+						
+						errno = 0;
+						int tmp_asymmetric_weight = strtol (optarg, NULL , 10);
+
+						if ( tmp_asymmetric_weight < MIN_ASYMMETRIC_WEIGHT || tmp_asymmetric_weight > MAX_ASYMMETRIC_WEIGHT ) {
+
+							printf( "Invalid asymmetric weight specified: %i.\n The value must be >= %i and <= %i.\n", tmp_asymmetric_weight, MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT );
+
+							exit(EXIT_FAILURE);
+						}
+
+						asymmetric_weight = tmp_asymmetric_weight;
+
+						found_args += 2;
+						break;
+
 					} else if ( strcmp( ASOCIAL_SWITCH, long_options[option_index].name ) == 0 ) {
 				
 						errno = 0;
@@ -318,13 +354,13 @@ void apply_init_args( int argc, char *argv[] ) {
 				errno = 0;
 				originator_interval = strtol (optarg, NULL , 10);
 
-				if ( originator_interval < 1 ) {
+				if ( originator_interval < MIN_ORIGINATOR_INTERVAL || originator_interval > MAX_ORIGINATOR_INTERVAL ) {
 
-					printf( "Invalid originator interval specified: %i.\nThe Interval has to be greater than 0.\n", originator_interval );
+					printf( "Invalid originator interval specified: %i.\n The value must be >= %i and <= %i.\n", originator_interval, MIN_ORIGINATOR_INTERVAL, MAX_ORIGINATOR_INTERVAL );
+
 					exit(EXIT_FAILURE);
-
 				}
-
+				
 				found_args += 2;
 				break;
 

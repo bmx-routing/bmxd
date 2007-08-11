@@ -41,7 +41,7 @@ uint8_t get_bit_status( TYPE_OF_WORD *seq_bits, uint16_t last_seqno, uint16_t cu
 
 	int16_t diff, word_offset, word_num;
 
-	diff= last_seqno- curr_seqno;
+	diff= last_seqno - curr_seqno;
 	if ( diff < 0 || diff >= sequence_range ) {
 		return 0;
 
@@ -196,17 +196,30 @@ char bit_get_packet( TYPE_OF_WORD *seq_bits, int16_t seq_num_diff, int8_t set_ma
 }
 
 /* count the hamming weight, how many good packets did we receive? just count the 1's ... */
-int bit_packet_count( TYPE_OF_WORD *seq_bits ) {
+int bit_packet_count( TYPE_OF_WORD *seq_bits, uint16_t range_to_count ) {
 
 	int i, hamming = 0;
 	TYPE_OF_WORD word;
 
-	for (i=0; i<num_words; i++) {
+	uint16_t words_to_count = ( range_to_count / WORD_BIT_SIZE );
+	
+	TYPE_OF_WORD last_word_reset_mask = ~0;  
+//	last_word_reset_mask = ~0;  
+		
+	last_word_reset_mask = last_word_reset_mask >> ( WORD_BIT_SIZE - (range_to_count % WORD_BIT_SIZE) );  
+	
+	for (i=0; ( i < num_words); i++) {
 
 		word = seq_bits[i];
 
+		if ( i > words_to_count )
+			word = 0;
+		
+		if ( i == words_to_count )
+			word = word & last_word_reset_mask;
+		
 		while (word) {
-
+			
 			word &= word-1;   /* see http://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetKernighan */
 			hamming++;
 

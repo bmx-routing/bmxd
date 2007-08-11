@@ -1,5 +1,5 @@
 /* Copyright (C) 2006 B.A.T.M.A.N. contributors:
- * Simon Wunderlich, Marek Lindner
+ * Simon Wunderlich, Marek Lindner, Axel Neumann
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of version 2 of the GNU General Public
@@ -19,5 +19,5 @@
 
 
 void schedule_own_packet( struct batman_if *batman_if );
-void schedule_forward_packet( struct orig_packet *in, uint8_t unidirectional, uint8_t directlink, unsigned char *hna_recv_buff, int16_t hna_buff_len, struct batman_if *if_outgoing );
+void schedule_forward_packet( struct orig_packet *in, uint8_t unidirectional, uint8_t directlink, uint8_t duplicated, unsigned char *hna_recv_buff, int16_t hna_buff_len, struct batman_if *if_outgoing );
 void send_outstanding_packets();

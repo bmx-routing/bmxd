@@ -40,13 +40,19 @@
 #define SOURCE_VERSION "0.3-exp" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
 #define COMPAT_VERSION 3
 #define PORT 1966
-#define UNIDIRECTIONAL 0x80
-#define DIRECTLINK 0x40
+
+#define UNIDIRECTIONAL_FLAG 0x80 /* set when re-broadcasting a received OGM via a curretnly not bi-directional link and only together with IDF */
+#define DIRECTLINK_FLAG     0x40 /* set when re-broadcasting a received OGM with identical OG IP and NB IP on the interface link as received */
+#define DUPLICATED_FLAG     0x20 /* set when (re-)broadcasting a OGM not-for-the-first time or re-broadcasting a OGM with this flag */
+
 #define ADDR_STR_LEN 16
 
 #define UNIX_PATH "/var/run/batmand.socket"
 
 #define MAX_DBG_STR_SIZE 1023
+#define OUT_SEQNO_OFFSET 2
+#define YES 1
+#define NO 0
 
 
 /***
@@ -76,20 +82,37 @@
 #define JITTER 100
 #define DEFAULT_TTL 50                /* Time To Live of broadcast messages */
 #define DEFAULT_BIDIRECT_TIMEOUT 2  
-#define DEFAULT_ORIGINATOR_INTERVAL 1000  
-#define PURGE_TIMEOUT 200000  /* purge originators after time in ms if no valid packet comes in -> TODO: check influence on SEQ_RANGE */
+#define DEFAULT_ORIGINATOR_INTERVAL 1000
+#define MIN_ORIGINATOR_INTERVAL JITTER
+#define MAX_ORIGINATOR_INTERVAL 10000 
+
+#define PURGE_TIMEOUT 200000   /* purge originators after time in ms if no valid packet comes in -> TODO: check influence on SEQ_RANGE */
 #define DEFAULT_SEQ_RANGE 128  /* NBRF: NeighBor Ranking sequence Frame) sliding packet range of received orginator messages in squence numbers (should be a multiple of our word size) */  
 #define FULL_SEQ_RANGE ((uint16_t)-1)
-#define MAX_SEQ_RANGE 128
-#define MAX_BIDIRECT_TIMEOUT 5
+#define MAX_SEQ_RANGE 128      /* TBD: should not be larger until neigh_node.packet_count (and related variables) is only 8 bit */
+#define MAX_BIDIRECT_TIMEOUT 100
 #define MAX_TTL 63
 #define MIN_TTL 1 /* Values smaller than two currently do not work */
 
+#define DEF_SEND_DUPLICATES 0
+#define MIN_SEND_DUPLICATES 0
+#define MAX_SEND_DUPLICATES 200
 
-#define MAX_NUM_WORDS ( MAX_SEQ_RANGE / WORD_BIT_SIZE ) + ( ( MAX_SEQ_RANGE % WORD_BIT_SIZE > 0)? 1 : 0 ) 
+#define DEF_ASYMMETRIC_WEIGHT 0
+#define MIN_ASYMMETRIC_WEIGHT 0
+#define MAX_ASYMMETRIC_WEIGHT 100
+
+#define ADVANCED_SWITCH          "dangerous"
+#define BDLCFRAME_SWITCH         "bi-link-timeout"
+#define NBRFSIZE_SWITCH          "window-size"
+#define TTL_SWITCH               "t"
+#define ASOCIAL_SWITCH           "asocial-device"
+#define TEST_SWITCH              "test"
+#define SEND_DUPLICATES_SWITCH   "send-duplicates"
+#define ASYMMETRIC_WEIGHT_SWITCH "asymmetric-weight"
 
 
-
+#define MAX_NUM_WORDS (( MAX_SEQ_RANGE / WORD_BIT_SIZE ) + ( ( MAX_SEQ_RANGE % WORD_BIT_SIZE > 0)? 1 : 0 )) 
 
 
 
@@ -126,18 +149,13 @@ extern uint8_t routing_class;
 extern uint8_t num_hna;
 extern int16_t originator_interval;
 
-#define ADVANCED_SWITCH  "advanced"
-#define BDLCFRAME_SWITCH "bdlcFrameSize"
-#define NBRFSIZE_SWITCH  "nbrfSize"
-#define TTL_SWITCH       "t"
-#define ASOCIAL_SWITCH   "asocialDevice"
-#define TEST_SWITCH      "test"
-
 extern int8_t advanced_opts;
-extern int16_t bidirect_link_to;
+extern uint16_t bidirect_link_to;
 extern uint16_t sequence_range;
 extern uint8_t ttl;
 extern uint8_t mobile_device;
+extern int32_t send_duplicates;
+extern uint8_t asymmetric_weight;
 
 extern int16_t num_words;
 
@@ -191,12 +209,16 @@ struct orig_node                 /* structure for orig_list maintaining nodes of
 	struct neigh_node *router;
 	struct batman_if *batman_if;
 	uint16_t *bidirect_link;    /* if node is a bidrectional neighbour, when my originator packet was broadcasted (replied) by this node and received by me */
-	uint32_t last_valid;        /* when last packet from this node was received */
-	uint8_t  gwflags;      /* flags related to gateway functions: gateway class */
+	TYPE_OF_WORD *bi_link_bits;       /* for bidirect-link statistics */
+	uint16_t *last_bi_link_seqno;     /* for bidirect-link statistics */
+	TYPE_OF_WORD *lq_bits;            /* for link-quality (lq) statistics */
+	uint16_t last_lq_seqno;           /* for link-quality (lq) statistics */
+	uint32_t last_valid;              /* when last packet from this node was received */
+	uint8_t  gwflags;                 /* flags related to gateway functions: gateway class */
 	unsigned char *hna_buff;
 	int16_t  hna_buff_len;
-	uint16_t last_seqno;        /* last and best known squence number */
-	TYPE_OF_WORD send_seq_bits[ MAX_NUM_WORDS ]; /* just for debugging, indicates the re-broadcasted (non-unidirectional) OGMs for this OG */
+	uint16_t last_seqno;              /* last and best known squence number */
+	TYPE_OF_WORD send_seq_bits[ MAX_NUM_WORDS ]; /* just for debugging, indicates the re-broadcasted (non-unidirectional and non-quickest) OGMs for this foreign OG */
 	struct list_head_first neigh_list;
 };
 

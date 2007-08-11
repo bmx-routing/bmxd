@@ -1,5 +1,5 @@
 /* Copyright (C) 2006 B.A.T.M.A.N. contributors:
- * Simon Wunderlich, Marek Lindner
+ * Simon Wunderlich, Marek Lindner, Axel Neumann
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of version 2 of the GNU General Public
@@ -22,6 +22,9 @@
 int compare_orig( void *data1, void *data2 );
 int choose_orig( void *data, int32_t size );
 struct orig_node *get_orig_node( uint32_t addr );
+int update_lq_bits( struct orig_node *orig_node, uint8_t update, uint16_t in_seqno, struct batman_if *this_if, uint8_t direct_undupl_neigh_ogm, uint16_t read_range );
+int update_bi_link_bits ( struct orig_node *orig_neigh_node, struct batman_if * this_if, uint8_t write, uint16_t read_range );
+int nlq_rate( struct orig_node *orig_neigh_node, struct batman_if *if_incoming );
 void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t neigh, struct batman_if *if_incoming, unsigned char *hna_recv_buff, int16_t hna_buff_len, uint32_t rcvd_time );
 void purge_orig( uint32_t curr_time );
 void debug_orig();

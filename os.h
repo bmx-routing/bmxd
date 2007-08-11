@@ -24,7 +24,7 @@
 
 uint32_t get_time( void );
 uint32_t get_time_sec( void );
-int32_t rand_num( int32_t limit );
+int32_t rand_num( uint32_t limit );
 void addr_to_string( uint32_t addr, char *str, int32_t len );
 
 

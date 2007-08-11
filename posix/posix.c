@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2006 BATMAN contributors:
- * Thomas Lopatic, Marek Lindner
+ * Thomas Lopatic, Marek Lindner, Axel Neumann
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of version 2 of the GNU General Public
  * License as published by the Free Software Foundation.
@@ -191,7 +191,7 @@ void addr_to_string( uint32_t addr, char *str, int32_t len ) {
 
 
 
-int32_t rand_num( int32_t limit ) {
+int32_t rand_num( uint32_t limit ) {
 
 	return ( limit == 0 ? 0 : rand() % limit );
 
@@ -350,7 +350,7 @@ int8_t send_raw_packet( unsigned char *packet_buff, int32_t packet_buff_len, str
 	memcpy( packet_buff, (unsigned char *)&batman_if->out, sizeof(struct iphdr) + sizeof(struct udphdr) );
 
 	( ( struct udphdr *) (packet_buff + sizeof(struct iphdr) ) )->len = htons( (u_short) (packet_buff_len - ( sizeof(struct iphdr) ) ) );
-	
+		
 	if ( ( send_bytes = write( batman_if->udp_send_sock, packet_buff, packet_buff_len ) ) < 0 ) {
 
 		if ( errno == 1 ) {
