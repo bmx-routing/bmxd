@@ -111,15 +111,17 @@ void apply_init_args( int argc, char *argv[] ) {
 		int32_t option_index = 0;
 		static struct option long_options[] = 
 		{
-		 {ADVANCED_SWITCH,          0, 0, 0},
-		 {BDLCFRAME_SWITCH,         1, 0, 0},
-		 {NBRFSIZE_SWITCH,          1, 0, 0},
-		 {TTL_SWITCH,               1, 0, 0},
-		 {ASOCIAL_SWITCH,           0, 0, 0},
-		 {TEST_SWITCH,              1, 0, 0},
-		 {SEND_DUPLICATES_SWITCH,   1, 0, 0},
-		 {ASYMMETRIC_WEIGHT_SWITCH, 1, 0, 0},
-		 {0, 0, 0, 0}
+   {ADVANCED_SWITCH,          0, 0, 0},
+   {BDLCFRAME_SWITCH,         1, 0, 0},
+   {NBRFSIZE_SWITCH,          1, 0, 0},
+   {TTL_SWITCH,               1, 0, 0},
+   {ASOCIAL_SWITCH,           0, 0, 0},
+   {TEST_SWITCH,              1, 0, 0},
+   {SEND_DUPLICATES_SWITCH,   1, 0, 0},
+   {ASYMMETRIC_WEIGHT_SWITCH, 1, 0, 0},
+   {PENALTY_MIN_SWITCH,       1, 0, 0},
+   {PENALTY_EXCEED_SWITCH,    1, 0, 0},
+   {0, 0, 0, 0}
 		};
 		
 		if ( ( optchar = getopt_long ( argc, argv, "a:bcmd:hHo:l:q:t:g:p:r:s:vV", long_options, &option_index ) ) == -1 )
@@ -223,6 +225,40 @@ void apply_init_args( int argc, char *argv[] ) {
 						}
 
 						asymmetric_weight = tmp_asymmetric_weight;
+
+						found_args += 2;
+						break;
+					
+					} else if ( strcmp( PENALTY_MIN_SWITCH, long_options[option_index].name ) == 0 ) {
+						
+						errno = 0;
+						int tmp_penalty_min = strtol (optarg, NULL , 10);
+
+						if ( tmp_penalty_min < MIN_PENALTY_MIN || tmp_penalty_min > MAX_PENALTY_MIN ) {
+
+							printf( "Invalid penalty minimum specified: %i.\n If enabled, the value must be >= %i and <= %i.\n", tmp_penalty_min, MIN_PENALTY_MIN, MAX_PENALTY_MIN );
+
+							exit(EXIT_FAILURE);
+						}
+
+						penalty_min = tmp_penalty_min;
+
+						found_args += 2;
+						break;
+
+					} else if ( strcmp( PENALTY_EXCEED_SWITCH, long_options[option_index].name ) == 0 ) {
+						
+						errno = 0;
+						int tmp_penalty_exceed = strtol (optarg, NULL , 10);
+
+						if ( tmp_penalty_exceed < MIN_PENALTY_EXCEED || tmp_penalty_exceed > MAX_PENALTY_EXCEED ) {
+
+							printf( "Invalid penalty exceed specified: %i.\n If enabled, the value must be >= %i and <= %i.\n", tmp_penalty_exceed, MIN_PENALTY_EXCEED, MAX_PENALTY_EXCEED );
+
+							exit(EXIT_FAILURE);
+						}
+
+						penalty_exceed = tmp_penalty_exceed;
 
 						found_args += 2;
 						break;

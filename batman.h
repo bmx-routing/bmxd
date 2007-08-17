@@ -102,6 +102,14 @@
 #define MIN_ASYMMETRIC_WEIGHT 0
 #define MAX_ASYMMETRIC_WEIGHT 100
 
+#define DEF_PENALTY_MIN 0
+#define MIN_PENALTY_MIN 1
+#define MAX_PENALTY_MIN MAX_SEQ_RANGE
+
+#define DEF_PENALTY_EXCEED 2
+#define MIN_PENALTY_EXCEED 1
+#define MAX_PENALTY_EXCEED 10
+
 #define ADVANCED_SWITCH          "dangerous"
 #define BDLCFRAME_SWITCH         "bi-link-timeout"
 #define NBRFSIZE_SWITCH          "window-size"
@@ -110,6 +118,8 @@
 #define TEST_SWITCH              "test"
 #define SEND_DUPLICATES_SWITCH   "send-duplicates"
 #define ASYMMETRIC_WEIGHT_SWITCH "asymmetric-weight"
+#define PENALTY_MIN_SWITCH       "penalty-min"
+#define PENALTY_EXCEED_SWITCH    "penalty-exceed"
 
 
 #define MAX_NUM_WORDS (( MAX_SEQ_RANGE / WORD_BIT_SIZE ) + ( ( MAX_SEQ_RANGE % WORD_BIT_SIZE > 0)? 1 : 0 )) 
@@ -156,6 +166,9 @@ extern uint8_t ttl;
 extern uint8_t mobile_device;
 extern int32_t send_duplicates;
 extern uint8_t asymmetric_weight;
+extern uint16_t penalty_min;
+extern uint16_t penalty_exceed;
+
 
 extern int16_t num_words;
 
@@ -227,6 +240,7 @@ struct neigh_node
 	struct list_head list;
 	uint32_t addr;
 	uint8_t packet_count;
+	uint8_t penalty_count;
 	uint8_t  last_ttl;         /* ttl of last received packet */
 	uint32_t last_valid;            /* when last packet via this neighbour was received */
 	TYPE_OF_WORD seq_bits[ MAX_NUM_WORDS ];

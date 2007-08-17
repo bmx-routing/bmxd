@@ -215,6 +215,67 @@ void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t n
 
 	}
 
+	
+	if( penalty_min > 0 ) {
+		
+		uint16_t max_penalty_count, challenger_penalty_count, penalty_round;
+		struct neigh_node *max_penalty_neigh;
+		
+		for( penalty_round = 0; penalty_round < sequence_range; penalty_round++ ) {
+		
+			max_penalty_count = challenger_penalty_count = 0;
+			max_penalty_neigh = NULL;
+			
+			list_for_each( neigh_pos, &orig_node->neigh_list ) {
+		
+				tmp_neigh_node = list_entry( neigh_pos, struct neigh_node, list );
+		
+				if ( penalty_round == 0 )
+					tmp_neigh_node->penalty_count = 0;
+				
+//				if ( tmp_neigh_node->penalty_count < tmp_neigh_node->packet_count ) {
+					
+					if ( get_bit_status( tmp_neigh_node->seq_bits, orig_node->last_seqno, (orig_node->last_seqno - penalty_round) ) )
+						tmp_neigh_node->penalty_count++;
+						
+					if ( tmp_neigh_node->penalty_count > max_penalty_count ) {
+						
+						challenger_penalty_count = max_penalty_count;
+							
+						max_penalty_count = tmp_neigh_node->penalty_count;
+						max_penalty_neigh = tmp_neigh_node;
+					
+					} else if ( tmp_neigh_node->penalty_count > challenger_penalty_count ) {
+				
+						challenger_penalty_count = tmp_neigh_node->penalty_count;
+						
+					}
+//				}
+			}
+			
+			if ( orig_node->router == NULL ) {
+				
+				best_neigh_node = max_penalty_neigh;
+				break;
+			
+			} else if ( ( max_penalty_neigh == orig_node->router && max_penalty_count > challenger_penalty_count) || orig_node->router->penalty_count >= penalty_min ) {
+				
+				best_neigh_node = orig_node->router;
+				break;
+				
+			} else if ( max_penalty_count >= penalty_min && max_penalty_count >= orig_node->router->penalty_count + penalty_exceed ) {
+				
+				best_neigh_node = max_penalty_neigh;
+				break;
+				
+			}
+		}
+	}
+	
+	
+	
+	
+	
 	/* update routing table and check for changed hna announcements */
 	update_routes( orig_node, best_neigh_node, hna_recv_buff, hna_buff_len );
 

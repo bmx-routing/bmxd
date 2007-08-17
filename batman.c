@@ -111,6 +111,9 @@ uint8_t mobile_device = 0;
 
 int32_t send_duplicates = DEF_SEND_DUPLICATES;
 uint8_t asymmetric_weight = DEF_ASYMMETRIC_WEIGHT;
+uint16_t penalty_min = DEF_PENALTY_MIN;
+uint16_t penalty_exceed = DEF_PENALTY_EXCEED;
+
 
 int16_t num_words = ( DEFAULT_SEQ_RANGE / WORD_BIT_SIZE ) + ( ( DEFAULT_SEQ_RANGE % WORD_BIT_SIZE > 0)? 1 : 0 );  
 
@@ -178,6 +181,7 @@ void usage( void ) {
 		fprintf( stderr, "       --%s asocial device mode (for mobile devices reluctant to help others)\n", ASOCIAL_SWITCH );
 		fprintf( stderr, "       --%s send OGMs multiple times (with given probability)\n", SEND_DUPLICATES_SWITCH );
 		fprintf( stderr, "       --%s ignore rcvd OGMs to respect asymmetric characteristics of incoming link\n", ASYMMETRIC_WEIGHT_SWITCH );
+		fprintf( stderr, "       --%s \n", PENALTY_MIN_SWITCH );
 	}
 	
 }
@@ -238,6 +242,8 @@ void verbose_usage( void ) {
 		fprintf( stderr, "          default: %d, allowed probability values in percent: <=%d\n\n", DEF_SEND_DUPLICATES, MAX_SEND_DUPLICATES  );
 		fprintf( stderr, "       --%s ignore rcvd OGMs to respect asymmetric characteristics of incoming link\n", ASYMMETRIC_WEIGHT_SWITCH );
 		fprintf( stderr, "          default: %d, allowed probability values in percent: <=%d\n\n", DEF_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT  );
+		fprintf( stderr, "       --%s \n", PENALTY_MIN_SWITCH );
+		fprintf( stderr, "          default: off, allowed probability values must be <=%d and >=%d\n\n", MIN_PENALTY_MIN, MAX_PENALTY_MIN  );
 	}
 
 }
@@ -580,7 +586,7 @@ int isDuplicate( struct orig_node *orig_node, uint16_t seqno, uint32_t neigh, st
 
 		neigh_node = list_entry( neigh_pos, struct neigh_node, list );
 
-		if ( ( neigh == 0 || neigh == neigh_node->addr || if_incoming == neigh_node->if_incoming ) && get_bit_status( neigh_node->seq_bits, orig_node->last_seqno, seqno ) ) {
+		if ( ( neigh == 0 || (neigh == neigh_node->addr && if_incoming == neigh_node->if_incoming) ) && get_bit_status( neigh_node->seq_bits, orig_node->last_seqno, seqno ) ) {
 
 			prof_stop( PROF_is_duplicate );
 			return 1;
