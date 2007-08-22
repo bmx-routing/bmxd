@@ -105,11 +105,11 @@ void apply_init_args( int argc, char *argv[] ) {
 
 
 	printf( "WARNING: You are using the unstable batman branch. If you are interested in *using* batman get the latest stable release !\n" );
-	
+
 	while ( 1 ) {
-	
+
 		int32_t option_index = 0;
-		static struct option long_options[] = 
+		static struct option long_options[] =
 		{
    {ADVANCED_SWITCH,          0, 0, 0},
    {BDLCFRAME_SWITCH,         1, 0, 0},
@@ -123,10 +123,10 @@ void apply_init_args( int argc, char *argv[] ) {
    {PENALTY_EXCEED_SWITCH,    1, 0, 0},
    {0, 0, 0, 0}
 		};
-		
+
 		if ( ( optchar = getopt_long ( argc, argv, "a:bcmd:hHo:l:q:t:g:p:r:s:vV", long_options, &option_index ) ) == -1 )
 			break;
-		
+
 		switch ( optchar ) {
 
 			case 0: {
@@ -134,19 +134,19 @@ void apply_init_args( int argc, char *argv[] ) {
 				if (optarg)
 					printf (" with argument: %s", optarg);
 				printf ("\n");
-				
+
 				if( strcmp( ADVANCED_SWITCH, long_options[option_index].name ) == 0 ) {
-					
+
 					errno = 0;
-					
+
 					advanced_opts = 1;
 					found_args += 1;
 					break;
-				
+
 				} else /* if ( advanced_opts ) */ {
-					
+
 					if ( strcmp( BDLCFRAME_SWITCH, long_options[option_index].name ) == 0 ) {
-						
+
 						errno = 0;
 						bidirect_link_to = strtol (optarg, NULL , 10);
 
@@ -159,7 +159,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 						found_args += 2;
 						break;
-						
+
 					} else if ( strcmp( NBRFSIZE_SWITCH, long_options[option_index].name ) == 0 ) {
 
 						errno = 0;
@@ -179,7 +179,7 @@ void apply_init_args( int argc, char *argv[] ) {
 						break;
 
 					} else if ( strcmp( TTL_SWITCH, long_options[option_index].name ) == 0 ) {
-						
+
 						errno = 0;
 						uint8_t tmp_ttl = strtol (optarg, NULL , 10);
 
@@ -194,9 +194,9 @@ void apply_init_args( int argc, char *argv[] ) {
 
 						found_args += 2;
 						break;
-						
+
 					} else if ( strcmp( SEND_DUPLICATES_SWITCH, long_options[option_index].name ) == 0 ) {
-						
+
 						errno = 0;
 						int tmp_send_duplicates = strtol (optarg, NULL , 10);
 
@@ -211,9 +211,9 @@ void apply_init_args( int argc, char *argv[] ) {
 
 						found_args += 2;
 						break;
-						
+
 					} else if ( strcmp( ASYMMETRIC_WEIGHT_SWITCH, long_options[option_index].name ) == 0 ) {
-						
+
 						errno = 0;
 						int tmp_asymmetric_weight = strtol (optarg, NULL , 10);
 
@@ -228,9 +228,9 @@ void apply_init_args( int argc, char *argv[] ) {
 
 						found_args += 2;
 						break;
-					
+
 					} else if ( strcmp( PENALTY_MIN_SWITCH, long_options[option_index].name ) == 0 ) {
-						
+
 						errno = 0;
 						int tmp_penalty_min = strtol (optarg, NULL , 10);
 
@@ -247,7 +247,7 @@ void apply_init_args( int argc, char *argv[] ) {
 						break;
 
 					} else if ( strcmp( PENALTY_EXCEED_SWITCH, long_options[option_index].name ) == 0 ) {
-						
+
 						errno = 0;
 						int tmp_penalty_exceed = strtol (optarg, NULL , 10);
 
@@ -264,31 +264,31 @@ void apply_init_args( int argc, char *argv[] ) {
 						break;
 
 					} else if ( strcmp( ASOCIAL_SWITCH, long_options[option_index].name ) == 0 ) {
-				
+
 						errno = 0;
 						mobile_device = 1;
 
 						found_args += 1;
 						break;
-					
+
 					} else if ( strcmp( TEST_SWITCH, long_options[option_index].name ) == 0 ) {
-				
+
 						errno = 0;
 						printf(" test switch \n");
 
 						found_args += 2;
 						break;
-					
+
 					}
-				
+
 				}
-				
+
 				usage();
 				exit(EXIT_FAILURE);
-				
-			
+
+
 			}
-			
+
 			case 'a':
 
 				if ( ( slash_ptr = strchr( optarg, '/' ) ) == NULL ) {
@@ -396,7 +396,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 					exit(EXIT_FAILURE);
 				}
-				
+
 				found_args += 2;
 				break;
 
@@ -463,7 +463,7 @@ void apply_init_args( int argc, char *argv[] ) {
 			case 'h':
 				usage();
 				exit(EXIT_SUCCESS);
-				
+
 			default:
 				usage();
 				exit(EXIT_FAILURE);
@@ -575,7 +575,7 @@ void apply_init_args( int argc, char *argv[] ) {
 			batman_if->dev = argv[found_args];
 			batman_if->if_num = found_ifs;
 			batman_if->if_ttl = ttl;
-			
+
 			list_add_tail( &batman_if->list, &if_list );
 
 			init_interface ( batman_if );
@@ -596,15 +596,15 @@ void apply_init_args( int argc, char *argv[] ) {
 				init_interface_gw( batman_if );
 
 			}
-			
+
 			found_ifs++;
 			found_args++;
 
-			
-			if ( argc > found_args && strlen( argv[found_args] ) >= 2 && *argv[found_args] == '/') { 
-	
+
+			if ( argc > found_args && strlen( argv[found_args] ) >= 2 && *argv[found_args] == '/') {
+
 				if ( advanced_opts && (argv[found_args])[1] == 't' && argc > (found_args+1) ) {
-					
+
 					errno = 0;
 					uint8_t tmp_ttl = strtol ( argv[ found_args+1 ], NULL , 10 );
 
@@ -618,7 +618,7 @@ void apply_init_args( int argc, char *argv[] ) {
 					batman_if->if_ttl = tmp_ttl;
 
 					found_args += 2;
-						
+
 				} else {
 					printf( "Invalid interface specific option specified! \n" );
 
@@ -626,8 +626,11 @@ void apply_init_args( int argc, char *argv[] ) {
 				}
 
 			}
-		
+
 		}
+
+		/* add rule for hna networks */
+		add_del_rule( 0, 0, BATMAN_RT_TABLE_NETWORKS, BATMAN_RT_PRIO_DEFAULT - 1, 0, 1, 0 );
 
 		if ( routing_class > 0 ) {
 
