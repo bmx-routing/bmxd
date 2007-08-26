@@ -156,6 +156,49 @@ unsigned char *vis_packet = NULL;
 uint16_t vis_packet_size = 0;
 
 
+void print_advanced_opts ( int verbose ) {
+	
+	fprintf( stderr, "\n\n advanced and dangerous options (better do not touch):\n" );
+	
+	fprintf( stderr, "\n       --%s <value> bidirectional-link-check frame size\n", BDLCFRAME_SWITCH );
+	if ( verbose )
+		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEFAULT_BIDIRECT_TIMEOUT, MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT  );
+	
+	fprintf( stderr, "\n       --%s <value> neighbor ranking frame size\n", NBRFSIZE_SWITCH );
+	if ( verbose )
+		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d\n", DEFAULT_SEQ_RANGE, MIN_SEQ_RANGE, MAX_SEQ_RANGE  );
+	
+	fprintf( stderr, "\n       --%s <value> : change default TTL of originator packets.\n", TTL_SWITCH );
+	fprintf( stderr, "        \\%c <value> : attached after an interface name\n", TTL_IF_SWITCH );
+	fprintf( stderr, "          to change the TTL only for the OGMs representing a specific interface\n");
+	if ( verbose )
+		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d\n", DEFAULT_TTL, MIN_TTL, MAX_TTL  );
+	
+	fprintf( stderr, "\n        \\%c : attached after an interface name\n", OGM_ONLY_VIA_OWNING_IF_SWITCH );
+	fprintf( stderr, "          to broadcast OGMs representing this interface only via this interface.\n");
+	
+	fprintf( stderr, "\n       --%s : mode for mobile devices reluctant to help others\n", ASOCIAL_SWITCH );
+	
+	fprintf( stderr, "\n       --%s <value> send OGMs multiple times (with given probability)\n", SEND_DUPLICATES_SWITCH );
+	if ( verbose )
+		fprintf( stderr, "          default: %d, allowed probability values in percent: %d <= value <= %d\n", DEF_SEND_DUPLICATES, MIN_SEND_DUPLICATES, MAX_SEND_DUPLICATES  );
+	
+	fprintf( stderr, "\n       --%s <value> ignore rcvd OGMs to respect asymmetric-links.\n", ASYMMETRIC_WEIGHT_SWITCH );
+	if ( verbose )
+		fprintf( stderr, "          default: %d, allowed probability values in percent: %d <= value <=%d\n", DEF_ASYMMETRIC_WEIGHT, MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT  );
+	
+	fprintf( stderr, "\n       --%s <value> : do neighbor ranking based on latest received OGMs.\n", PENALTY_MIN_SWITCH );
+	fprintf( stderr, "          choosing the ranking winner with the most recent <value> OGMs in the NBRF \n");
+	if ( verbose )
+		fprintf( stderr, "          default: off, allowed values:  %d <= value <= %d\n", MIN_PENALTY_MIN, MAX_PENALTY_MIN  );
+
+	fprintf( stderr, "\n       --%s <value> : do neighbor ranking based on latest received OGMs.\n", PENALTY_EXCEED_SWITCH );
+	fprintf( stderr, "          choosing a new ranking winner when it came up with <value> more recent OGMs \n");
+	fprintf( stderr, "          than the previous ranking winner \n");
+	if ( verbose )
+		fprintf( stderr, "          default: off, allowed values:  %d <= value <= %d\n", MIN_PENALTY_EXCEED, MAX_PENALTY_EXCEED  );
+
+}
 
 void usage( void ) {
 
@@ -173,16 +216,8 @@ void usage( void ) {
 	fprintf( stderr, "       -s visualisation server\n" );
 	fprintf( stderr, "       -v print version\n" );
 
-	if( advanced_opts ) {
-		fprintf( stderr, "\n advanced options (enabled with --%s as first parameter - better do not touch):\n", ADVANCED_SWITCH );
-		fprintf( stderr, "       --%s bidirectional-link-check frame size\n", BDLCFRAME_SWITCH );
-		fprintf( stderr, "       --%s NBRF size\n", NBRFSIZE_SWITCH );
-		fprintf( stderr, "       --%s ttl of originator packets\n", TTL_SWITCH );
-		fprintf( stderr, "       --%s asocial device mode (for mobile devices reluctant to help others)\n", ASOCIAL_SWITCH );
-		fprintf( stderr, "       --%s send OGMs multiple times (with given probability)\n", SEND_DUPLICATES_SWITCH );
-		fprintf( stderr, "       --%s ignore rcvd OGMs to respect asymmetric characteristics of incoming link\n", ASYMMETRIC_WEIGHT_SWITCH );
-		fprintf( stderr, "       --%s \n", PENALTY_MIN_SWITCH );
-	}
+	if( advanced_opts )
+		print_advanced_opts ( NO );
 
 }
 
@@ -228,24 +263,10 @@ void verbose_usage( void ) {
 	fprintf( stderr, "          default: none, allowed values: IP\n\n" );
 	fprintf( stderr, "       -v print version\n" );
 
+	if( advanced_opts )
+		print_advanced_opts ( YES );
 
-	if( advanced_opts ) {
-		fprintf( stderr, "\n\n advanced options (enabled with --%s as first parameter - better do not touch):\n\n", ADVANCED_SWITCH );
-		fprintf( stderr, "       --%s bidirectional-link-check frame size\n", BDLCFRAME_SWITCH );
-		fprintf( stderr, "          default: %d, allowed values: >=1 and <= %d \n\n", DEFAULT_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT  );
-		fprintf( stderr, "       --%s neighbor ranking frame size\n", NBRFSIZE_SWITCH );
-		fprintf( stderr, "          default: %d, allowed values: <=%d\n\n", DEFAULT_SEQ_RANGE, MAX_SEQ_RANGE  );
-		fprintf( stderr, "       --%s ttl of originator packets\n", TTL_SWITCH );
-		fprintf( stderr, "          default: %d, allowed values: <=%d\n\n", DEFAULT_TTL, MAX_TTL  );
-		fprintf( stderr, "       --%s asocial device mode (for mobile devices reluctant to help others)\n\n", ASOCIAL_SWITCH );
-		fprintf( stderr, "       --%s send OGMs multiple times (with given probability)\n", SEND_DUPLICATES_SWITCH );
-		fprintf( stderr, "          default: %d, allowed probability values in percent: <=%d\n\n", DEF_SEND_DUPLICATES, MAX_SEND_DUPLICATES  );
-		fprintf( stderr, "       --%s ignore rcvd OGMs to respect asymmetric characteristics of incoming link\n", ASYMMETRIC_WEIGHT_SWITCH );
-		fprintf( stderr, "          default: %d, allowed probability values in percent: <=%d\n\n", DEF_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT  );
-		fprintf( stderr, "       --%s \n", PENALTY_MIN_SWITCH );
-		fprintf( stderr, "          default: off, allowed probability values must be <=%d and >=%d\n\n", MIN_PENALTY_MIN, MAX_PENALTY_MIN  );
-	}
-
+	
 }
 
 

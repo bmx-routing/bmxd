@@ -90,7 +90,10 @@
 #define DEFAULT_SEQ_RANGE 128  /* NBRF: NeighBor Ranking sequence Frame) sliding packet range of received orginator messages in squence numbers (should be a multiple of our word size) */  
 #define FULL_SEQ_RANGE ((uint16_t)-1)
 #define MAX_SEQ_RANGE 128      /* TBD: should not be larger until neigh_node.packet_count (and related variables) is only 8 bit */
+#define MIN_SEQ_RANGE 1
+
 #define MAX_BIDIRECT_TIMEOUT 100
+#define MIN_BIDIRECT_TIMEOUT 1
 #define MAX_TTL 63
 #define MIN_TTL 1 /* Values smaller than two currently do not work */
 
@@ -104,7 +107,7 @@
 
 #define DEF_PENALTY_MIN 0
 #define MIN_PENALTY_MIN 1
-#define MAX_PENALTY_MIN MAX_SEQ_RANGE
+#define MAX_PENALTY_MIN (MAX_SEQ_RANGE/2) /* TBD: this must adapt to the configured value */
 
 #define DEF_PENALTY_EXCEED 2
 #define MIN_PENALTY_EXCEED 1
@@ -114,6 +117,8 @@
 #define BDLCFRAME_SWITCH         "bi-link-timeout"
 #define NBRFSIZE_SWITCH          "window-size"
 #define TTL_SWITCH               "t"
+#define TTL_IF_SWITCH		 't'
+#define OGM_ONLY_VIA_OWNING_IF_SWITCH 'i'
 #define ASOCIAL_SWITCH           "asocial-device"
 #define TEST_SWITCH              "test"
 #define SEND_DUPLICATES_SWITCH   "send-duplicates"
@@ -290,6 +295,7 @@ struct batman_if
 	uint32_t netaddr;
 	uint8_t netmask;
 	uint8_t if_ttl;
+	uint8_t send_ogm_only_via_owning_if;
 	struct orig_packet out;
 };
 

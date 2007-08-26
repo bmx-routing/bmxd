@@ -160,7 +160,7 @@ void send_outstanding_packets() {
 	static char orig_str[ADDR_STR_LEN];
 	uint8_t directlink;
 	uint8_t unidirectional;
-	uint8_t ttl;
+	uint8_t ttl, send_ogm_only_via_owning_if;
 	
 	uint32_t curr_time;
 
@@ -181,6 +181,7 @@ void send_outstanding_packets() {
 			directlink = ( ( ((struct orig_packet *)forw_node->pack_buff)->bat_packet.flags & DIRECTLINK_FLAG ) ? 1 : 0 );
 			unidirectional = ( ( ((struct orig_packet *)forw_node->pack_buff)->bat_packet.flags & UNIDIRECTIONAL_FLAG ) ? 1 : 0 );
 			ttl = ((struct orig_packet *)forw_node->pack_buff)->bat_packet.ttl;
+			send_ogm_only_via_owning_if = ( (forw_node->own && forw_node->if_outgoing->send_ogm_only_via_owning_if) ? 1 : 0 );
 			
 			/* change sequence number to network order */
 			((struct orig_packet *)forw_node->pack_buff)->bat_packet.seqno = htons( ((struct orig_packet *)forw_node->pack_buff)->bat_packet.seqno );
@@ -201,7 +202,7 @@ void send_outstanding_packets() {
 
 				}
 
-			/* rebroadcast to propagate existence of path to OG*/
+			/* (re-) broadcast to propagate existence of path to OG*/
 			} else {
 				
 				int32_t send_bucket = -((int32_t)(rand_num( 100 )));
@@ -221,29 +222,32 @@ void send_outstanding_packets() {
 	
 							batman_if = list_entry(if_pos, struct batman_if, list);
 	
-							if ( ( directlink ) && ( forw_node->if_outgoing == batman_if ) ) {
-								((struct orig_packet *)forw_node->pack_buff)->bat_packet.flags = 
-										((struct orig_packet *)forw_node->pack_buff)->bat_packet.flags | DIRECTLINK_FLAG;
-							} else {
-								((struct orig_packet *)forw_node->pack_buff)->bat_packet.flags = 
-										((struct orig_packet *)forw_node->pack_buff)->bat_packet.flags & ~DIRECTLINK_FLAG;
+							if ( !send_ogm_only_via_owning_if || forw_node->if_outgoing == batman_if ) { 
+							
+								if ( ( directlink ) && ( forw_node->if_outgoing == batman_if ) ) {
+									((struct orig_packet *)forw_node->pack_buff)->bat_packet.flags = 
+											((struct orig_packet *)forw_node->pack_buff)->bat_packet.flags | DIRECTLINK_FLAG;
+								} else {
+									((struct orig_packet *)forw_node->pack_buff)->bat_packet.flags = 
+											((struct orig_packet *)forw_node->pack_buff)->bat_packet.flags & ~DIRECTLINK_FLAG;
+								}
+		
+								debug_output( 4, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s\n", orig_str, ntohs( ((struct orig_packet *)forw_node->pack_buff)->bat_packet.seqno ), ((struct orig_packet *)forw_node->pack_buff)->bat_packet.ttl, batman_if->dev );
+		
+								/* OGMs for non-primary interfaces do not send hna information */
+								if ( ( forw_node->own ) && ( ((struct orig_packet *)forw_node->pack_buff)->bat_packet.orig != ((struct batman_if *)if_list.next)->addr.sin_addr.s_addr ) ) {
+		
+									if ( send_raw_packet( forw_node->pack_buff, sizeof(struct orig_packet), batman_if ) < 0 )
+										restore_and_exit(0);
+		
+								} else {
+		
+									if ( send_raw_packet( forw_node->pack_buff, forw_node->pack_buff_len, batman_if ) < 0 )
+										restore_and_exit(0);
+		
+								}
+	
 							}
-	
-							debug_output( 4, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s\n", orig_str, ntohs( ((struct orig_packet *)forw_node->pack_buff)->bat_packet.seqno ), ((struct orig_packet *)forw_node->pack_buff)->bat_packet.ttl, batman_if->dev );
-	
-							/* OGMs for non-primary interfaces do not send hna information */
-							if ( ( forw_node->own ) && ( ((struct orig_packet *)forw_node->pack_buff)->bat_packet.orig != ((struct batman_if *)if_list.next)->addr.sin_addr.s_addr ) ) {
-	
-								if ( send_raw_packet( forw_node->pack_buff, sizeof(struct orig_packet), batman_if ) < 0 )
-									restore_and_exit(0);
-	
-							} else {
-	
-								if ( send_raw_packet( forw_node->pack_buff, forw_node->pack_buff_len, batman_if ) < 0 )
-									restore_and_exit(0);
-	
-							}
-	
 						}
 						
 					((struct orig_packet *)forw_node->pack_buff)->bat_packet.flags = 

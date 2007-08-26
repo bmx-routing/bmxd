@@ -150,7 +150,7 @@ void apply_init_args( int argc, char *argv[] ) {
 						errno = 0;
 						bidirect_link_to = strtol (optarg, NULL , 10);
 
-						if ( bidirect_link_to < 1 || bidirect_link_to > 	MAX_BIDIRECT_TIMEOUT ) {
+						if ( bidirect_link_to < MIN_BIDIRECT_TIMEOUT || bidirect_link_to > 	MAX_BIDIRECT_TIMEOUT ) {
 
 							printf( "Invalid bidirectional_link_to specified: %i.\nThe timeout has to be >=1 and <= 5.\n", bidirect_link_to );
 
@@ -165,7 +165,7 @@ void apply_init_args( int argc, char *argv[] ) {
 						errno = 0;
 						int16_t tmp_sequence_range = strtol (optarg, NULL , 10);
 
-						if ( tmp_sequence_range < 1 || tmp_sequence_range > MAX_SEQ_RANGE ) {
+						if ( tmp_sequence_range < MIN_SEQ_RANGE || tmp_sequence_range > MAX_SEQ_RANGE ) {
 
 							printf( "Invalid sequence_range specified: %i.\nThe sequence_range must be >= 1 and <= %i.\n", tmp_sequence_range, MAX_SEQ_RANGE );
 
@@ -601,9 +601,9 @@ void apply_init_args( int argc, char *argv[] ) {
 			found_args++;
 
 
-			if ( argc > found_args && strlen( argv[found_args] ) >= 2 && *argv[found_args] == '/') {
+			while ( argc > found_args && strlen( argv[found_args] ) >= 2 && *argv[found_args] == '/') {
 
-				if ( advanced_opts && (argv[found_args])[1] == 't' && argc > (found_args+1) ) {
+				if ( (argv[found_args])[1] == TTL_IF_SWITCH && argc > (found_args+1) ) {
 
 					errno = 0;
 					uint8_t tmp_ttl = strtol ( argv[ found_args+1 ], NULL , 10 );
@@ -618,6 +618,14 @@ void apply_init_args( int argc, char *argv[] ) {
 					batman_if->if_ttl = tmp_ttl;
 
 					found_args += 2;
+
+				} else if ( (argv[found_args])[1] == OGM_ONLY_VIA_OWNING_IF_SWITCH && argc > (found_args) ) {
+
+					errno = 0;
+
+					batman_if->send_ogm_only_via_owning_if = YES;
+
+					found_args += 1;
 
 				} else {
 					printf( "Invalid interface specific option specified! \n" );
