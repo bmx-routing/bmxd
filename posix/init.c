@@ -116,6 +116,7 @@ void apply_init_args( int argc, char *argv[] ) {
    {NBRFSIZE_SWITCH,          1, 0, 0},
    {TTL_SWITCH,               1, 0, 0},
    {ASOCIAL_SWITCH,           0, 0, 0},
+   {NO_UNREACHABLE_RULE_SWITCH,           0, 0, 0},
    {TEST_SWITCH,              1, 0, 0},
    {SEND_DUPLICATES_SWITCH,   1, 0, 0},
    {ASYMMETRIC_WEIGHT_SWITCH, 1, 0, 0},
@@ -266,11 +267,19 @@ void apply_init_args( int argc, char *argv[] ) {
 					} else if ( strcmp( ASOCIAL_SWITCH, long_options[option_index].name ) == 0 ) {
 
 						errno = 0;
-						mobile_device = 1;
+						mobile_device = YES;
 
 						found_args += 1;
 						break;
 
+					} else if ( strcmp( NO_UNREACHABLE_RULE_SWITCH, long_options[option_index].name ) == 0 ) {
+
+						errno = 0;
+						no_unreachable_rule = YES;
+
+						found_args += 1;
+						break;
+					
 					} else if ( strcmp( TEST_SWITCH, long_options[option_index].name ) == 0 ) {
 
 						errno = 0;
@@ -889,7 +898,9 @@ void init_interface ( struct batman_if *batman_if ) {
 	batman_if->netaddr = ( ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr & batman_if->addr.sin_addr.s_addr );
 	batman_if->netmask = bit_count( ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr );
 	add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_DEFAULT + batman_if->if_num, 0, 1, 0 );
-	add_del_route( batman_if->netaddr, batman_if->netmask, 0, batman_if->if_index, batman_if->dev, BATMAN_RT_TABLE_HOSTS, 2, 0 );
+	
+	if ( no_unreachable_rule == NO )
+		add_del_route( batman_if->netaddr, batman_if->netmask, 0, batman_if->if_index, batman_if->dev, BATMAN_RT_TABLE_HOSTS, 2, 0 );
 
 
 	if ( ( batman_if->udp_send_sock = use_kernel_module( batman_if->dev ) ) < 0 ) {

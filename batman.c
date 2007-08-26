@@ -107,7 +107,8 @@ uint16_t bidirect_link_to = DEFAULT_BIDIRECT_TIMEOUT;
 uint16_t sequence_range = DEFAULT_SEQ_RANGE;
 uint8_t ttl = DEFAULT_TTL;
 
-uint8_t mobile_device = 0;
+uint8_t mobile_device = NO;
+uint8_t no_unreachable_rule = NO;
 
 int32_t send_duplicates = DEF_SEND_DUPLICATES;
 uint8_t asymmetric_weight = DEF_ASYMMETRIC_WEIGHT;
@@ -160,11 +161,11 @@ void print_advanced_opts ( int verbose ) {
 	
 	fprintf( stderr, "\n\n advanced and dangerous options (better do not touch):\n" );
 	
-	fprintf( stderr, "\n       --%s <value> bidirectional-link-check frame size\n", BDLCFRAME_SWITCH );
+	fprintf( stderr, "\n       --%s <value> : set bidirectional-link-check frame size\n", BDLCFRAME_SWITCH );
 	if ( verbose )
 		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEFAULT_BIDIRECT_TIMEOUT, MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT  );
 	
-	fprintf( stderr, "\n       --%s <value> neighbor ranking frame size\n", NBRFSIZE_SWITCH );
+	fprintf( stderr, "\n       --%s <value> : set neighbor ranking frame size\n", NBRFSIZE_SWITCH );
 	if ( verbose )
 		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d\n", DEFAULT_SEQ_RANGE, MIN_SEQ_RANGE, MAX_SEQ_RANGE  );
 	
@@ -179,11 +180,15 @@ void print_advanced_opts ( int verbose ) {
 	
 	fprintf( stderr, "\n       --%s : mode for mobile devices reluctant to help others\n", ASOCIAL_SWITCH );
 	
-	fprintf( stderr, "\n       --%s <value> send OGMs multiple times (with given probability)\n", SEND_DUPLICATES_SWITCH );
+	fprintf( stderr, "\n       --%s : does not set the unreachable rule for host routes\n", NO_UNREACHABLE_RULE_SWITCH );
+	
+	
+	
+	fprintf( stderr, "\n       --%s <value> : send OGMs multiple times (with given probability)\n", SEND_DUPLICATES_SWITCH );
 	if ( verbose )
 		fprintf( stderr, "          default: %d, allowed probability values in percent: %d <= value <= %d\n", DEF_SEND_DUPLICATES, MIN_SEND_DUPLICATES, MAX_SEND_DUPLICATES  );
 	
-	fprintf( stderr, "\n       --%s <value> ignore rcvd OGMs to respect asymmetric-links.\n", ASYMMETRIC_WEIGHT_SWITCH );
+	fprintf( stderr, "\n       --%s <value> : ignore rcvd OGMs to respect asymmetric-links.\n", ASYMMETRIC_WEIGHT_SWITCH );
 	if ( verbose )
 		fprintf( stderr, "          default: %d, allowed probability values in percent: %d <= value <=%d\n", DEF_ASYMMETRIC_WEIGHT, MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT  );
 	

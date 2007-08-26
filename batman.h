@@ -120,6 +120,7 @@
 #define TTL_IF_SWITCH		 't'
 #define OGM_ONLY_VIA_OWNING_IF_SWITCH 'i'
 #define ASOCIAL_SWITCH           "asocial-device"
+#define NO_UNREACHABLE_RULE_SWITCH  "no-unreachable-rule"
 #define TEST_SWITCH              "test"
 #define SEND_DUPLICATES_SWITCH   "send-duplicates"
 #define ASYMMETRIC_WEIGHT_SWITCH "asymmetric-weight"
@@ -169,6 +170,7 @@ extern uint16_t bidirect_link_to;
 extern uint16_t sequence_range;
 extern uint8_t ttl;
 extern uint8_t mobile_device;
+extern uint8_t no_unreachable_rule;
 extern int32_t send_duplicates;
 extern uint8_t asymmetric_weight;
 extern uint16_t penalty_min;
