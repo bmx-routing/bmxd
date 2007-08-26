@@ -104,7 +104,7 @@ void apply_init_args( int argc, char *argv[] ) {
 	stop = 0;
 
 
-	printf( "WARNING: You are using the unstable batman branch. If you are interested in *using* batman get the latest stable release !\n" );
+	printf( "WARNING: You are using the experimental batman branch. If you are interested in *using* batman get the latest stable release !\n" );
 
 	while ( 1 ) {
 
@@ -334,7 +334,8 @@ void apply_init_args( int argc, char *argv[] ) {
 				list_add_tail( &hna_node->list, &hna_list );
 
 				*slash_ptr = '/';
-				found_args += 2;
+				
+				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
 				break;
 
 			case 'b':
@@ -360,7 +361,7 @@ void apply_init_args( int argc, char *argv[] ) {
 					exit(EXIT_FAILURE);
 				}
 
-				found_args += 2;
+				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
 				break;
 
 			case 'g':
@@ -378,7 +379,7 @@ void apply_init_args( int argc, char *argv[] ) {
 					exit(EXIT_FAILURE);
 				}
 
-				found_args += 2;
+				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
 				break;
 
 			case 'H':
@@ -397,7 +398,7 @@ void apply_init_args( int argc, char *argv[] ) {
 					exit(EXIT_FAILURE);
 				}
 
-				found_args += 2;
+				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
 				break;
 
 			case 'p':
@@ -412,7 +413,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 				pref_gateway = tmp_ip_holder.s_addr;
 
-				found_args += 2;
+				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
 				break;
 
 			case 'r':
@@ -427,7 +428,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 				}
 
-				found_args += 2;
+				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
 				break;
 
 			case 's':
@@ -443,7 +444,7 @@ void apply_init_args( int argc, char *argv[] ) {
 				vis_server = tmp_ip_holder.s_addr;
 
 
-				found_args += 2;
+				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
 				break;
 
 			case 'v':
