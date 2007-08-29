@@ -140,7 +140,7 @@ void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t n
 	struct list_head *neigh_pos;
 	struct neigh_node *neigh_node = NULL, *tmp_neigh_node = NULL, *best_neigh_node = NULL;
 	uint8_t max_packet_count = 0, is_new_seqno = 0; // TBD: check max_packet_count for overflows if MAX_SEQ_RANGE > 256
-
+	
 
 	debug_output( 4, "update_originator(): Searching and updating originator entry of received packet,  \n" );
 
@@ -200,7 +200,7 @@ void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t n
 	}
 
 	/* this is for remembering the actual re-broadcasted non-unidirectional OGMs */
-	bit_get_packet( orig_node->send_seq_bits, in->seqno - orig_node->last_seqno, 0 );
+	bit_get_packet( orig_node->send_old_seq_bits, in->seqno - orig_node->last_seqno, 0 );
 
 	
 	orig_node->last_valid = rcvd_time;
@@ -610,6 +610,26 @@ int nlq_rate( struct orig_node *orig_neigh_node, struct batman_if *if_incoming )
 	
 }
 
+
+int nlq_power( int nlq_rate_value ) {
+	
+	int nlq_power_value = sequence_range;
+	int exp_counter;
+	for ( exp_counter = 0; exp_counter <= asymmetric_exp; exp_counter++ )
+		nlq_power_value = ((nlq_power_value * nlq_rate_value) / sequence_range);
+
+	return nlq_power_value;
+
+}
+					
+
+int acceptance( int nlq_assumption, uint16_t lq_assumtion ) {
+	
+	return ( nlq_power( nlq_assumption ) * lq_assumtion / sequence_range );
+
+}
+
+
 void debug_orig() {
 
 	struct hash_it_t *hashit = NULL;
@@ -621,7 +641,7 @@ void debug_orig() {
 	uint16_t batman_count = 0;
 	uint32_t uptime_sec;
 	static char str[ADDR_STR_LEN], str2[ADDR_STR_LEN], orig_str[ADDR_STR_LEN];
-	int dbg_ogm_out = 0;
+	int dbg_ogm_out = 0, lq, nlq;
 	static char dbg_ogm_str[MAX_DBG_STR_SIZE + 1]; // TBD: must be checked for overflow when using with sprintf
 
 
@@ -673,7 +693,7 @@ void debug_orig() {
 
 		debug_output( 1, "BOD \n" );
 		
-		debug_output( 1, "  %-12s %11s (%3i/new/old l2q  lq  nlq lseq lvld): %20s... [B.A.T.M.A.N. %s%s, MainIF/IP: %s %s, BLT: %i, OGI: %i, UT: %id%2ih%2im] \n",
+		debug_output( 1, "  %-12s %11s (%3i/new/old plcy l2q lq  nlq lseq lvld): %20s... [B.A.T.M.A.N. %s%s, MainIF/IP: %s %s, BLT: %i, OGI: %i, UT: %id%2ih%2im] \n",
 			      "Originator", "Router", 
 			      sequence_range, "Potential routers", 
 			      SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), 
@@ -711,16 +731,21 @@ void debug_orig() {
 			addr_to_string( orig_node->orig, str, sizeof (str) );
 			addr_to_string( orig_node->router->addr, str2, sizeof (str2) );
 			
-			dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s %15s (%3i %2i %3i %3i %3i %5i %5i):", str, str2, 
-					orig_node->router->packet_count, 
-					bit_packet_count( orig_node->send_seq_bits, sequence_range ),
-					
-					update_bi_link_bits( orig_node, orig_node->router->if_incoming, NO, sequence_range ),
-
-					update_lq_bits( orig_node, YES, orig_node->last_seqno, orig_node->router->if_incoming, NO, sequence_range ),
+			lq = update_lq_bits( orig_node, YES, orig_node->last_seqno, orig_node->router->if_incoming, NO, sequence_range ), /* lq */
 							
-					nlq_rate( orig_node, orig_node->router->if_incoming ),
-
+			nlq = nlq_rate( orig_node, orig_node->router->if_incoming ), /* nlq */
+			
+			
+			dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s %15s (%3i %2i %3i %3i %3i %3i %5i %5i):", str, str2, 
+					orig_node->router->packet_count, /* new */
+					bit_packet_count( orig_node->send_old_seq_bits, sequence_range ), /* old  */
+					
+					acceptance( nlq, lq ),	
+					
+					update_bi_link_bits( orig_node, orig_node->router->if_incoming, NO, sequence_range ), /* l2q */
+					
+					lq, nlq,
+					
 					orig_node->last_seqno,
 					( get_time() - orig_node->last_valid ) );
 //			debug_output( 1, "%-15s %''15s (%3i):", str, str2, orig_node->router->packet_count );

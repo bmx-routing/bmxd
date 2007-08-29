@@ -120,6 +120,7 @@ void apply_init_args( int argc, char *argv[] ) {
    {TEST_SWITCH,              1, 0, 0},
    {SEND_DUPLICATES_SWITCH,   1, 0, 0},
    {ASYMMETRIC_WEIGHT_SWITCH, 1, 0, 0},
+   {ASYMMETRIC_EXP_SWITCH,    1, 0, 0},
    {PENALTY_MIN_SWITCH,       1, 0, 0},
    {PENALTY_EXCEED_SWITCH,    1, 0, 0},
    {0, 0, 0, 0}
@@ -153,7 +154,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 						if ( bidirect_link_to < MIN_BIDIRECT_TIMEOUT || bidirect_link_to > 	MAX_BIDIRECT_TIMEOUT ) {
 
-							printf( "Invalid bidirectional_link_to specified: %i.\nThe timeout has to be >=1 and <= 5.\n", bidirect_link_to );
+							printf( "Invalid bidirectional_link_to specified: %i.\nThe timeout has to be >= %d and <= %d.\n", bidirect_link_to, MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT );
 
 							exit(EXIT_FAILURE);
 						}
@@ -226,6 +227,23 @@ void apply_init_args( int argc, char *argv[] ) {
 						}
 
 						asymmetric_weight = tmp_asymmetric_weight;
+
+						found_args += 2;
+						break;
+
+					} else if ( strcmp( ASYMMETRIC_EXP_SWITCH, long_options[option_index].name ) == 0 ) {
+
+						errno = 0;
+						int tmp_asymmetric_exp = strtol (optarg, NULL , 10);
+
+						if ( tmp_asymmetric_exp < MIN_ASYMMETRIC_EXP || tmp_asymmetric_exp > MAX_ASYMMETRIC_EXP ) {
+
+							printf( "Invalid asymmetric exponent specified: %i.\n The value must be >= %i and <= %i.\n", tmp_asymmetric_exp, MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP );
+
+							exit(EXIT_FAILURE);
+						}
+
+						asymmetric_exp = tmp_asymmetric_exp;
 
 						found_args += 2;
 						break;

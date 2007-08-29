@@ -111,7 +111,12 @@ uint8_t mobile_device = NO;
 uint8_t no_unreachable_rule = NO;
 
 int32_t send_duplicates = DEF_SEND_DUPLICATES;
+
 uint8_t asymmetric_weight = DEF_ASYMMETRIC_WEIGHT;
+
+uint8_t asymmetric_exp = DEF_ASYMMETRIC_EXP;
+
+
 uint16_t penalty_min = DEF_PENALTY_MIN;
 uint16_t penalty_exceed = DEF_PENALTY_EXCEED;
 
@@ -192,6 +197,11 @@ void print_advanced_opts ( int verbose ) {
 	if ( verbose )
 		fprintf( stderr, "          default: %d, allowed probability values in percent: %d <= value <=%d\n", DEF_ASYMMETRIC_WEIGHT, MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT  );
 	
+	fprintf( stderr, "\n       --%s <value> : ignore rcvd OGMs to respect asymmetric-links.\n", ASYMMETRIC_EXP_SWITCH );
+	fprintf( stderr, "          Ignore with probability NLQ^<value>.\n");	
+	if ( verbose )
+		fprintf( stderr, "          default: %d, allowed exponent values: %d <= value <=%d\n", DEF_ASYMMETRIC_EXP, MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP  );
+	
 	fprintf( stderr, "\n       --%s <value> : do neighbor ranking based on latest received OGMs.\n", PENALTY_MIN_SWITCH );
 	fprintf( stderr, "          choosing the ranking winner with the most recent <value> OGMs in the NBRF \n");
 	if ( verbose )
@@ -220,6 +230,8 @@ void usage( void ) {
 	fprintf( stderr, "       -r routing class\n" );
 	fprintf( stderr, "       -s visualisation server\n" );
 	fprintf( stderr, "       -v print version\n" );
+	fprintf( stderr, "       --dangerous -h : show additional but dangerous options \n" );
+	fprintf( stderr, "       --dangerous -H : show additional but dangerous verbose options \n" );
 
 	if( advanced_opts )
 		print_advanced_opts ( NO );
@@ -267,6 +279,7 @@ void verbose_usage( void ) {
 	fprintf( stderr, "       -s visualisation server\n" );
 	fprintf( stderr, "          default: none, allowed values: IP\n\n" );
 	fprintf( stderr, "       -v print version\n" );
+	fprintf( stderr, "\n       --dangerous -H : show addinional but dangerous options \n" );
 
 	if( advanced_opts )
 		print_advanced_opts ( YES );
@@ -717,7 +730,8 @@ int8_t batman() {
 	static char orig_str[ADDR_STR_LEN], neigh_str[ADDR_STR_LEN], ifaddr_str[ADDR_STR_LEN];
 	int16_t hna_buff_count, hna_buff_len;
 	uint8_t forward_old, if_rp_filter_all_old, if_rp_filter_default_old, if_send_redirects_all_old, if_send_redirects_default_old;
-	uint8_t is_my_addr, is_my_orig, is_broadcast, is_duplicate, is_bidirectional, is_direct_neigh, is_bntog, forward_duplicate_packet, has_unidirectional_flag, has_directlink_flag, has_duplicated_flag, has_version;
+	uint8_t is_my_addr, is_my_orig, is_broadcast, is_duplicate, is_bidirectional, is_accepted, is_direct_neigh, is_bntog, forward_duplicate_packet, has_unidirectional_flag, has_directlink_flag, has_duplicated_flag, has_version;
+	int nlq_rate_value;
 	int res;
 
 	debug_timeout = vis_timeout = get_time();
@@ -824,7 +838,7 @@ int8_t batman() {
 			addr_to_string( neigh, neigh_str, sizeof(neigh_str) );
 			addr_to_string( if_incoming->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
 
-			is_my_addr = is_my_orig = is_broadcast = is_duplicate = is_bidirectional = is_direct_neigh = is_bntog = forward_duplicate_packet = 0;
+			is_my_addr = is_my_orig = is_broadcast = is_duplicate = is_bidirectional = is_accepted = is_direct_neigh = is_bntog = forward_duplicate_packet = 0;
 
 			has_unidirectional_flag = ((struct orig_packet *)&in)->bat_packet.flags & UNIDIRECTIONAL_FLAG ? 1 : 0;
 			has_directlink_flag = ((struct orig_packet *)&in)->bat_packet.flags & DIRECTLINK_FLAG ? 1 : 0;
@@ -952,22 +966,23 @@ int8_t batman() {
 					is_duplicate = isDuplicate( orig_node, ((struct orig_packet *)&in)->bat_packet.seqno, 0, NULL );
 
 					is_bidirectional = isBidirectionalNeigh( orig_neigh_node, if_incoming );
-
-					/* update ranking */
+					
 					if ( is_bidirectional )
 						update_lq_bits( orig_node, 1, ((struct orig_packet *)&in)->bat_packet.seqno, if_incoming,
 							( ( !has_duplicated_flag && is_direct_neigh ) ? 1 : 0 ), NO );
 
-					is_bidirectional = ( is_bidirectional &&
+					nlq_rate_value = nlq_rate( orig_neigh_node, if_incoming );
+					
+					/* do we accept or ignore the OGM according to our current policy ? */
+					is_accepted = ( is_bidirectional &&
 							( ( asymmetric_weight == MIN_ASYMMETRIC_WEIGHT ) ||
-							( rand_num( sequence_range ) <
-							( ((MAX_ASYMMETRIC_WEIGHT - asymmetric_weight) * sequence_range ) +
-							nlq_rate( orig_neigh_node, if_incoming )) ) ) );
+							( rand_num( sequence_range ) <  acceptance( nlq_rate_value, sequence_range ) +
+								( ( ((MAX_ASYMMETRIC_WEIGHT - asymmetric_weight) * sequence_range ) / 100 )  ) ) ) );
 
-					if ( is_bidirectional && !is_duplicate )
+					/* update ranking */
+					if ( is_accepted && !is_duplicate )
 						update_orig( orig_node, (struct bat_packet *)(in + sizeof(struct iphdr) + sizeof(struct udphdr)), neigh,
 							if_incoming, hna_recv_buff, hna_buff_len, curr_time );
-
 
 					is_bntog = isBntog( neigh, orig_node );
 
@@ -982,7 +997,7 @@ int8_t batman() {
 							debug_output( 4, "Forward packet: with mobile device policy: rebroadcast neighbour packet with direct link and unidirectional flag \n" );
 
 						/* it is our best route towards him */
-						} else if ( is_bidirectional && is_bntog ) {
+						} else if ( is_accepted && is_bntog ) {
 
 							/* mark direct link on incoming interface */
 							schedule_forward_packet( (struct orig_packet *)&in, 0, 1, has_duplicated_flag, hna_recv_buff, hna_buff_len, if_incoming );
@@ -991,7 +1006,7 @@ int8_t batman() {
 
 						/* if an unidirectional neighbour sends us a packet - retransmit it with unidirectional flag to tell him that we get its packets */
 						/* if a bidirectional neighbour sends us a packet - retransmit it with unidirectional flag if it is not our best link to it in order to prevent routing problems */
-						} else if ( ( is_bidirectional && !is_bntog ) || ( !is_bidirectional ) ) {
+						} else if ( ( is_accepted && !is_bntog ) || ( !is_accepted ) ) {
 
 							schedule_forward_packet( (struct orig_packet *)&in, 1, 1, has_duplicated_flag, hna_recv_buff, hna_buff_len, if_incoming );
 
@@ -1002,7 +1017,7 @@ int8_t batman() {
 					/* multihop originator */
 					} else {
 
-						if ( is_bidirectional && is_bntog && !mobile_device ) {
+						if ( is_accepted && is_bntog && !mobile_device ) {
 
 							if ( !is_duplicate ) {
 
@@ -1042,7 +1057,7 @@ int8_t batman() {
 									debug_output( 4, "Forward packet: duplicate packet received via best neighbour with best ttl \n" );
 
 									/* this is for remembering the actual re-broadcasted non-unidirectional OGMs */
-									bit_mark( orig_node->send_seq_bits,
+									bit_mark( orig_node->send_old_seq_bits,
 										-( ((struct orig_packet *)&in)->bat_packet.seqno - orig_node->last_seqno ) );
 
 								} else {
@@ -1055,7 +1070,7 @@ int8_t batman() {
 
 						} else {
 
-							debug_output( 4, "Drop packet: received via bidirectional link: %s, BNTOG: %s, iam a mobile device: %s !\n", ( is_bidirectional ? "YES" : "NO" ), ( is_bntog ? "YES" : "NO" ), ( mobile_device ? "YES" : "NO" ) );
+							debug_output( 4, "Drop packet: received via bidirectional link: %s, accepted OGM: %s, BNTOG: %s, iam a mobile device: %s !\n", ( is_bidirectional ? "YES" : "NO" ), ( is_accepted ? "YES" : "NO" ), ( is_bntog ? "YES" : "NO" ), ( mobile_device ? "YES" : "NO" ) );
 
 						}
 

@@ -80,8 +80,6 @@
  */
 
 #define JITTER 100
-#define DEFAULT_TTL 50                /* Time To Live of broadcast messages */
-#define DEFAULT_BIDIRECT_TIMEOUT 2  
 #define DEFAULT_ORIGINATOR_INTERVAL 1000
 #define MIN_ORIGINATOR_INTERVAL JITTER
 #define MAX_ORIGINATOR_INTERVAL 10000 
@@ -92,8 +90,11 @@
 #define MAX_SEQ_RANGE 128      /* TBD: should not be larger until neigh_node.packet_count (and related variables) is only 8 bit */
 #define MIN_SEQ_RANGE 1
 
+#define DEFAULT_BIDIRECT_TIMEOUT 2  
 #define MAX_BIDIRECT_TIMEOUT 100
 #define MIN_BIDIRECT_TIMEOUT 1
+
+#define DEFAULT_TTL 50                /* Time To Live of broadcast messages */
 #define MAX_TTL 63
 #define MIN_TTL 1 /* Values smaller than two currently do not work */
 
@@ -104,6 +105,10 @@
 #define DEF_ASYMMETRIC_WEIGHT 0
 #define MIN_ASYMMETRIC_WEIGHT 0
 #define MAX_ASYMMETRIC_WEIGHT 100
+
+#define DEF_ASYMMETRIC_EXP 0
+#define MIN_ASYMMETRIC_EXP 0
+#define MAX_ASYMMETRIC_EXP 3
 
 #define DEF_PENALTY_MIN 0
 #define MIN_PENALTY_MIN 1
@@ -124,6 +129,7 @@
 #define TEST_SWITCH              "test"
 #define SEND_DUPLICATES_SWITCH   "send-duplicates"
 #define ASYMMETRIC_WEIGHT_SWITCH "asymmetric-weight"
+#define ASYMMETRIC_EXP_SWITCH    "asymmetric-exp"
 #define PENALTY_MIN_SWITCH       "penalty-min"
 #define PENALTY_EXCEED_SWITCH    "penalty-exceed"
 
@@ -173,6 +179,7 @@ extern uint8_t mobile_device;
 extern uint8_t no_unreachable_rule;
 extern int32_t send_duplicates;
 extern uint8_t asymmetric_weight;
+extern uint8_t asymmetric_exp;
 extern uint16_t penalty_min;
 extern uint16_t penalty_exceed;
 
@@ -238,7 +245,7 @@ struct orig_node                 /* structure for orig_list maintaining nodes of
 	unsigned char *hna_buff;
 	int16_t  hna_buff_len;
 	uint16_t last_seqno;              /* last and best known squence number */
-	TYPE_OF_WORD send_seq_bits[ MAX_NUM_WORDS ]; /* just for debugging, indicates the re-broadcasted (non-unidirectional and non-quickest) OGMs for this foreign OG */
+	TYPE_OF_WORD send_old_seq_bits[ MAX_NUM_WORDS ]; /* just for debugging, indicates the re-broadcasted (non-unidirectional and non-quickest) OGMs for this foreign OG */
 	struct list_head_first neigh_list;
 };
 
