@@ -31,8 +31,6 @@
 #include "originator.h"
 #include "schedule.h"
 
-#include <errno.h>  /* should be removed together with tcp control channel */
-
 
 
 uint8_t debug_level = 0;
@@ -53,34 +51,12 @@ uint8_t debug_level_max = 4;
 #endif
 
 
-/* "-g" is the command line switch for the gateway class,
- * 0 no gateway
- * 1 modem
- * 2 ISDN
- * 3 Double ISDN
- * 3 256 KBit
- * 5 UMTS/ 0.5 MBit
- * 6 1 MBit
- * 7 2 MBit
- * 8 3 MBit
- * 9 5 MBit
- * 10 6 MBit
- * 11 >6 MBit
- * this option is used to determine packet path
- */
+char *prog_name;
 
-char *gw2string[] = { "No Gateway",
-                      "56 KBit (e.g. Modem)",
-                      "64 KBit (e.g. ISDN)",
-                      "128 KBit (e.g. double ISDN)",
-                      "256 KBit",
-                      "512 KBit (e.g. UMTS)",
-                      "1 MBit",
-                      "2 MBit",
-                      "3 MBit",
-                      "5 MBit",
-                      "6 MBit",
-                      ">6 MBit" };
+
+/*
+ * "-g" is the command line switch for the gateway class,
+ */
 
 uint8_t gateway_class = 0;
 
@@ -228,7 +204,7 @@ void usage( void ) {
 	fprintf( stderr, "       -o originator interval in ms\n" );
 	fprintf( stderr, "       -p preferred gateway\n" );
 	fprintf( stderr, "       -r routing class\n" );
-	fprintf( stderr, "       -s visualisation server\n" );
+	fprintf( stderr, "       -s visualization server\n" );
 	fprintf( stderr, "       -v print version\n" );
 	fprintf( stderr, "       --dangerous -h : show additional but dangerous options \n" );
 	fprintf( stderr, "       --dangerous -H : show additional but dangerous verbose options \n" );
@@ -252,19 +228,21 @@ void verbose_usage( void ) {
 	fprintf( stderr, "                           2 -> list gateways\n" );
 	fprintf( stderr, "                           3 -> observe batman\n" );
 	fprintf( stderr, "                           4 -> observe batman (very verbose)\n\n" );
+
+	if ( debug_level_max == 5  )
+		fprintf( stderr, "                           5 -> memory debug / cpu usage\n\n" );
+
 	fprintf( stderr, "       -g gateway class\n" );
 	fprintf( stderr, "          default:         0 -> this is not an internet gateway\n" );
-	fprintf( stderr, "          allowed values:  1 -> modem line\n" );
-	fprintf( stderr, "                           2 -> ISDN line\n" );
-	fprintf( stderr, "                           3 -> double ISDN\n" );
-	fprintf( stderr, "                           4 -> 256 KBit\n" );
-	fprintf( stderr, "                           5 -> UMTS / 0.5 MBit\n" );
-	fprintf( stderr, "                           6 -> 1 MBit\n" );
-	fprintf( stderr, "                           7 -> 2 MBit\n" );
-	fprintf( stderr, "                           8 -> 3 MBit\n" );
-	fprintf( stderr, "                           9 -> 5 MBit\n" );
-	fprintf( stderr, "                          10 -> 6 MBit\n" );
-	fprintf( stderr, "                          11 -> >6 MBit\n\n" );
+	fprintf( stderr, "          allowed values:  download speed/upload in kbit (default) or mbit\n" );
+	fprintf( stderr, "          note:            batmand will choose the nearest gateway class representing your speeds\n" );
+	fprintf( stderr, "                           and therefore accepts all given values\n" );
+	fprintf( stderr, "                           e.g. 5000\n" );
+	fprintf( stderr, "                                5000kbit\n" );
+	fprintf( stderr, "                                5mbit\n" );
+	fprintf( stderr, "                                5mbit/1024\n" );
+	fprintf( stderr, "                                5mbit/1024kbit\n" );
+	fprintf( stderr, "                                5mbit/1mbit\n" );
 	fprintf( stderr, "       -h shorter help\n" );
 	fprintf( stderr, "       -H this help\n" );
 	fprintf( stderr, "       -o originator interval in ms\n" );
@@ -273,10 +251,10 @@ void verbose_usage( void ) {
 	fprintf( stderr, "          default: none, allowed values: IP\n\n" );
 	fprintf( stderr, "       -r routing class (only needed if gateway class = 0)\n" );
 	fprintf( stderr, "          default:         0 -> set no default route\n" );
-	fprintf( stderr, "          allowed values:  1 -> use fast internet connection\n" );
-	fprintf( stderr, "                           2 -> use stable internet connection\n" );
-	fprintf( stderr, "                           3 -> use best statistic internet connection (olsr style)\n\n" );
-	fprintf( stderr, "       -s visualisation server\n" );
+	fprintf( stderr, "          allowed values:  1 -> use fast internet connection (gw_flags * packet count)\n" );
+	fprintf( stderr, "                           2 -> use stable internet connection (packet count)\n" );
+	fprintf( stderr, "                           3 -> use fast-switch internet connection (packet count but change as soon as a better gateway appears)\n\n" );
+	fprintf( stderr, "       -s visualization server\n" );
 	fprintf( stderr, "          default: none, allowed values: IP\n\n" );
 	fprintf( stderr, "       -v print version\n" );
 	fprintf( stderr, "\n       --dangerous -H : show addinional but dangerous options \n" );
@@ -319,8 +297,10 @@ void add_del_hna( struct orig_node *orig_node, int8_t del ) {
 		memcpy( &hna, ( uint32_t *)&orig_node->hna_buff[ hna_buff_count * 5 ], 4 );
 		netmask = ( uint32_t )orig_node->hna_buff[ ( hna_buff_count * 5 ) + 4 ];
 
-		if ( ( netmask > 0 ) && ( netmask < 33 ) )
+		if ( ( netmask > 0 ) && ( netmask < 33 ) ) {
 			add_del_route( hna, netmask, orig_node->router->addr, orig_node->batman_if->if_index, orig_node->batman_if->dev, BATMAN_RT_TABLE_NETWORKS, 0, del );
+			
+		}
 
 		hna_buff_count++;
 
@@ -344,17 +324,18 @@ void choose_gw() {
 	struct gw_node *gw_node, *tmp_curr_gw = NULL;
 	/* TBD: check the calculations of this variables for overflows */
 	uint8_t max_gw_class = 0, max_packets = 0, max_gw_factor = 0;
+	uint32_t current_time;
 	static char orig_str[ADDR_STR_LEN];
 
 
-	if ( routing_class == 0 ) {
+	if ( ( routing_class == 0 ) || ( ( current_time = get_time() ) < originator_interval * sequence_range ) ) {
 
 		prof_stop( PROF_choose_gw );
 		return;
 
 	}
 
-	if ( list_empty(&gw_list) ) {
+	if ( list_empty( &gw_list ) ) {
 
 		if ( curr_gateway != NULL ) {
 
@@ -370,12 +351,12 @@ void choose_gw() {
 	}
 
 
-	list_for_each(pos, &gw_list) {
+	list_for_each( pos, &gw_list ) {
 
-		gw_node = list_entry(pos, struct gw_node, list);
+		gw_node = list_entry( pos, struct gw_node, list );
 
 		/* ignore this gateway if recent connection attempts were unsuccessful */
-		if ( ( gw_node->unavail_factor * gw_node->unavail_factor * 30000 ) + gw_node->last_failure > get_time() )
+		if ( ( gw_node->unavail_factor * gw_node->unavail_factor * 30000 ) + gw_node->last_failure > current_time )
 			continue;
 
 		if ( gw_node->orig_node->router == NULL )
@@ -391,13 +372,12 @@ void choose_gw() {
 					tmp_curr_gw = gw_node;
 				break;
 
-			case 2:   /* stable connection */
-				/* FIXME - not implemented yet */
-				if ( ( ( gw_node->orig_node->router->packet_count * gw_node->orig_node->gwflags ) > max_gw_factor ) || ( ( ( gw_node->orig_node->router->packet_count * gw_node->orig_node->gwflags ) == max_gw_factor ) && ( gw_node->orig_node->router->packet_count > max_packets ) ) )
+			case 2:   /* stable connection (use best statistic) */
+				if ( gw_node->orig_node->router->packet_count > max_packets )
 					tmp_curr_gw = gw_node;
 				break;
 
-			default:  /* use best statistic (olsr style) */
+			default:  /* fast-switch (use best statistic but change as soon as a better gateway appears) */
 				if ( gw_node->orig_node->router->packet_count > max_packets )
 					tmp_curr_gw = gw_node;
 				break;
@@ -418,7 +398,7 @@ void choose_gw() {
 			tmp_curr_gw = gw_node;
 
 			addr_to_string( tmp_curr_gw->orig_node->orig, orig_str, ADDR_STR_LEN );
-			debug_output( 3, "Preferred gateway found: %s (%i,%i,%i)\n", orig_str, gw_node->orig_node->gwflags, gw_node->orig_node->router->packet_count, ( gw_node->orig_node->router->packet_count * gw_node->orig_node->gwflags ) );
+			debug_output( 3, "Preferred gateway found: %s (gw_flags: %i, packet_count: %i, gw_product: %i)\n", orig_str, gw_node->orig_node->gwflags, gw_node->orig_node->router->packet_count, ( gw_node->orig_node->router->packet_count * gw_node->orig_node->gwflags ) );
 
 			break;
 
@@ -559,6 +539,7 @@ void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags ) {
 	struct list_head *gw_pos, *gw_pos_tmp;
 	struct gw_node *gw_node;
 	static char orig_str[ADDR_STR_LEN];
+	int download_speed, upload_speed;
 
 	list_for_each_safe( gw_pos, gw_pos_tmp, &gw_list ) {
 
@@ -591,7 +572,9 @@ void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags ) {
 	}
 
 	addr_to_string( orig_node->orig, orig_str, ADDR_STR_LEN );
-	debug_output( 3, "Found new gateway %s -> class: %i - %s\n", orig_str, new_gwflags, gw2string[new_gwflags] );
+	get_gw_speeds( new_gwflags, &download_speed, &upload_speed );
+
+	debug_output( 3, "Found new gateway %s -> class: %i - %i%s/%i%s\n", orig_str, new_gwflags, ( download_speed > 2048 ? download_speed / 1024 : download_speed ), ( download_speed > 2048 ? "MBit" : "KBit" ), ( upload_speed > 2048 ? upload_speed / 1024 : upload_speed ), ( upload_speed > 2048 ? "MBit" : "KBit" ) );
 
 	gw_node = debugMalloc( sizeof(struct gw_node), 103 );
 	memset( gw_node, 0, sizeof(struct gw_node) );
@@ -606,6 +589,68 @@ void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags ) {
 	prof_stop( PROF_update_gw_list );
 
 	choose_gw();
+
+}
+
+
+
+/* returns the up and downspeeds in kbit, calculated from the class */
+void get_gw_speeds( unsigned char class, int *down, int *up ) {
+
+	char sbit    = (class&0x80)>>7;
+	char dpart   = (class&0x7C)>>3;
+	char upart   = (class&0x07);
+
+	*down= 32*(sbit+2)*(1<<dpart);
+	*up=   ((upart+1)*(*down))/8;
+
+}
+
+
+
+/* calculates the gateway class from kbit */
+unsigned char get_gw_class( int down, int up ) {
+
+	int mdown = 0, tdown, tup, difference = 0x0FFFFFFF;
+	unsigned char class = 0, sbit, part;
+
+
+	/* test all downspeeds */
+	for ( sbit = 0; sbit < 2; sbit++ ) {
+
+		for ( part = 0; part < 16; part++ ) {
+
+			tdown = 32 * ( sbit + 2 ) * ( 1<<part );
+
+			if ( abs( tdown - down ) < difference ) {
+
+				class = ( sbit<<7 ) + ( part<<3 );
+				difference = abs( tdown - down );
+				mdown = tdown;
+
+			}
+
+		}
+
+	}
+
+	/* test all upspeeds */
+	difference = 0x0FFFFFFF;
+
+	for ( part = 0; part < 8; part++ ) {
+
+		tup = ( ( part+1 ) * ( mdown ) ) / 8;
+
+		if ( abs( tup - up ) < difference ) {
+
+			class = ( class&0xF8 ) | part;
+			difference = abs( tup - up );
+
+		}
+
+	}
+
+	return class;
 
 }
 
@@ -636,6 +681,8 @@ int isDuplicate( struct orig_node *orig_node, uint16_t seqno, uint32_t neigh, st
 
 }
 
+
+
 int isBntog( uint32_t neigh, struct orig_node *orig_tog_node ) {
 
 	if ( ( orig_tog_node->router != NULL ) && ( orig_tog_node->router->addr == neigh ) )
@@ -645,9 +692,11 @@ int isBntog( uint32_t neigh, struct orig_node *orig_tog_node ) {
 
 }
 
+
+
 int isBidirectionalNeigh( struct orig_node *orig_neigh_node, struct batman_if *if_incoming ) {
 
-	if ( ((uint16_t)( (if_incoming->out.bat_packet.seqno - OUT_SEQNO_OFFSET) - orig_neigh_node->bidirect_link[if_incoming->if_num] )) < bidirect_link_to )
+	if ( ((uint16_t)( (if_incoming->out.seqno - OUT_SEQNO_OFFSET) - orig_neigh_node->bidirect_link[if_incoming->if_num] )) < bidirect_link_to )
 		return 1;
 
 	return 0;
@@ -660,41 +709,101 @@ void generate_vis_packet() {
 
 	struct hash_it_t *hashit = NULL;
 	struct orig_node *orig_node;
+	struct vis_data *vis_data;
+	struct list_head *list_pos;
+	struct batman_if *batman_if;
+	struct hna_node *hna_node;
 
 
-	if ( vis_packet != NULL )
+	if ( vis_packet != NULL ) {
+
 		debugFree( vis_packet, 1102 );
+		vis_packet = NULL;
+		vis_packet_size = 0;
 
-	/* sender ip and gateway class */
-	vis_packet_size = 6;
+	}
+
+	vis_packet_size = sizeof(struct vis_packet);
 	vis_packet = debugMalloc( vis_packet_size, 104 );
 
-	memcpy( vis_packet, (unsigned char *)&(((struct batman_if *)if_list.next)->addr.sin_addr.s_addr), 4 );
-	vis_packet[4] = gateway_class;
-	vis_packet[5] = sequence_range;
+	memcpy( &((struct vis_packet *)vis_packet)->sender_ip, (unsigned char *)&(((struct batman_if *)if_list.next)->addr.sin_addr.s_addr), 4 );
 
+	((struct vis_packet *)vis_packet)->version = VIS_COMPAT_VERSION;
+	((struct vis_packet *)vis_packet)->gw_class = gateway_class;
+	((struct vis_packet *)vis_packet)->seq_range = sequence_range;
 
+	/* neighbor list */
 	while ( NULL != ( hashit = hash_iterate( orig_hash, hashit ) ) ) {
 
 		orig_node = hashit->bucket->data;
 
 		/* we interested in 1 hop neighbours only */
-		if ( ( orig_node->router != NULL ) && ( orig_node->orig == orig_node->router->addr ) ) {
+		if ( ( orig_node->router != NULL ) && ( orig_node->orig == orig_node->router->addr ) && ( orig_node->router->packet_count > 0 ) ) {
 
-			/* neighbour ip and packet count */
-			vis_packet_size += 5;
+			vis_packet_size += sizeof(struct vis_data);
 
 			vis_packet = debugRealloc( vis_packet, vis_packet_size, 105 );
 
-			memcpy( vis_packet + vis_packet_size - 5, (unsigned char *)&orig_node->orig, 4 );
+			vis_data = (struct vis_data *)(vis_packet + vis_packet_size - sizeof(struct vis_data));
 
-			vis_packet[vis_packet_size - 1] = orig_node->router->packet_count;
+			memcpy( &vis_data->ip, (unsigned char *)&orig_node->orig, 4 );
+
+			vis_data->data = orig_node->router->packet_count;
+			vis_data->type = DATA_TYPE_NEIGH;
 
 		}
 
 	}
 
-	if ( vis_packet_size == 6 ) {
+	/* secondary interfaces */
+	if ( found_ifs > 1 ) {
+
+		list_for_each( list_pos, &if_list ) {
+
+			batman_if = list_entry( list_pos, struct batman_if, list );
+
+			if ( ((struct vis_packet *)vis_packet)->sender_ip == batman_if->addr.sin_addr.s_addr )
+				continue;
+
+			vis_packet_size += sizeof(struct vis_data);
+
+			vis_packet = debugRealloc( vis_packet, vis_packet_size, 106 );
+
+			vis_data = (struct vis_data *)(vis_packet + vis_packet_size - sizeof(struct vis_data));
+
+			memcpy( &vis_data->ip, (unsigned char *)&batman_if->addr.sin_addr.s_addr, 4 );
+
+			vis_data->data = 0;
+			vis_data->type = DATA_TYPE_SEC_IF;
+
+		}
+
+	}
+
+	/* hna announcements */
+	if ( num_hna > 0 ) {
+
+		list_for_each( list_pos, &hna_list ) {
+
+			hna_node = list_entry( list_pos, struct hna_node, list );
+
+			vis_packet_size += sizeof(struct vis_data);
+
+			vis_packet = debugRealloc( vis_packet, vis_packet_size, 107 );
+
+			vis_data = (struct vis_data *)(vis_packet + vis_packet_size - sizeof(struct vis_data));
+
+			memcpy( &vis_data->ip, (unsigned char *)&hna_node->addr, 4 );
+
+			vis_data->data = hna_node->netmask;
+			vis_data->type = DATA_TYPE_HNA;
+
+		}
+
+	}
+
+
+	if ( vis_packet_size == sizeof(struct vis_packet) ) {
 
 		debugFree( vis_packet, 1107 );
 		vis_packet = NULL;
@@ -719,7 +828,7 @@ void send_vis_packet() {
 
 int8_t batman() {
 
-	struct list_head *if_pos, *neigh_pos, *hna_pos, *hna_pos_tmp, *forw_pos, *forw_pos_tmp;
+	struct list_head *list_pos, *hna_pos_tmp, *forw_pos_tmp;
 	struct orig_node *orig_neigh_node, *orig_node;
 	struct batman_if *batman_if, *if_incoming;
 	struct neigh_node *neigh_node;
@@ -752,9 +861,9 @@ int8_t batman() {
 
 	if ( !( list_empty( &hna_list ) ) ) {
 
-		list_for_each( hna_pos, &hna_list ) {
+		list_for_each( list_pos, &hna_list ) {
 
-			hna_node = list_entry(hna_pos, struct hna_node, list);
+			hna_node = list_entry( list_pos, struct hna_node, list );
 
 			hna_buff = debugRealloc( hna_buff, ( num_hna + 1 ) * 5 * sizeof( unsigned char ), 15 );
 
@@ -767,30 +876,16 @@ int8_t batman() {
 
 	}
 
-	list_for_each( if_pos, &if_list ) {
+	list_for_each( list_pos, &if_list ) {
 
-		batman_if = list_entry( if_pos, struct batman_if, list );
-
-		batman_if->out.ip.version = 4;
-		batman_if->out.ip.ihl = 5;
-		batman_if->out.ip.tos = 0;
-		batman_if->out.ip.frag_off = 0;
-		batman_if->out.ip.ttl = 64;
-		batman_if->out.ip.protocol = IPPROTO_UDP;
-		batman_if->out.ip.saddr = batman_if->addr.sin_addr.s_addr;
-		batman_if->out.ip.daddr = batman_if->broad.sin_addr.s_addr;
-
-		batman_if->out.udp.source = htons( PORT );
-		batman_if->out.udp.dest = htons( PORT );
-		batman_if->out.udp.len = htons( (u_short)( sizeof(struct orig_packet) - sizeof(struct iphdr) ) );
-		batman_if->out.udp.check = 0;
-
-		batman_if->out.bat_packet.orig = batman_if->addr.sin_addr.s_addr;
-		batman_if->out.bat_packet.flags = 0x00;
-		batman_if->out.bat_packet.ttl = batman_if->if_ttl;
-		batman_if->out.bat_packet.seqno = 1;
-		batman_if->out.bat_packet.gwflags = gateway_class;
-		batman_if->out.bat_packet.version = COMPAT_VERSION;
+		batman_if = list_entry( list_pos, struct batman_if, list );
+		
+		batman_if->out.orig = batman_if->addr.sin_addr.s_addr;
+		batman_if->out.flags = 0x00;
+		batman_if->out.ttl = batman_if->if_ttl;
+		batman_if->out.seqno = 1;
+		batman_if->out.gwflags = gateway_class;
+		batman_if->out.version = COMPAT_VERSION;
 
 		batman_if->if_rp_filter_old = get_rp_filter( batman_if->dev );
 		set_rp_filter( 0 , batman_if->dev );
@@ -825,7 +920,7 @@ int8_t batman() {
 		curr_time = get_time();
 		select_timeout = ( curr_time < ((struct forw_node *)forw_list.next)->send_time ? ((struct forw_node *)forw_list.next)->send_time - curr_time : 10 );
 
-		res = receive_packet( in + sizeof(struct iphdr) + sizeof(struct udphdr), sizeof(in) - sizeof(struct iphdr) - sizeof(struct udphdr), &hna_buff_len, &neigh, select_timeout, &if_incoming );
+		res = receive_packet( in, sizeof(in), &hna_buff_len, &neigh, select_timeout, &if_incoming );
 
 		if ( res < 0 )
 			return -1;
@@ -834,32 +929,32 @@ int8_t batman() {
 
 			curr_time = get_time();
 
-			addr_to_string( ((struct orig_packet *)&in)->bat_packet.orig, orig_str, sizeof(orig_str) );
+			addr_to_string( ((struct bat_packet *)&in)->orig, orig_str, sizeof(orig_str) );
 			addr_to_string( neigh, neigh_str, sizeof(neigh_str) );
 			addr_to_string( if_incoming->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
 
 			is_my_addr = is_my_orig = is_broadcast = is_duplicate = is_bidirectional = is_accepted = is_direct_neigh = is_bntog = forward_duplicate_packet = 0;
 
-			has_unidirectional_flag = ((struct orig_packet *)&in)->bat_packet.flags & UNIDIRECTIONAL_FLAG ? 1 : 0;
-			has_directlink_flag = ((struct orig_packet *)&in)->bat_packet.flags & DIRECTLINK_FLAG ? 1 : 0;
-			has_duplicated_flag = ((struct orig_packet *)&in)->bat_packet.flags & DUPLICATED_FLAG ? 1 : 0;
-			has_version = ((struct orig_packet *)&in)->bat_packet.version;
+			has_unidirectional_flag = ((struct bat_packet *)&in)->flags & UNIDIRECTIONAL_FLAG ? 1 : 0;
+			has_directlink_flag = ((struct bat_packet *)&in)->flags & DIRECTLINK_FLAG ? 1 : 0;
+			has_duplicated_flag = ((struct bat_packet *)&in)->flags & DUPLICATED_FLAG ? 1 : 0;
+			has_version = ((struct bat_packet *)&in)->version;
 
-			is_direct_neigh = (((struct orig_packet *)&in)->bat_packet.orig == neigh) ? 1 : 0;
+			is_direct_neigh = (((struct bat_packet *)&in)->orig == neigh) ? 1 : 0;
 
-			debug_output( 4, "Received BATMAN packet via NB: %s , IF: %s %s (from OG: %s, seqno %d, TTL %d, V %d, UDF %d, IDF %d, DPF %d) \n", neigh_str, if_incoming->dev, ifaddr_str, orig_str, ((struct orig_packet *)&in)->bat_packet.seqno, ((struct orig_packet *)&in)->bat_packet.ttl, has_version, has_unidirectional_flag, has_directlink_flag, has_duplicated_flag );
+			debug_output( 4, "Received BATMAN packet via NB: %s , IF: %s %s (from OG: %s, seqno %d, TTL %d, V %d, UDF %d, IDF %d, DPF %d) \n", neigh_str, if_incoming->dev, ifaddr_str, orig_str, ((struct bat_packet *)&in)->seqno, ((struct bat_packet *)&in)->ttl, has_version, has_unidirectional_flag, has_directlink_flag, has_duplicated_flag );
 
 			hna_buff_len -= sizeof(struct bat_packet);
-			hna_recv_buff = ( hna_buff_len > 4 ? in + sizeof(struct orig_packet) : NULL );
+			hna_recv_buff = ( hna_buff_len > 4 ? in + sizeof(struct bat_packet) : NULL );
 
-			list_for_each( if_pos, &if_list ) {
+			list_for_each( list_pos, &if_list ) {
 
-				batman_if = list_entry(if_pos, struct batman_if, list);
+				batman_if = list_entry( list_pos, struct batman_if, list );
 
 				if ( neigh == batman_if->addr.sin_addr.s_addr )
 					is_my_addr = 1;
 
-				if ( ((struct orig_packet *)&in)->bat_packet.orig == batman_if->addr.sin_addr.s_addr )
+				if ( ((struct bat_packet *)&in)->orig == batman_if->addr.sin_addr.s_addr )
 					is_my_orig = 1;
 
 				if ( neigh == batman_if->broad.sin_addr.s_addr )
@@ -868,8 +963,8 @@ int8_t batman() {
 			}
 
 
-			if ( ((struct orig_packet *)&in)->bat_packet.gwflags != 0 )
-				debug_output( 4, "Is an internet gateway (class %i) \n", ((struct orig_packet *)&in)->bat_packet.gwflags );
+			if ( ((struct bat_packet *)&in)->gwflags != 0 )
+				debug_output( 4, "Is an internet gateway (class %i) \n", ((struct bat_packet *)&in)->gwflags );
 
 			if ( hna_buff_len > 4 ) {
 
@@ -881,7 +976,7 @@ int8_t batman() {
 					memmove( &hna, ( uint32_t *)&hna_recv_buff[ hna_buff_count * 5 ], 4 );
 					netmask = ( uint32_t )hna_recv_buff[ ( hna_buff_count * 5 ) + 4 ];
 
-					addr_to_string( hna, orig_str, sizeof (orig_str) );
+					addr_to_string( hna, orig_str, sizeof(orig_str) );
 
 					if ( ( netmask > 0 ) && ( netmask < 33 ) )
 						debug_output( 4, "hna: %s/%i\n", orig_str, netmask );
@@ -894,9 +989,9 @@ int8_t batman() {
 
 			}
 
-			if ( ((struct orig_packet *)&in)->bat_packet.version != COMPAT_VERSION ) {
+			if ( ((struct bat_packet *)&in)->version != COMPAT_VERSION ) {
 
-				debug_output( 4, "Drop packet: incompatible batman version (%i) \n", ((struct orig_packet *)&in)->bat_packet.version );
+				debug_output( 4, "Drop packet: incompatible batman version (%i) \n", ((struct bat_packet *)&in)->version );
 
 			} else if ( is_my_addr ) {
 
@@ -910,18 +1005,18 @@ int8_t batman() {
 
 				orig_neigh_node = get_orig_node( neigh );
 
-				debug_output( 4, "received my own OGM via NB lastTxIfSeqno: %d, currRxSeqno: %d, prevRxSeqno: %d, currRxSeqno-prevRxSeqno %d \n", ( if_incoming->out.bat_packet.seqno - OUT_SEQNO_OFFSET ), ((struct orig_packet *)&in)->bat_packet.seqno, orig_neigh_node->bidirect_link[if_incoming->if_num], ((struct orig_packet *)&in)->bat_packet.seqno - orig_neigh_node->bidirect_link[if_incoming->if_num] );
+				debug_output( 4, "received my own OGM via NB lastTxIfSeqno: %d, currRxSeqno: %d, prevRxSeqno: %d, currRxSeqno-prevRxSeqno %d \n", ( if_incoming->out.seqno - OUT_SEQNO_OFFSET ), ((struct bat_packet *)&in)->seqno, orig_neigh_node->bidirect_link[if_incoming->if_num], ((struct bat_packet *)&in)->seqno - orig_neigh_node->bidirect_link[if_incoming->if_num] );
 
 				/* neighbour has to indicate direct link and it has to come via the corresponding interface */
 				/* if received seqno equals last send seqno save new seqno for bidirectional check */
 				if ( ( has_directlink_flag ) &&
-					( if_incoming->addr.sin_addr.s_addr == ((struct orig_packet *)&in)->bat_packet.orig ) &&
-					( ((struct orig_packet *)&in)->bat_packet.seqno == ( if_incoming->out.bat_packet.seqno - OUT_SEQNO_OFFSET ) ) &&
+					( if_incoming->addr.sin_addr.s_addr == ((struct bat_packet *)&in)->orig ) &&
+					( ((struct bat_packet *)&in)->seqno == ( if_incoming->out.seqno - OUT_SEQNO_OFFSET ) ) &&
 				   	( !has_duplicated_flag ) ) {
 
 					update_bi_link_bits( orig_neigh_node, if_incoming, YES, NO );
 
-					orig_neigh_node->bidirect_link[if_incoming->if_num] = ( if_incoming->out.bat_packet.seqno - OUT_SEQNO_OFFSET );
+					orig_neigh_node->bidirect_link[if_incoming->if_num] = ( if_incoming->out.seqno - OUT_SEQNO_OFFSET );
 
 					debug_output( 4, "indicating bidirectional link - updating bidirect_link seqno \n");
 
@@ -933,42 +1028,42 @@ int8_t batman() {
 
 				debug_output( 4, "Drop packet: originator packet from myself (via neighbour) \n" );
 
-			} else if ( ((struct orig_packet *)&in)->bat_packet.flags & UNIDIRECTIONAL_FLAG ) {
+			} else if ( ((struct bat_packet *)&in)->flags & UNIDIRECTIONAL_FLAG ) {
 
 				debug_output( 4, "Drop packet: originator packet with unidirectional flag \n" );
 
 			} else {
 
-				orig_node = get_orig_node( ((struct orig_packet *)&in)->bat_packet.orig );
+				orig_node = get_orig_node( ((struct bat_packet *)&in)->orig );
 
 				/* if sender is a direct neighbor the sender ip equals originator ip */
 				orig_neigh_node = ( is_direct_neigh ? orig_node : get_orig_node( neigh ) );
 
 				/* drop packet if sender is not a direct neighbor and if we have no route towards the rebroadcasting neighbor */
-				if ( ( ((struct orig_packet *)&in)->bat_packet.orig != neigh ) && ( orig_neigh_node->router == NULL ) ) {
+				if ( ( ((struct bat_packet *)&in)->orig != neigh ) && ( orig_neigh_node->router == NULL ) ) {
 
 					debug_output( 4, "Drop packet: OGM via unkown neighbor! \n" );
 
-				} else if ( ((struct orig_packet *)&in)->bat_packet.ttl == 0 ) {
+				} else if ( ((struct bat_packet *)&in)->ttl == 0 ) {
 
 					debug_output( 4, "Drop packet: TTL of zero! \n" );
 
-				} else if ( ( ((struct orig_packet *)&in)->bat_packet.seqno - orig_node->last_seqno ) > ( FULL_SEQ_RANGE - sequence_range ) ) {
+				} else if ( ( ((struct bat_packet *)&in)->seqno - orig_node->last_seqno ) > ( FULL_SEQ_RANGE - sequence_range ) ) {
 
-					debug_output( 4, "Drop packet: OGM with old seqno: %i, latest was: %i! \n", orig_node->last_seqno, ((struct orig_packet *)&in)->bat_packet.seqno );
+					debug_output( 4, "Drop packet: OGM with old seqno: %i, latest was: %i! \n", orig_node->last_seqno, ((struct bat_packet *)&in)->seqno );
 
-				} else if ( isDuplicate( orig_node, ((struct orig_packet *)&in)->bat_packet.seqno, neigh, if_incoming ) ) {
+				} else if ( isDuplicate( orig_node, ((struct bat_packet *)&in)->seqno, neigh, if_incoming ) ) {
 
 					debug_output( 4, "Drop packet: Already received this OGM and SEQNO via this link neighbor ! \n" );
 
 				} else {
 
-					is_duplicate = isDuplicate( orig_node, ((struct orig_packet *)&in)->bat_packet.seqno, 0, NULL );
+					is_duplicate = isDuplicate( orig_node, ((struct bat_packet *)&in)->seqno, 0, NULL );
 
 					is_bidirectional = isBidirectionalNeigh( orig_neigh_node, if_incoming );
 					
 					if ( is_bidirectional )
-						update_lq_bits( orig_node, 1, ((struct orig_packet *)&in)->bat_packet.seqno, if_incoming,
+						update_lq_bits( orig_node, 1, ((struct bat_packet *)&in)->seqno, if_incoming,
 							( ( !has_duplicated_flag && is_direct_neigh ) ? 1 : 0 ), NO );
 
 					nlq_rate_value = nlq_rate( orig_neigh_node, if_incoming );
@@ -981,18 +1076,18 @@ int8_t batman() {
 
 					/* update ranking */
 					if ( is_accepted && !is_duplicate )
-						update_orig( orig_node, (struct bat_packet *)(in + sizeof(struct iphdr) + sizeof(struct udphdr)), neigh,
+						update_orig( orig_node, (struct bat_packet *)in , neigh,
 							if_incoming, hna_recv_buff, hna_buff_len, curr_time );
 
 					is_bntog = isBntog( neigh, orig_node );
 
 					/* is single hop (direct) neighbour */
-					if ( ((struct orig_packet *)&in)->bat_packet.orig == neigh ) {
+					if ( ((struct bat_packet *)&in)->orig == neigh ) {
 
 						/* we are an asocial mobile device and dont want to forward other nodes packet */
 						if( mobile_device ) {
 
-							schedule_forward_packet( (struct orig_packet *)&in, 1, 1, has_duplicated_flag, hna_recv_buff, hna_buff_len, if_incoming );
+							schedule_forward_packet( (struct bat_packet *)in, 1, 1, has_duplicated_flag, hna_recv_buff, hna_buff_len, if_incoming );
 
 							debug_output( 4, "Forward packet: with mobile device policy: rebroadcast neighbour packet with direct link and unidirectional flag \n" );
 
@@ -1000,7 +1095,7 @@ int8_t batman() {
 						} else if ( is_accepted && is_bntog ) {
 
 							/* mark direct link on incoming interface */
-							schedule_forward_packet( (struct orig_packet *)&in, 0, 1, has_duplicated_flag, hna_recv_buff, hna_buff_len, if_incoming );
+							schedule_forward_packet( (struct bat_packet *)in, 0, 1, has_duplicated_flag, hna_recv_buff, hna_buff_len, if_incoming );
 
 							debug_output( 4, "Forward packet: rebroadcast neighbour packet with direct link flag \n" );
 
@@ -1008,7 +1103,7 @@ int8_t batman() {
 						/* if a bidirectional neighbour sends us a packet - retransmit it with unidirectional flag if it is not our best link to it in order to prevent routing problems */
 						} else if ( ( is_accepted && !is_bntog ) || ( !is_accepted ) ) {
 
-							schedule_forward_packet( (struct orig_packet *)&in, 1, 1, has_duplicated_flag, hna_recv_buff, hna_buff_len, if_incoming );
+							schedule_forward_packet( (struct bat_packet *)in, 1, 1, has_duplicated_flag, hna_recv_buff, hna_buff_len, if_incoming );
 
 							debug_output( 4, "Forward packet: rebroadcast neighbour packet with direct link and unidirectional flag \n" );
 
@@ -1021,19 +1116,19 @@ int8_t batman() {
 
 							if ( !is_duplicate ) {
 
-								schedule_forward_packet( (struct orig_packet *)&in, 0, 0, has_duplicated_flag, hna_recv_buff, hna_buff_len, if_incoming );
+								schedule_forward_packet( (struct bat_packet *)in, 0, 0, has_duplicated_flag, hna_recv_buff, hna_buff_len, if_incoming );
 
 								debug_output( 4, "Forward packet: rebroadcast originator packet \n" );
 
 							} else { /* is_bntog anyway */
 
-								list_for_each( neigh_pos, &orig_node->neigh_list ) {
+								list_for_each( list_pos, &orig_node->neigh_list ) {
 
-									neigh_node = list_entry(neigh_pos, struct neigh_node, list);
+									neigh_node = list_entry( list_pos, struct neigh_node, list );
 
 									if ( ( neigh_node->addr == neigh ) && ( neigh_node->if_incoming == if_incoming ) ) {
 
-										if ( neigh_node->last_ttl == ((struct orig_packet *)&in)->bat_packet.ttl ) {
+										if ( neigh_node->last_ttl == ((struct bat_packet *)&in)->ttl ) {
 
 											forward_duplicate_packet = 1;
 
@@ -1052,13 +1147,13 @@ int8_t batman() {
 								/* we are forwarding duplicate o-packets if they come via our best neighbour and ttl is valid */
 								if ( forward_duplicate_packet ) {
 
-									schedule_forward_packet( (struct orig_packet *)&in, 0, 0, has_duplicated_flag, hna_recv_buff, hna_buff_len, if_incoming );
+									schedule_forward_packet( (struct bat_packet *)in, 0, 0, has_duplicated_flag, hna_recv_buff, hna_buff_len, if_incoming );
 
 									debug_output( 4, "Forward packet: duplicate packet received via best neighbour with best ttl \n" );
 
 									/* this is for remembering the actual re-broadcasted non-unidirectional OGMs */
 									bit_mark( orig_node->send_old_seq_bits,
-										-( ((struct orig_packet *)&in)->bat_packet.seqno - orig_node->last_seqno ) );
+										-( ((struct bat_packet *)&in)->seqno - orig_node->last_seqno ) );
 
 								} else {
 
@@ -1122,9 +1217,9 @@ int8_t batman() {
 	hash_destroy( orig_hash );
 
 
-	list_for_each_safe( hna_pos, hna_pos_tmp, &hna_list ) {
+	list_for_each_safe( list_pos, hna_pos_tmp, &hna_list ) {
 
-		hna_node = list_entry(hna_pos, struct hna_node, list);
+		hna_node = list_entry( list_pos, struct hna_node, list );
 
 		debugFree( hna_node, 1103 );
 
@@ -1134,11 +1229,11 @@ int8_t batman() {
 		debugFree( hna_buff, 1104 );
 
 
-	list_for_each_safe( forw_pos, forw_pos_tmp, &forw_list ) {
+	list_for_each_safe( list_pos, forw_pos_tmp, &forw_list ) {
 
-		forw_node = list_entry( forw_pos, struct forw_node, list );
+		forw_node = list_entry( list_pos, struct forw_node, list );
 
-		list_del( (struct list_head *)&forw_list, forw_pos, &forw_list );
+		list_del( (struct list_head *)&forw_list, list_pos, &forw_list );
 
 		debugFree( forw_node->pack_buff, 1105 );
 		debugFree( forw_node, 1106 );
@@ -1150,9 +1245,9 @@ int8_t batman() {
 
 	set_forwarding( forward_old );
 
-	list_for_each( if_pos, &if_list ) {
+	list_for_each( list_pos, &if_list ) {
 
-		batman_if = list_entry(if_pos, struct batman_if, list);
+		batman_if = list_entry( list_pos, struct batman_if, list );
 
 		set_rp_filter( batman_if->if_rp_filter_old , batman_if->dev );
 		set_send_redirects( batman_if->if_send_redirects_old , batman_if->dev );

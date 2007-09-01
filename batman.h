@@ -24,16 +24,16 @@
 
 #include <sys/types.h>
 #include <netinet/in.h>
-#include <netinet/ip.h>
-#include <netinet/udp.h>
 #include <pthread.h>
 #include <sys/un.h>
 #include <stdint.h>
+
 #include "list-batman.h"
 #include "bitarray.h"
 #include "hash.h"
 #include "allocate.h"
 #include "profile.h"
+#include "vis-types.h"
 
 
 
@@ -48,6 +48,9 @@
 #define ADDR_STR_LEN 16
 
 #define UNIX_PATH "/var/run/batmand.socket"
+
+#define VIS_COMPAT_VERSION 20
+
 
 #define MAX_DBG_STR_SIZE 1023
 #define OUT_SEQNO_OFFSET 2
@@ -138,6 +141,7 @@
 
 
 
+
 /***
  *
  * Things you should leave as is unless your know what you are doing !
@@ -164,6 +168,7 @@
 
 
 
+extern char *prog_name;
 extern uint8_t debug_level;
 extern uint8_t debug_level_max;
 extern uint8_t gateway_class;
@@ -211,8 +216,6 @@ extern struct vis_if vis_if;
 extern struct unix_if unix_if;
 extern struct debug_clients debug_clients;
 
-extern char *gw2string[];
-
 
 struct bat_packet
 {
@@ -222,12 +225,6 @@ struct bat_packet
 	uint16_t seqno;
 	uint8_t  gwflags;  /* flags related to gateway functions: gateway class */
 	uint8_t  version;  /* batman version field */
-} __attribute__((packed));
-
-struct orig_packet {
-	struct iphdr ip;
-	struct udphdr udp;
-	struct bat_packet bat_packet;
 } __attribute__((packed));
 
 struct orig_node                 /* structure for orig_list maintaining nodes of mesh */
@@ -303,9 +300,9 @@ struct batman_if
 	struct sockaddr_in broad;
 	uint32_t netaddr;
 	uint8_t netmask;
+	struct bat_packet out;
 	uint8_t if_ttl;
 	uint8_t send_ogm_only_via_owning_if;
-	struct orig_packet out;
 };
 
 struct gw_client
@@ -356,6 +353,8 @@ void verbose_usage( void );
 int is_batman_if( char *dev, struct batman_if **batman_if );
 void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, unsigned char *hna_recv_buff, int16_t hna_buff_len );
 void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags );
+void get_gw_speeds( unsigned char class, int *down, int *up );
+unsigned char get_gw_class( int down, int up );
 void choose_gw();
 
 

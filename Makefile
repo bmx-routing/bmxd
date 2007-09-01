@@ -33,21 +33,21 @@ OS_C=	 linux/route.c linux/tun.c linux/kernel.c $(POSIX_C)
 endif
 
 ifeq ($(UNAME),Darwin)
-OS_C=	bsd/bsd.c $(POSIX_C)
+OS_C=	bsd/route.c bsd/tun.c bsd/kernel.c bsd/compat.c $(POSIX_C)
 endif
 
 ifeq ($(UNAME),FreeBSD)
-OS_C=	bsd/bsd.c $(POSIX_C)
+OS_C=	bsd/route.c bsd/tun.c bsd/kernel.c bsd/compat.c $(POSIX_C)
 endif
 
 ifeq ($(UNAME),OpenBSD)
-OS_C=	bsd/bsd.c $(POSIX_C)
+OS_C=	bsd/route.c bsd/tun.c bsd/kernel.c bsd/compat.c $(POSIX_C)
 endif
 
 LOG_BRANCH= trunk/batman-experimental
 
 SRC_C= batman.c originator.c schedule.c list-batman.c allocate.c bitarray.c hash.c profile.c $(OS_C)
-SRC_H= batman.h originator.h schedule.h list-batman.h os.h allocate.h bitarray.h hash.h profile.h
+SRC_H= batman.h originator.h schedule.h list-batman.h os.h allocate.h bitarray.h hash.h profile.h vis-types.h
 
 PACKAGE_NAME=	batmand-exp
 BINARY_NAME=	batmand

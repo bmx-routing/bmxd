@@ -27,7 +27,9 @@
 #include <errno.h>
 #include <signal.h>
 #include <paths.h>
+#include <string.h>
 #include <sys/ioctl.h>
+#include <sys/socket.h>
 #include <net/if.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
@@ -36,7 +38,7 @@
 #include "../os.h"
 #include "../batman.h"
 
-
+#define IOCSETDEV 1
 
 int8_t stop;
 
@@ -49,7 +51,7 @@ int my_daemon() {
 	switch( fork() ) {
 
 		case -1:
-			return(-1);
+			return -1;
 
 		case 0:
 			break;
@@ -79,7 +81,7 @@ int my_daemon() {
 
 	}
 
-	return(0);
+	return 0;
 
 }
 
@@ -91,17 +93,20 @@ void apply_init_args( int argc, char *argv[] ) {
 	struct batman_if *batman_if;
 	struct hna_node *hna_node;
 	struct debug_level_info *debug_level_info;
+	struct list_head *list_pos;
 	uint8_t found_args = 1, batch_mode = 0;
 	uint16_t netmask;
 	int8_t res;
 
-	int32_t optchar, recv_buff_len, bytes_written;
+	int32_t optchar, recv_buff_len, bytes_written, download_speed = 0, upload_speed = 0;
 	char str1[16], str2[16], *slash_ptr, *unix_buff, *buff_ptr, *cr_ptr;
+	char routing_class_opt = 0, gateway_class_opt = 0, pref_gw_opt = 0;
 	uint32_t vis_server = 0;
 
 
 	memset( &tmp_ip_holder, 0, sizeof (struct in_addr) );
 	stop = 0;
+	prog_name = argv[0];
 
 
 	printf( "WARNING: You are using the experimental batman branch. If you are interested in *using* batman get the latest stable release !\n" );
@@ -327,7 +332,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 				*slash_ptr = '\0';
 
-				if ( inet_pton(AF_INET, optarg, &tmp_ip_holder) < 1 ) {
+				if ( inet_pton( AF_INET, optarg, &tmp_ip_holder ) < 1 ) {
 
 					*slash_ptr = '/';
 					printf( "Invalid announced network (IP is invalid): %s\n", optarg );
@@ -336,11 +341,14 @@ void apply_init_args( int argc, char *argv[] ) {
 				}
 
 				errno = 0;
-				netmask = strtol(slash_ptr + 1, NULL , 10);
+
+				netmask = strtol( slash_ptr + 1, NULL, 10 );
 
 				if ( ( errno == ERANGE ) || ( errno != 0 && netmask == 0 ) ) {
+
 					perror("strtol");
 					exit(EXIT_FAILURE);
+
 				}
 
 				if ( netmask < 1 || netmask > 32 ) {
@@ -376,16 +384,21 @@ void apply_init_args( int argc, char *argv[] ) {
 			case 'd':
 
 				errno = 0;
-				debug_level = strtol (optarg, NULL , 10);
+
+				debug_level = strtol( optarg, NULL, 10 );
 
 				if ( ( errno == ERANGE ) || ( errno != 0 && debug_level == 0 ) ) {
+
 					perror("strtol");
 					exit(EXIT_FAILURE);
+
 				}
 
 				if ( debug_level > debug_level_max ) {
+
 					printf( "Invalid debug level: %i\nDebug level has to be between 0 and %i.\n", debug_level, debug_level_max );
 					exit(EXIT_FAILURE);
+
 				}
 
 				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
@@ -393,19 +406,43 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			case 'g':
 
-				errno = 0;
-				gateway_class = strtol(optarg, NULL , 10);
+				if ( ( slash_ptr = strchr( optarg, '/' ) ) != NULL )
+					*slash_ptr = '\0';
 
-				if ( ( errno == ERANGE ) || ( errno != 0 && gateway_class == 0 ) ) {
+				errno = 0;
+
+				download_speed = strtol( optarg, NULL, 10 );
+
+				if ( ( errno == ERANGE ) || ( errno != 0 && download_speed == 0 ) ) {
+
 					perror("strtol");
 					exit(EXIT_FAILURE);
+
 				}
 
-				if ( gateway_class > 11 ) {
-					printf( "Invalid gateway class specified: %i.\nThe class is a value between 0 and 11.\n", gateway_class );
-					exit(EXIT_FAILURE);
-				}
+				if ( ( strlen( optarg ) > 4 ) && ( ( strncmp( optarg + strlen( optarg ) - 4, "MBit", 4 ) == 0 ) || ( strncmp( optarg + strlen( optarg ) - 4, "mbit", 4 ) == 0 ) || ( strncmp( optarg + strlen( optarg ) - 4, "Mbit", 4 ) == 0 ) ) )
+					download_speed *= 1024;
 
+				if ( slash_ptr != NULL ) {
+
+					errno = 0;
+
+					upload_speed = strtol( slash_ptr + 1, NULL, 10 );
+
+					if ( ( errno == ERANGE ) || ( errno != 0 && upload_speed == 0 ) ) {
+						perror("strtol");
+						exit(EXIT_FAILURE);
+					}
+
+					if ( ( strlen( slash_ptr + 1 ) > 4 ) && ( ( strncmp( slash_ptr + 1 + strlen( slash_ptr + 1 ) - 4, "MBit", 4 ) == 0 ) || ( strncmp( slash_ptr + 1 + strlen( slash_ptr + 1 ) - 4, "mbit", 4 ) == 0 ) || ( strncmp( slash_ptr + 1 + strlen( slash_ptr + 1 ) - 4, "Mbit", 4 ) == 0 ) ) )
+						upload_speed *= 1024;
+
+					*slash_ptr = '/';
+
+				}
+				
+				gateway_class_opt = 1;
+				
 				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
 				break;
 
@@ -416,7 +453,7 @@ void apply_init_args( int argc, char *argv[] ) {
 			case 'o':
 
 				errno = 0;
-				originator_interval = strtol (optarg, NULL , 10);
+				originator_interval = strtol (optarg, NULL , 10 );
 
 				if ( originator_interval < MIN_ORIGINATOR_INTERVAL || originator_interval > MAX_ORIGINATOR_INTERVAL ) {
 
@@ -431,7 +468,8 @@ void apply_init_args( int argc, char *argv[] ) {
 			case 'p':
 
 				errno = 0;
-				if ( inet_pton(AF_INET, optarg, &tmp_ip_holder) < 1 ) {
+
+				if ( inet_pton( AF_INET, optarg, &tmp_ip_holder ) < 1 ) {
 
 					printf( "Invalid preferred gateway IP specified: %s\n", optarg );
 					exit(EXIT_FAILURE);
@@ -439,6 +477,8 @@ void apply_init_args( int argc, char *argv[] ) {
 				}
 
 				pref_gateway = tmp_ip_holder.s_addr;
+				
+				pref_gw_opt = 1;
 
 				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
 				break;
@@ -446,7 +486,8 @@ void apply_init_args( int argc, char *argv[] ) {
 			case 'r':
 
 				errno = 0;
-				routing_class = strtol (optarg, NULL , 10);
+
+				routing_class = strtol( optarg, NULL, 10 );
 
 				if ( routing_class > 3 ) {
 
@@ -461,7 +502,7 @@ void apply_init_args( int argc, char *argv[] ) {
 			case 's':
 
 				errno = 0;
-				if ( inet_pton(AF_INET, optarg, &tmp_ip_holder) < 1 ) {
+				if ( inet_pton( AF_INET, optarg, &tmp_ip_holder ) < 1 ) {
 
 					printf( "Invalid preferred visualation server IP specified: %s\n", optarg );
 					exit(EXIT_FAILURE);
@@ -470,6 +511,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 				vis_server = tmp_ip_holder.s_addr;
 
+				routing_class_opt = 1;
 
 				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
 				break;
@@ -497,6 +539,16 @@ void apply_init_args( int argc, char *argv[] ) {
 				exit(EXIT_FAILURE);
 
 		}
+
+	}
+
+	if ( ( download_speed > 0 ) && ( upload_speed == 0 ) )
+		upload_speed = download_speed / 5;
+
+	if ( download_speed > 0 ) {
+
+		gateway_class = get_gw_class( download_speed, upload_speed );
+		get_gw_speeds( gateway_class, &download_speed, &upload_speed );
 
 	}
 
@@ -567,30 +619,6 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		}
 
-		/* daemonize */
-		if ( debug_level == 0 ) {
-
-			if ( my_daemon() < 0 ) {
-
-				printf( "Error - can't fork to background: %s\n", strerror(errno) );
-				restore_defaults();
-				exit(EXIT_FAILURE);
-
-			}
-
-			openlog( "batmand", LOG_PID, LOG_DAEMON );
-
-		} else {
-
-			printf( "B.A.T.M.A.N. %s%s (compability version %i)\n", ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), SOURCE_VERSION, COMPAT_VERSION );
-
-			debug_clients.clients_num[ debug_level - 1 ]++;
-			debug_level_info = debugMalloc( sizeof(struct debug_level_info), 205 );
-			INIT_LIST_HEAD( &debug_level_info->list );
-			debug_level_info->fd = 1;
-			list_add( &debug_level_info->list, (struct list_head_first *)debug_clients.fd_list[debug_level - 1] );
-
-		}
 
 		FD_ZERO( &receive_wait_set );
 
@@ -602,6 +630,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			batman_if->dev = argv[found_args];
 			batman_if->if_num = found_ifs;
+			batman_if->udp_tunnel_sock = 0;
 			batman_if->if_ttl = ttl;
 
 			list_add_tail( &batman_if->list, &if_list );
@@ -616,14 +645,7 @@ void apply_init_args( int argc, char *argv[] ) {
 			addr_to_string(batman_if->addr.sin_addr.s_addr, str1, sizeof (str1));
 			addr_to_string(batman_if->broad.sin_addr.s_addr, str2, sizeof (str2));
 
-			if ( debug_level > 0 )
-				printf( "Using interface %s with address %s and broadcast address %s\n", batman_if->dev, str1, str2 );
-
-			if ( gateway_class != 0 ) {
-
-				init_interface_gw( batman_if );
-
-			}
+			printf( "Using interface %s with address %s and broadcast address %s\n", batman_if->dev, str1, str2 );
 
 			found_ifs++;
 			found_args++;
@@ -664,6 +686,57 @@ void apply_init_args( int argc, char *argv[] ) {
 			}
 
 		}
+		
+		
+		unlink( UNIX_PATH );
+		unix_if.unix_sock = socket( AF_LOCAL, SOCK_STREAM, 0 );
+
+		memset( &unix_if.addr, 0, sizeof(struct sockaddr_un) );
+		unix_if.addr.sun_family = AF_LOCAL;
+		strcpy( unix_if.addr.sun_path, UNIX_PATH );
+
+		if ( bind ( unix_if.unix_sock, (struct sockaddr *)&unix_if.addr, sizeof (struct sockaddr_un) ) < 0 ) {
+
+			printf( "Error - can't bind unix socket '%s': %s\n", UNIX_PATH, strerror(errno) );
+			restore_defaults();
+			exit(EXIT_FAILURE);
+
+		}
+
+		if ( listen( unix_if.unix_sock, 10 ) < 0 ) {
+
+			printf( "Error - can't listen unix socket '%s': %s\n", UNIX_PATH, strerror(errno) );
+			restore_defaults();
+			exit(EXIT_FAILURE);
+
+		}
+
+		/* daemonize */
+		if ( debug_level == 0 ) {
+
+			if ( my_daemon() < 0 ) {
+
+				printf( "Error - can't fork to background: %s\n", strerror(errno) );
+				restore_defaults();
+				exit(EXIT_FAILURE);
+
+			}
+
+			openlog( "batmand", LOG_PID, LOG_DAEMON );
+
+		} else {
+
+			printf( "B.A.T.M.A.N. %s%s (compability version %i)\n", ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), SOURCE_VERSION, COMPAT_VERSION );
+
+			debug_clients.clients_num[ debug_level - 1 ]++;
+			debug_level_info = debugMalloc( sizeof(struct debug_level_info), 205 );
+			INIT_LIST_HEAD( &debug_level_info->list );
+			debug_level_info->fd = 1;
+			list_add( &debug_level_info->list, (struct list_head_first *)debug_clients.fd_list[debug_level - 1] );
+
+		}
+
+		pthread_create( &unix_if.listen_thread_id, NULL, &unix_listen, NULL );
 
 		/* add rule for hna networks */
 		add_del_rule( 0, 0, BATMAN_RT_TABLE_NETWORKS, BATMAN_RT_PRIO_DEFAULT - 1, 0, 1, 0 );
@@ -679,39 +752,28 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		}
 
-		if(vis_server)
-		{
-			memset(&vis_if.addr, 0, sizeof(vis_if.addr));
+		memset( &vis_if, 0, sizeof(vis_if) );
+
+		if ( vis_server ) {
+
 			vis_if.addr.sin_family = AF_INET;
-			vis_if.addr.sin_port = htons(1968);
+			vis_if.addr.sin_port = htons(PORT + 2);
 			vis_if.addr.sin_addr.s_addr = vis_server;
-			vis_if.sock = socket( PF_INET, SOCK_DGRAM, 0);
-			/*vis_if.sock = ((struct batman_if *)if_list.next)->udp_send_sock;*/
-		} else {
-			memset(&vis_if, 0, sizeof(vis_if));
+			vis_if.sock = socket( PF_INET, SOCK_DGRAM, 0 );
+
 		}
 
+		if ( gateway_class != 0 ) {
 
-		unlink( UNIX_PATH );
-		unix_if.unix_sock = socket( AF_LOCAL, SOCK_STREAM, 0 );
+			list_for_each( list_pos, &if_list ) {
 
-		memset( &unix_if.addr, 0, sizeof(struct sockaddr_un) );
-		unix_if.addr.sun_family = AF_LOCAL;
-		strcpy( unix_if.addr.sun_path, UNIX_PATH );
+				batman_if = list_entry( list_pos, struct batman_if, list );
 
-		if ( bind ( unix_if.unix_sock, (struct sockaddr *)&unix_if.addr, sizeof (struct sockaddr_un) ) < 0 ) {
-			debug_output( 0, "Error - can't bind unix socket: %s\n", strerror(errno) );
-			restore_defaults();
-			exit(EXIT_FAILURE);
+				init_interface_gw( batman_if );
+
+			}
+
 		}
-
-		if ( listen( unix_if.unix_sock, 10 ) < 0 ) {
-			debug_output( 0, "Error - can't listen unix socket: %s\n", strerror(errno) );
-			restore_defaults();
-			exit(EXIT_FAILURE);
-		}
-
-		pthread_create( &unix_if.listen_thread_id, NULL, &unix_listen, NULL );
 
 
 		if ( debug_level > 0 ) {
@@ -722,18 +784,18 @@ void apply_init_args( int argc, char *argv[] ) {
 				printf( "originator interval: %i\n", originator_interval );
 
 			if ( gateway_class > 0 )
-				printf( "gateway class: %i\n", gateway_class );
+				printf( "gateway class: %i -> propagating: %i%s/%i%s\n", gateway_class, ( download_speed > 2048 ? download_speed / 1024 : download_speed ), ( download_speed > 2048 ? "MBit" : "KBit" ), ( upload_speed > 2048 ? upload_speed / 1024 : upload_speed ), ( upload_speed > 2048 ? "MBit" : "KBit" ) );
 
 			if ( routing_class > 0 )
 				printf( "routing class: %i\n", routing_class );
 
 			if ( pref_gateway > 0 ) {
-				addr_to_string(pref_gateway, str1, sizeof (str1));
+				addr_to_string( pref_gateway, str1, sizeof(str1) );
 				printf( "preferred gateway: %s\n", str1 );
 			}
 
 			if ( vis_server > 0 ) {
-				addr_to_string(vis_server, str1, sizeof (str1));
+				addr_to_string( vis_server, str1, sizeof(str1) );
 				printf( "visualisation server: %s\n", str1 );
 			}
 
@@ -742,92 +804,118 @@ void apply_init_args( int argc, char *argv[] ) {
 	/* connect to running batmand via unix socket */
 	} else {
 
-		if ( ( debug_level > 0 ) && ( debug_level <= debug_level_max ) ) {
+		unix_if.unix_sock = socket( AF_LOCAL, SOCK_STREAM, 0 );
 
-			if ( ( debug_level > 2 ) && ( batch_mode ) )
-				printf( "WARNING: Your chosen debug level (%i) does not support batch mode !\n", debug_level );
+		memset( &unix_if.addr, 0, sizeof(struct sockaddr_un) );
+		unix_if.addr.sun_family = AF_LOCAL;
+		strcpy( unix_if.addr.sun_path, UNIX_PATH );
 
-			unix_if.unix_sock = socket(AF_LOCAL, SOCK_STREAM, 0);
+		if ( connect ( unix_if.unix_sock, (struct sockaddr *)&unix_if.addr, sizeof(struct sockaddr_un) ) < 0 ) {
 
-			memset( &unix_if.addr, 0, sizeof(struct sockaddr_un) );
-			unix_if.addr.sun_family = AF_LOCAL;
-			strcpy( unix_if.addr.sun_path, UNIX_PATH );
+			printf( "Error - can't connect to unix socket '%s': %s ! Is batmand running on this host ?\n", UNIX_PATH, strerror(errno) );
+			close( unix_if.unix_sock );
+			exit(EXIT_FAILURE);
 
-			if ( connect ( unix_if.unix_sock, (struct sockaddr *)&unix_if.addr, sizeof(struct sockaddr_un) ) < 0 ) {
+		}
 
-				printf( "Error - can't connect to unix socket '%s': %s ! Is batmand running on this host ?\n", UNIX_PATH, strerror(errno) );
-				close( unix_if.unix_sock );
-				exit(EXIT_FAILURE);
+		unix_buff = debugMalloc( 1501, 5001 );
 
-			}
+		if ( debug_level > 0 ) {
 
-			unix_buff = debugMalloc( 1501, 5001 );
-			snprintf( unix_buff, 10, "d:%i", debug_level );
+			if ( debug_level <= debug_level_max ) {
 
-			if ( write( unix_if.unix_sock, unix_buff, 10 ) < 0 ) {
+				snprintf( unix_buff, 10, "d:%c", debug_level );
 
-				printf( "Error - can't write to unix socket: %s\n", strerror(errno) );
-				close( unix_if.unix_sock );
-				debugFree( unix_buff, 5101 );
-				exit(EXIT_FAILURE);
+				if ( ( debug_level > 2 ) && ( batch_mode ) )
+					printf( "WARNING: Your chosen debug level (%i) does not support batch mode !\n", debug_level );
 
 			}
 
-			while ( ( recv_buff_len = read( unix_if.unix_sock, unix_buff, 1500 ) ) > 0 ) {
+		} else if ( routing_class_opt ) {
 
-				unix_buff[recv_buff_len] = '\0';
+			batch_mode = 1;
+			snprintf( unix_buff, 10, "r:%c", routing_class );
 
-				buff_ptr = unix_buff;
-				bytes_written = 0;
+		} else if ( pref_gw_opt ) {
 
-				while ( ( cr_ptr = strchr( buff_ptr, '\n' ) ) != NULL ) {
+			batch_mode = 1;
+			addr_to_string( pref_gateway, str1, sizeof(str1) );
+			snprintf( unix_buff, 20, "p:%s", str1 );
 
-					*cr_ptr = '\0';
+		} else if ( gateway_class_opt ) {
 
-					if ( strncmp( buff_ptr, "EOD", 3 ) == 0 ) {
+			batch_mode = 1;
+			snprintf( unix_buff, 10, "g:%c", gateway_class );
 
-						if ( batch_mode ) {
+		} else {
 
-							close( unix_if.unix_sock );
-							debugFree( unix_buff, 5102 );
-							exit(EXIT_SUCCESS);
+			batch_mode = 1;
+			snprintf( unix_buff, 10, "i" );
 
-						}
+		}
 
-					} else if ( strncmp( buff_ptr, "BOD", 3 ) == 0 ) {
+		if ( write( unix_if.unix_sock, unix_buff, 20 ) < 0 ) {
 
-						if ( !batch_mode )
-							system( "clear" );
+			printf( "Error - can't write to unix socket: %s\n", strerror(errno) );
+			close( unix_if.unix_sock );
+			debugFree( unix_buff, 5101 );
+			exit(EXIT_FAILURE);
 
-					} else {
+		}
 
-						printf( "%s\n", buff_ptr );
+		while ( ( recv_buff_len = read( unix_if.unix_sock, unix_buff, 1500 ) ) > 0 ) {
+
+			unix_buff[recv_buff_len] = '\0';
+
+			buff_ptr = unix_buff;
+			bytes_written = 0;
+
+			while ( ( cr_ptr = strchr( buff_ptr, '\n' ) ) != NULL ) {
+
+				*cr_ptr = '\0';
+
+				if ( strncmp( buff_ptr, "EOD", 3 ) == 0 ) {
+
+					if ( batch_mode ) {
+
+						close( unix_if.unix_sock );
+						debugFree( unix_buff, 5102 );
+						exit(EXIT_SUCCESS);
 
 					}
 
-					bytes_written += strlen( buff_ptr ) + 1;
-					buff_ptr = cr_ptr + 1;
+				} else if ( strncmp( buff_ptr, "BOD", 3 ) == 0 ) {
+
+					if ( !batch_mode )
+						system( "clear" );
+
+				} else {
+
+					printf( "%s\n", buff_ptr );
 
 				}
 
-				if ( bytes_written != recv_buff_len )
-					printf( "%s", buff_ptr );
+				bytes_written += strlen( buff_ptr ) + 1;
+				buff_ptr = cr_ptr + 1;
 
 			}
 
-			close( unix_if.unix_sock );
-			debugFree( unix_buff, 5103 );
+			if ( bytes_written != recv_buff_len )
+				printf( "%s", buff_ptr );
 
-			if ( recv_buff_len < 0 ) {
+		}
 
-				printf( "Error - can't read from unix socket: %s\n", strerror(errno) );
-				exit(EXIT_FAILURE);
+		close( unix_if.unix_sock );
+		debugFree( unix_buff, 5103 );
 
-			} else {
+		if ( recv_buff_len < 0 ) {
 
-				printf( "Connection terminated by remote host\n" );
+			printf( "Error - can't read from unix socket: %s\n", strerror(errno) );
+			exit(EXIT_FAILURE);
 
-			}
+		} else {
+
+			printf( "Connection terminated by remote host\n" );
 
 		}
 
@@ -846,15 +934,14 @@ void init_interface ( struct batman_if *batman_if ) {
 
 
 	if ( strlen( batman_if->dev ) > IFNAMSIZ - 1 ) {
-		debug_output( 0, "Error - interface name too long: %s\n", batman_if->dev );
+		printf( "Error - interface name too long: %s\n", batman_if->dev );
 		restore_defaults();
 		exit(EXIT_FAILURE);
 	}
 
-	batman_if->udp_recv_sock = socket( PF_INET, SOCK_DGRAM, 0 );
-	if ( batman_if->udp_recv_sock < 0 ) {
+	if ( ( batman_if->udp_recv_sock = socket( PF_INET, SOCK_DGRAM, 0 ) ) < 0 ) {
 
-		debug_output( 0, "Error - can't create receive socket: %s", strerror(errno) );
+		printf( "Error - can't create receive socket: %s", strerror(errno) );
 		restore_defaults();
 		exit(EXIT_FAILURE);
 
@@ -865,7 +952,7 @@ void init_interface ( struct batman_if *batman_if ) {
 
 	if ( ioctl( batman_if->udp_recv_sock, SIOCGIFADDR, &int_req ) < 0 ) {
 
-		debug_output( 0, "Error - can't get IP address of interface %s: %s\n", batman_if->dev, strerror(errno) );
+		printf( "Error - can't get IP address of interface %s: %s\n", batman_if->dev, strerror(errno) );
 		restore_defaults();
 		exit(EXIT_FAILURE);
 
@@ -877,7 +964,7 @@ void init_interface ( struct batman_if *batman_if ) {
 
 	if ( ioctl( batman_if->udp_recv_sock, SIOCGIFBRDADDR, &int_req ) < 0 ) {
 
-		debug_output( 0, "Error - can't get broadcast IP address of interface %s: %s\n", batman_if->dev, strerror(errno) );
+		printf( "Error - can't get broadcast IP address of interface %s: %s\n", batman_if->dev, strerror(errno) );
 		restore_defaults();
 		exit(EXIT_FAILURE);
 
@@ -889,25 +976,36 @@ void init_interface ( struct batman_if *batman_if ) {
 
 	if ( batman_if->broad.sin_addr.s_addr == 0 ) {
 
-		debug_output( 0, "Error - invalid broadcast address detected (0.0.0.0): %s\n", batman_if->dev );
+		printf( "Error - invalid broadcast address detected (0.0.0.0): %s\n", batman_if->dev );
 		restore_defaults();
 		exit(EXIT_FAILURE);
 
 	}
 
+
+#ifdef __linux__
+	/* The SIOCGIFINDEX ioctl is Linux specific, but I am not yet sure if the
+	 * equivalent exists on *BSD. There is a function called if_nametoindex()
+	 * on both Linux and BSD.
+	 * Maybe it does the same as this code and we can simply call it instead?
+	 * --stsp
+	 */
 	if ( ioctl( batman_if->udp_recv_sock, SIOCGIFINDEX, &int_req ) < 0 ) {
 
-		debug_output( 0, "Error - can't get index of interface %s: %s\n", batman_if->dev, strerror(errno) );
+		printf( "Error - can't get index of interface %s: %s\n", batman_if->dev, strerror(errno) );
 		restore_defaults();
 		exit(EXIT_FAILURE);
 
 	}
 
 	batman_if->if_index = int_req.ifr_ifindex;
+#else
+	batman_if->if_index = 0;
+#endif
 
 	if ( ioctl( batman_if->udp_recv_sock, SIOCGIFNETMASK, &int_req ) < 0 ) {
 
-		debug_output( 0, "Error - can't get netmask address of interface %s: %s\n", batman_if->dev, strerror(errno) );
+		printf( "Error - can't get netmask address of interface %s: %s\n", batman_if->dev, strerror(errno) );
 		restore_defaults();
 		exit(EXIT_FAILURE);
 
@@ -923,17 +1021,9 @@ void init_interface ( struct batman_if *batman_if ) {
 
 	if ( ( batman_if->udp_send_sock = use_kernel_module( batman_if->dev ) ) < 0 ) {
 
-		if ( ( batman_if->udp_send_sock = socket( AF_INET, SOCK_RAW, IPPROTO_RAW ) ) < 0 ) {
+		if ( ( batman_if->udp_send_sock = socket( PF_INET, SOCK_DGRAM, 0 ) ) < 0 ) {
 
-			debug_output( 0, "Error - can't create send socket: %s", strerror(errno) );
-			restore_defaults();
-			exit(EXIT_FAILURE);
-
-		}
-
-		if ( setsockopt( batman_if->udp_send_sock, IPPROTO_IP, IP_HDRINCL, &on, sizeof(on) ) < 0 ) {
-
-			debug_output( 0, "Error - can't set IP_HDRINCL option on send socket: %s", strerror(errno) );
+			printf( "Error - can't create send socket: %s", strerror(errno) );
 			restore_defaults();
 			exit(EXIT_FAILURE);
 
@@ -941,7 +1031,7 @@ void init_interface ( struct batman_if *batman_if ) {
 
 		if ( setsockopt( batman_if->udp_send_sock, SOL_SOCKET, SO_BROADCAST, &on, sizeof(int) ) < 0 ) {
 
-			debug_output( 0, "Error - can't enable broadcasts: %s\n", strerror(errno) );
+			printf( "Error - can't enable broadcasts: %s\n", strerror(errno) );
 			restore_defaults();
 			exit(EXIT_FAILURE);
 
@@ -954,9 +1044,9 @@ void init_interface ( struct batman_if *batman_if ) {
 
 		}
 
-		if ( connect( batman_if->udp_send_sock, (struct sockaddr *)&batman_if->broad, sizeof(struct sockaddr_in) ) < 0 ) {
+		if ( bind( batman_if->udp_send_sock, (struct sockaddr *)&batman_if->addr, sizeof(struct sockaddr_in) ) < 0 ) {
 
-			debug_output( 0, "Error - can't bind send socket: %s\n", strerror(errno) );
+			printf( "Error - can't bind send socket: %s\n", strerror(errno) );
 			restore_defaults();
 			exit(EXIT_FAILURE);
 
@@ -973,7 +1063,7 @@ void init_interface ( struct batman_if *batman_if ) {
 
 	if ( bind( batman_if->udp_recv_sock, (struct sockaddr *)&batman_if->broad, sizeof(struct sockaddr_in) ) < 0 ) {
 
-		debug_output( 0, "Error - can't bind receive socket: %s\n", strerror(errno) );
+		printf( "Error - can't bind receive socket: %s\n", strerror(errno) );
 		restore_defaults();
 		exit(EXIT_FAILURE);
 
@@ -987,34 +1077,51 @@ void init_interface ( struct batman_if *batman_if ) {
 void init_interface_gw ( struct batman_if *batman_if ) {
 
 	int32_t sock_opts;
+	unsigned short tmp_cmd[2];
+	unsigned int cmd;
 
-	batman_if->addr.sin_port = htons(PORT + 1);
+	if ( ( batman_if->udp_tunnel_sock = use_gateway_module( batman_if->dev ) ) < 0 ) {
 
-	batman_if->udp_tunnel_sock = socket( PF_INET, SOCK_DGRAM, 0 );
+		batman_if->addr.sin_port = htons(PORT + 1);
 
-	if ( batman_if->udp_tunnel_sock < 0 ) {
+		batman_if->udp_tunnel_sock = socket( PF_INET, SOCK_DGRAM, 0 );
 
-		debug_output( 0, "Error - can't create tunnel socket: %s", strerror(errno) );
-		restore_defaults();
-		exit(EXIT_FAILURE);
+		if ( batman_if->udp_tunnel_sock < 0 ) {
 
+			debug_output( 0, "Error - can't create tunnel socket: %s", strerror(errno) );
+			restore_defaults();
+			exit(EXIT_FAILURE);
+
+		}
+
+		if ( bind( batman_if->udp_tunnel_sock, (struct sockaddr *)&batman_if->addr, sizeof(struct sockaddr_in) ) < 0 ) {
+
+			debug_output( 0, "Error - can't bind tunnel socket: %s\n", strerror(errno) );
+			restore_defaults();
+			exit(EXIT_FAILURE);
+
+		}
+
+		/* make udp socket non blocking */
+		sock_opts = fcntl( batman_if->udp_tunnel_sock, F_GETFL, 0 );
+		fcntl( batman_if->udp_tunnel_sock, F_SETFL, sock_opts | O_NONBLOCK );
+
+		batman_if->addr.sin_port = htons(PORT);
+
+		pthread_create( &batman_if->listen_thread_id, NULL, &gw_listen, batman_if );
+
+	} else {
+
+	    tmp_cmd[0] = (unsigned short)IOCSETDEV;
+	    tmp_cmd[1] = (unsigned short)strlen(batman_if->dev);
+	    memcpy(&cmd, tmp_cmd, sizeof(int));
+		/* TODO: test if we can assign tmp_cmd direct */
+	    if(ioctl(batman_if->udp_tunnel_sock,cmd, batman_if->dev) < 0) {
+			debug_output( 0, "Error - can't add device %s: %s\n", batman_if->dev,strerror(errno) );
+			restore_defaults();
+			exit(EXIT_FAILURE);
+	    }
 	}
-
-	if ( bind( batman_if->udp_tunnel_sock, (struct sockaddr *)&batman_if->addr, sizeof(struct sockaddr_in) ) < 0 ) {
-
-		debug_output( 0, "Error - can't bind tunnel socket: %s\n", strerror(errno) );
-		restore_defaults();
-		exit(EXIT_FAILURE);
-
-	}
-
-	/* make udp socket non blocking */
-	sock_opts = fcntl( batman_if->udp_tunnel_sock, F_GETFL, 0 );
-	fcntl( batman_if->udp_tunnel_sock, F_SETFL, sock_opts | O_NONBLOCK );
-
-	batman_if->addr.sin_port = htons(PORT);
-
-	pthread_create( &batman_if->listen_thread_id, NULL, &gw_listen, batman_if );
 
 }
 

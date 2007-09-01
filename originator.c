@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include "os.h"
 #include "batman.h"
 #include "originator.h"
@@ -283,6 +284,15 @@ void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t n
 		update_gw_list( orig_node, in->gwflags );
 
 	orig_node->gwflags = in->gwflags;
+
+
+	/* restart gateway selection if we have more packets and routing class 3 */
+	if ( ( routing_class == 3 ) && ( orig_node->gwflags != 0 ) && ( curr_gateway != NULL ) ) {
+
+		if ( ( curr_gateway->orig_node != orig_node ) && ( curr_gateway->orig_node->router->packet_count < orig_node->router->packet_count ) )
+			curr_gateway = NULL;
+
+	}
 
 	prof_stop( PROF_update_originator );
 
@@ -574,11 +584,11 @@ int update_bi_link_bits ( struct orig_node *orig_neigh_node, struct batman_if * 
 	
 		is_new_bi_link_seqno = bit_get_packet( 
 				( &orig_neigh_node->bi_link_bits[ this_if->if_num * MAX_NUM_WORDS ] ),
-				( ( this_if->out.bat_packet.seqno - OUT_SEQNO_OFFSET ) - orig_neigh_node->last_bi_link_seqno[this_if->if_num] ),
+				( ( this_if->out.seqno - OUT_SEQNO_OFFSET ) - orig_neigh_node->last_bi_link_seqno[this_if->if_num] ),
 					( ( write ) ? 1 : 0) );
 	
 		if ( is_new_bi_link_seqno ) 
-			orig_neigh_node->last_bi_link_seqno[this_if->if_num] = ( this_if->out.bat_packet.seqno - OUT_SEQNO_OFFSET );
+			orig_neigh_node->last_bi_link_seqno[this_if->if_num] = ( this_if->out.seqno - OUT_SEQNO_OFFSET );
 		
 		if ( read_range > 0 ) {
 			
@@ -640,6 +650,7 @@ void debug_orig() {
 	struct gw_node *gw_node;
 	uint16_t batman_count = 0;
 	uint32_t uptime_sec;
+	int download_speed, upload_speed;
 	static char str[ADDR_STR_LEN], str2[ADDR_STR_LEN], orig_str[ADDR_STR_LEN];
 	int dbg_ogm_out = 0, lq, nlq;
 	static char dbg_ogm_str[MAX_DBG_STR_SIZE + 1]; // TBD: must be checked for overflow when using with sprintf
@@ -666,13 +677,11 @@ void debug_orig() {
 
 				addr_to_string( gw_node->orig_node->orig, str, sizeof (str) );
 				addr_to_string( gw_node->orig_node->router->addr, str2, sizeof (str2) );
-
-				if ( curr_gateway == gw_node ) {
-					debug_output( 2, "=> %-15s %15s (%3i), gw_class %2i - %s, reliability: %i \n", str, str2, gw_node->orig_node->router->packet_count, gw_node->orig_node->gwflags, gw2string[gw_node->orig_node->gwflags], gw_node->unavail_factor );
-				} else {
-					debug_output( 2, "   %-15s %15s (%3i), gw_class %2i - %s, reliability: %i \n", str, str2, gw_node->orig_node->router->packet_count, gw_node->orig_node->gwflags, gw2string[gw_node->orig_node->gwflags], gw_node->unavail_factor );
-				}
-
+				
+				get_gw_speeds( gw_node->orig_node->gwflags, &download_speed, &upload_speed );
+				
+				debug_output( 2, "%s %-15s %''15s (%3i), gw_class %2i - %i%s/%i%s, reliability: %i \n", ( curr_gateway == gw_node ? "=>" : "  " ), str, str2, gw_node->orig_node->router->packet_count, gw_node->orig_node->gwflags, ( download_speed > 2048 ? download_speed / 1024 : download_speed ), ( download_speed > 2048 ? "MBit" : "KBit" ), ( upload_speed > 2048 ? upload_speed / 1024 : upload_speed ), ( upload_speed > 2048 ? "MBit" : "KBit" ), gw_node->unavail_factor );
+				
 				batman_count++;
 
 			}
@@ -710,7 +719,7 @@ void debug_orig() {
 
 			list_for_each( forw_pos, &forw_list ) {
 				forw_node = list_entry( forw_pos, struct forw_node, list );
-				addr_to_string( ((struct orig_packet *)forw_node->pack_buff)->bat_packet.orig, str, sizeof (str) );
+				addr_to_string( ((struct bat_packet *)forw_node->pack_buff)->orig, str, sizeof(str) );
 				debug_output( 4, "    %s at %u \n", str, forw_node->send_time );
 			}
 
@@ -765,7 +774,6 @@ void debug_orig() {
 
 			debug_output( 1, "%s \n", dbg_ogm_str );
 			debug_output( 4, "%s \n", dbg_ogm_str );
-//			debug_output( 1, " \n" );
 
 		}
 
