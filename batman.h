@@ -167,7 +167,7 @@ extern int8_t advanced_opts;
 
 #define MAX_NUM_WORDS (( MAX_SEQ_RANGE / WORD_BIT_SIZE ) + ( ( MAX_SEQ_RANGE % WORD_BIT_SIZE > 0)? 1 : 0 )) 
 
-//#define BATMAN_TUN_PREFIX "batun" 
+#define BATMAN_TUN_PREFIX "batun" 
 
 /***
  *
