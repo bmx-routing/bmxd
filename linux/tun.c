@@ -27,10 +27,12 @@
 #include <linux/if_tun.h> /* TUNSETPERSIST, ... */
 #include <linux/if.h>     /* ifr_if, ifr_tun */
 #include <sys/socket.h>
+#include <stdio.h>
 
 #include "../os.h"
 #include "../batman.h"
 
+//static int32_t batman_tun_index = 0;
 
 
 /* Probe for tun interface availability */
@@ -80,7 +82,9 @@ int8_t add_dev_tun( struct batman_if *batman_if, uint32_t tun_addr, char *tun_de
 	memset( &ifr_tun, 0, sizeof(ifr_tun) );
 	memset( &ifr_if, 0, sizeof(ifr_if) );
 	ifr_tun.ifr_flags = IFF_TUN | IFF_NO_PI;
+//	sprintf( ifr_tun.ifr_name, "%s%d", BATMAN_TUN_PREFIX, batman_tun_index++ );
 
+	
 	if ( ( *fd = open( "/dev/net/tun", O_RDWR ) ) < 0 ) {
 
 		debug_output( 0, "Error - can't create tun device (/dev/net/tun): %s\n", strerror(errno) );
@@ -96,14 +100,17 @@ int8_t add_dev_tun( struct batman_if *batman_if, uint32_t tun_addr, char *tun_de
 
 	}
 
-	if ( ioctl( *fd, TUNSETPERSIST, 1 ) < 0 ) {
-
-		debug_output( 0, "Error - can't create tun device (TUNSETPERSIST): %s\n", strerror(errno) );
-		close(*fd);
-		return -1;
-
+	if( no_tun_persist == NO ) {
+		
+		if ( ioctl( *fd, TUNSETPERSIST, 1 ) < 0 ) {
+	
+			debug_output( 0, "Error - can't create tun device (TUNSETPERSIST): %s\n", strerror(errno) );
+			close(*fd);
+			return -1;
+	
+		}
+	
 	}
-
 
 	tmp_fd = socket( AF_INET, SOCK_DGRAM, 0 );
 

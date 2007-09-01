@@ -78,29 +78,29 @@ int8_t advanced_opts = 0;
 
 /* bidirectional link timeout in number+1 of maximum acceptable missed (not received by this node)
 of last send own OGMs rebroadcasted from neighbors */
-uint16_t bidirect_link_to = DEFAULT_BIDIRECT_TIMEOUT;
+int32_t bidirect_link_to = DEFAULT_BIDIRECT_TIMEOUT;
 
-uint16_t sequence_range = DEFAULT_SEQ_RANGE;
-uint8_t ttl = DEFAULT_TTL;
+int32_t sequence_range = DEFAULT_SEQ_RANGE;
+int32_t ttl = DEFAULT_TTL;
 
 uint8_t mobile_device = NO;
 uint8_t no_unreachable_rule = NO;
+uint8_t no_tun_persist = NO;
 uint8_t no_forw_dupl_ttl_check = NO;
-uint8_t dup_ttl_limit = DEF_DUP_TTL_LIMIT;
+int32_t dup_ttl_limit = DEF_DUP_TTL_LIMIT;
 
 int32_t send_clones = DEF_SEND_CLONES;
 
-uint8_t asymmetric_weight = DEF_ASYMMETRIC_WEIGHT;
+int32_t asymmetric_weight = DEF_ASYMMETRIC_WEIGHT;
 
-uint8_t asymmetric_exp = DEF_ASYMMETRIC_EXP;
+int32_t asymmetric_exp = DEF_ASYMMETRIC_EXP;
 
 
-uint16_t penalty_min = DEF_PENALTY_MIN;
-uint16_t penalty_exceed = DEF_PENALTY_EXCEED;
+int32_t penalty_min = DEF_PENALTY_MIN;
+int32_t penalty_exceed = DEF_PENALTY_EXCEED;
 
 
 int16_t num_words = ( DEFAULT_SEQ_RANGE / WORD_BIT_SIZE ) + ( ( DEFAULT_SEQ_RANGE % WORD_BIT_SIZE > 0)? 1 : 0 );
-
 
 
 

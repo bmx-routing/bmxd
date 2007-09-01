@@ -85,8 +85,16 @@
 #define JITTER 100
 
 extern uint8_t mobile_device;
+#define ASOCIAL_SWITCH           "asocial-device"
+
 extern uint8_t no_unreachable_rule;
+#define NO_UNREACHABLE_RULE_SWITCH  "no-unreachable-rule"
+
 extern uint8_t no_forw_dupl_ttl_check;
+
+extern uint8_t no_tun_persist;
+#define NO_TUNPERSIST_SWITCH  "no-tunpersist"
+
 
 extern int16_t originator_interval;
 #define DEFAULT_ORIGINATOR_INTERVAL 1000
@@ -95,27 +103,27 @@ extern int16_t originator_interval;
 
 #define PURGE_TIMEOUT 200000   /* purge originators after time in ms if no valid packet comes in -> TODO: check influence on SEQ_RANGE */
 
-extern uint16_t sequence_range;
+extern int32_t sequence_range;
 #define FULL_SEQ_RANGE ((uint16_t)-1)
 #define MAX_SEQ_RANGE 128      /* TBD: should not be larger until neigh_node.packet_count (and related variables) is only 8 bit */
 #define MIN_SEQ_RANGE 1
 #define DEFAULT_SEQ_RANGE 128  /* NBRF: NeighBor Ranking sequence Frame) sliding packet range of received orginator messages in squence numbers (should be a multiple of our word size) */
 #define NBRFSIZE_SWITCH          "window-size"
 
-extern uint16_t bidirect_link_to;
+extern int32_t bidirect_link_to;
 #define DEFAULT_BIDIRECT_TIMEOUT 2  
 #define MAX_BIDIRECT_TIMEOUT 100
 #define MIN_BIDIRECT_TIMEOUT 1
 #define BDLCFRAME_SWITCH         "bi-link-timeout"
 
-extern uint8_t ttl;
+extern int32_t ttl;
 #define DEFAULT_TTL 50                /* Time To Live of broadcast messages */
 #define MAX_TTL 63
 #define MIN_TTL 1 /* Values smaller than two currently do not work */
 #define TTL_SWITCH               "t"
 #define TTL_IF_SWITCH		 't'
 
-extern uint8_t dup_ttl_limit;
+extern int32_t dup_ttl_limit;
 #define DEF_DUP_TTL_LIMIT 0
 #define MIN_DUP_TTL_LIMIT 0
 #define MAX_DUP_TTL_LIMIT 2
@@ -127,25 +135,25 @@ extern int32_t send_clones;
 #define MAX_SEND_CLONES 200
 #define SEND_CLONES_SWITCH   "send-clones"
 
-extern uint8_t asymmetric_weight;
+extern int32_t asymmetric_weight;
 #define DEF_ASYMMETRIC_WEIGHT 0
 #define MIN_ASYMMETRIC_WEIGHT 0
 #define MAX_ASYMMETRIC_WEIGHT 100
 #define ASYMMETRIC_WEIGHT_SWITCH "asymmetric-weight"
 
-extern uint8_t asymmetric_exp;
+extern int32_t asymmetric_exp;
 #define DEF_ASYMMETRIC_EXP 0
 #define MIN_ASYMMETRIC_EXP 0
 #define MAX_ASYMMETRIC_EXP 3
 #define ASYMMETRIC_EXP_SWITCH    "asymmetric-exp"
 
-extern uint16_t penalty_min;
+extern int32_t penalty_min;
 #define DEF_PENALTY_MIN 0
 #define MIN_PENALTY_MIN 1
 #define MAX_PENALTY_MIN (MAX_SEQ_RANGE/2) /* TBD: this must adapt to the configured value */
 #define PENALTY_MIN_SWITCH       "penalty-min"
 
-extern uint16_t penalty_exceed;
+extern int32_t penalty_exceed;
 #define DEF_PENALTY_EXCEED 2
 #define MIN_PENALTY_EXCEED 1
 #define MAX_PENALTY_EXCEED 10
@@ -154,13 +162,12 @@ extern uint16_t penalty_exceed;
 extern int8_t advanced_opts;
 #define ADVANCED_SWITCH          "dangerous"
 #define OGM_ONLY_VIA_OWNING_IF_SWITCH 'i'
-#define ASOCIAL_SWITCH           "asocial-device"
-#define NO_UNREACHABLE_RULE_SWITCH  "no-unreachable-rule"
 #define TEST_SWITCH              "test"
 
 
 #define MAX_NUM_WORDS (( MAX_SEQ_RANGE / WORD_BIT_SIZE ) + ( ( MAX_SEQ_RANGE % WORD_BIT_SIZE > 0)? 1 : 0 )) 
 
+//#define BATMAN_TUN_PREFIX "batun" 
 
 /***
  *

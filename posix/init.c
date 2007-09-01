@@ -85,7 +85,20 @@ int my_daemon() {
 
 }
 
+void set_init_arg( char* switch_name, int min, int max, int32_t *target_value ) {
+	errno = 0;
+	int16_t tmp = strtol (optarg, NULL , 10);
 
+	if ( tmp < min || tmp > max ) {
+
+		printf( "Invalid --%s value specified: %i ! Value must be %i <= <value> <= %i !\n", switch_name, tmp, min, max );
+
+		exit(EXIT_FAILURE);
+	}
+
+	*target_value = tmp;
+	return;
+}
 
 void apply_init_args( int argc, char *argv[] ) {
 
@@ -122,6 +135,7 @@ void apply_init_args( int argc, char *argv[] ) {
    {TTL_SWITCH,                 1, 0, 0},
    {ASOCIAL_SWITCH,             0, 0, 0},
    {NO_UNREACHABLE_RULE_SWITCH, 0, 0, 0},
+   {NO_TUNPERSIST_SWITCH,       0, 0, 0},
    {TEST_SWITCH,                1, 0, 0},
    {DUP_TTL_LIMIT_SWITCH,       1, 0, 0},
    {SEND_CLONES_SWITCH,         1, 0, 0},
@@ -155,32 +169,14 @@ void apply_init_args( int argc, char *argv[] ) {
 
 					if ( strcmp( BDLCFRAME_SWITCH, long_options[option_index].name ) == 0 ) {
 
-						errno = 0;
-						bidirect_link_to = strtol (optarg, NULL , 10);
-
-						if ( bidirect_link_to < MIN_BIDIRECT_TIMEOUT || bidirect_link_to > 	MAX_BIDIRECT_TIMEOUT ) {
-
-							printf( "Invalid bidirectional_link_to specified: %i.\nThe timeout has to be >= %d and <= %d.\n", bidirect_link_to, MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT );
-
-							exit(EXIT_FAILURE);
-						}
-
+						set_init_arg( BDLCFRAME_SWITCH, MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
 						found_args += 2;
 						break;
 
 					} else if ( strcmp( NBRFSIZE_SWITCH, long_options[option_index].name ) == 0 ) {
 
-						errno = 0;
-						int16_t tmp_sequence_range = strtol (optarg, NULL , 10);
-
-						if ( tmp_sequence_range < MIN_SEQ_RANGE || tmp_sequence_range > MAX_SEQ_RANGE ) {
-
-							printf( "Invalid sequence_range specified: %i.\nThe sequence_range must be >= 1 and <= %i.\n", tmp_sequence_range, MAX_SEQ_RANGE );
-
-							exit(EXIT_FAILURE);
-						}
-
-						sequence_range=tmp_sequence_range;
+						set_init_arg( NBRFSIZE_SWITCH, MIN_SEQ_RANGE, MAX_SEQ_RANGE, &sequence_range );
+						
 						num_words = ( sequence_range / WORD_BIT_SIZE ) + ( ( sequence_range % WORD_BIT_SIZE > 0)? 1 : 0 );
 
 						found_args += 2;
@@ -188,120 +184,43 @@ void apply_init_args( int argc, char *argv[] ) {
 
 					} else if ( strcmp( TTL_SWITCH, long_options[option_index].name ) == 0 ) {
 
-						errno = 0;
-						uint8_t tmp_ttl = strtol (optarg, NULL , 10);
-
-						if ( tmp_ttl < MIN_TTL || tmp_ttl > MAX_TTL ) {
-
-							printf( "Invalid ttl specified: %i.\nThe ttl must be >= %i and <= %i.\n", tmp_ttl, MIN_TTL, MAX_TTL );
-
-							exit(EXIT_FAILURE);
-						}
-
-						ttl=tmp_ttl;
-
+						set_init_arg( TTL_SWITCH, MIN_TTL, MAX_TTL, &ttl );
 						found_args += 2;
 						break;
 
 					} else if ( strcmp( DUP_TTL_LIMIT_SWITCH, long_options[option_index].name ) == 0 ) {
 
-						errno = 0;
-						int tmp = strtol (optarg, NULL , 10);
-
-						if ( tmp < MIN_DUP_TTL_LIMIT || tmp > MAX_DUP_TTL_LIMIT ) {
-
-							printf( "Invalid --%s specified: %i.\nMust be >= %i and <= %i.\n", DUP_TTL_LIMIT_SWITCH, tmp, MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT );
-
-							exit(EXIT_FAILURE);
-						}
-
-						dup_ttl_limit = tmp;
-
+						set_init_arg( DUP_TTL_LIMIT_SWITCH, MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT, &dup_ttl_limit );
 						found_args += 2;
 						break;
 
 					} else if ( strcmp( SEND_CLONES_SWITCH, long_options[option_index].name ) == 0 ) {
 
-						errno = 0;
-						int tmp_send_clones = strtol (optarg, NULL , 10);
-
-						if ( tmp_send_clones < MIN_SEND_CLONES || tmp_send_clones > MAX_SEND_CLONES ) {
-
-							printf( "Invalid %s specified: %i.\n The value must be >= %i and <= %i.\n", SEND_CLONES_SWITCH, tmp_send_clones, MIN_SEND_CLONES, MAX_SEND_CLONES );
-
-							exit(EXIT_FAILURE);
-						}
-
-						send_clones = tmp_send_clones;
-
+						set_init_arg( SEND_CLONES_SWITCH, MIN_SEND_CLONES, MAX_SEND_CLONES, &send_clones );
 						found_args += 2;
 						break;
 
 					} else if ( strcmp( ASYMMETRIC_WEIGHT_SWITCH, long_options[option_index].name ) == 0 ) {
 
-						errno = 0;
-						int tmp_asymmetric_weight = strtol (optarg, NULL , 10);
-
-						if ( tmp_asymmetric_weight < MIN_ASYMMETRIC_WEIGHT || tmp_asymmetric_weight > MAX_ASYMMETRIC_WEIGHT ) {
-
-							printf( "Invalid asymmetric weight specified: %i.\n The value must be >= %i and <= %i.\n", tmp_asymmetric_weight, MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT );
-
-							exit(EXIT_FAILURE);
-						}
-
-						asymmetric_weight = tmp_asymmetric_weight;
-
+						set_init_arg( ASYMMETRIC_WEIGHT_SWITCH, MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT, &asymmetric_weight );
 						found_args += 2;
 						break;
 
 					} else if ( strcmp( ASYMMETRIC_EXP_SWITCH, long_options[option_index].name ) == 0 ) {
 
-						errno = 0;
-						int tmp_asymmetric_exp = strtol (optarg, NULL , 10);
-
-						if ( tmp_asymmetric_exp < MIN_ASYMMETRIC_EXP || tmp_asymmetric_exp > MAX_ASYMMETRIC_EXP ) {
-
-							printf( "Invalid asymmetric exponent specified: %i.\n The value must be >= %i and <= %i.\n", tmp_asymmetric_exp, MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP );
-
-							exit(EXIT_FAILURE);
-						}
-
-						asymmetric_exp = tmp_asymmetric_exp;
-
+						set_init_arg( ASYMMETRIC_EXP_SWITCH, MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP, &asymmetric_exp );
 						found_args += 2;
 						break;
 
 					} else if ( strcmp( PENALTY_MIN_SWITCH, long_options[option_index].name ) == 0 ) {
 
-						errno = 0;
-						int tmp_penalty_min = strtol (optarg, NULL , 10);
-
-						if ( tmp_penalty_min < MIN_PENALTY_MIN || tmp_penalty_min > MAX_PENALTY_MIN ) {
-
-							printf( "Invalid penalty minimum specified: %i.\n If enabled, the value must be >= %i and <= %i.\n", tmp_penalty_min, MIN_PENALTY_MIN, MAX_PENALTY_MIN );
-
-							exit(EXIT_FAILURE);
-						}
-
-						penalty_min = tmp_penalty_min;
-
+						set_init_arg( PENALTY_MIN_SWITCH, MIN_PENALTY_MIN, MAX_PENALTY_MIN, &penalty_min );
 						found_args += 2;
 						break;
 
 					} else if ( strcmp( PENALTY_EXCEED_SWITCH, long_options[option_index].name ) == 0 ) {
 
-						errno = 0;
-						int tmp_penalty_exceed = strtol (optarg, NULL , 10);
-
-						if ( tmp_penalty_exceed < MIN_PENALTY_EXCEED || tmp_penalty_exceed > MAX_PENALTY_EXCEED ) {
-
-							printf( "Invalid penalty exceed specified: %i.\n If enabled, the value must be >= %i and <= %i.\n", tmp_penalty_exceed, MIN_PENALTY_EXCEED, MAX_PENALTY_EXCEED );
-
-							exit(EXIT_FAILURE);
-						}
-
-						penalty_exceed = tmp_penalty_exceed;
-
+						set_init_arg( PENALTY_EXCEED_SWITCH, MIN_PENALTY_EXCEED, MAX_PENALTY_EXCEED, &penalty_exceed );
 						found_args += 2;
 						break;
 
@@ -309,7 +228,6 @@ void apply_init_args( int argc, char *argv[] ) {
 
 						errno = 0;
 						mobile_device = YES;
-
 						found_args += 1;
 						break;
 
@@ -317,7 +235,13 @@ void apply_init_args( int argc, char *argv[] ) {
 
 						errno = 0;
 						no_unreachable_rule = YES;
+						found_args += 1;
+						break;
+					
+					} else if ( strcmp( NO_TUNPERSIST_SWITCH, long_options[option_index].name ) == 0 ) {
 
+						errno = 0;
+						no_tun_persist = YES;
 						found_args += 1;
 						break;
 					

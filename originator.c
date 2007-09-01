@@ -561,7 +561,7 @@ int get_dbg_rcvd_all_bits( struct orig_node *orig_node, struct batman_if *this_i
 	static char orig_str[ADDR_STR_LEN];
 	
 	addr_to_string( orig_node->orig, orig_str, sizeof(orig_str) );
-	debug_output( 4, "get_dbg_rcvd_all_bits(): %s latest seqno: %d \n", orig_str, orig_node->last_dbg_rcvd_seqno );
+//	debug_output( 4, "get_dbg_rcvd_all_bits(): %s latest seqno: %d \n", orig_str, orig_node->last_dbg_rcvd_seqno );
 		
 	if ( orig_node->dbg_rcvd_bits != NULL ) {
 		
@@ -588,7 +588,7 @@ void set_lq_bits( struct orig_node *orig_node, uint16_t in_seqno, struct batman_
 	static char orig_str[ADDR_STR_LEN];
 	
 	addr_to_string( orig_node->orig, orig_str, sizeof(orig_str) );
-	debug_output( 4, "set_lq_bits(): %s latest seqno: %d \n", orig_str, orig_node->last_lq_seqno );
+//	debug_output( 4, "set_lq_bits(): %s latest seqno: %d \n", orig_str, orig_node->last_lq_seqno );
 	
 	if ( direct_undupl_neigh_ogm && orig_node->lq_bits == NULL ) {
 		orig_node->lq_bits = debugMalloc( found_ifs * MAX_NUM_WORDS * sizeof( TYPE_OF_WORD ), 408 );
@@ -619,7 +619,7 @@ int get_lq_bits( struct orig_node *orig_node, struct batman_if *this_if, uint16_
 	static char orig_str[ADDR_STR_LEN];
 	
 	addr_to_string( orig_node->orig, orig_str, sizeof(orig_str) );
-	debug_output( 4, "get_lq_bits(): %s latest seqno: %d \n", orig_str, orig_node->last_lq_seqno );
+//	debug_output( 4, "get_lq_bits(): %s latest seqno: %d \n", orig_str, orig_node->last_lq_seqno );
 		
 	if ( orig_node->lq_bits != NULL ) {
 		
@@ -627,12 +627,12 @@ int get_lq_bits( struct orig_node *orig_node, struct batman_if *this_if, uint16_
 			
 			ret_pcnt = bit_packet_count( ( &orig_node->lq_bits[ this_if->if_num * MAX_NUM_WORDS ] ), read_range  ); /* not perfect until sequence_range OGMs have been send by neighbor */
 			
-			debug_output( 4, "get_lq_bits(): returns %d \n", ret_pcnt );
+//			debug_output( 4, "get_lq_bits(): returns %d \n", ret_pcnt );
 			return ret_pcnt;
 		}
 		
 	}
-	debug_output( 4, "get_lq_bits(): returns -1 \n" );
+//	debug_output( 4, "get_lq_bits(): returns -1 \n" );
 	
 	return -1;
 
@@ -644,7 +644,7 @@ int update_bi_link_bits ( struct orig_node *orig_neigh_node, struct batman_if * 
 	uint8_t is_new_bi_link_seqno;				
 	int rcvd_bi_link_packets = -1;
 	
-	debug_output( 4, "update_bi_link_bits(): \n" );
+//	debug_output( 4, "update_bi_link_bits(): \n" );
 
 	if( write ) { 
 		if ( orig_neigh_node->bi_link_bits == NULL ) {
