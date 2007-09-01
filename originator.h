@@ -22,11 +22,17 @@
 int compare_orig( void *data1, void *data2 );
 int choose_orig( void *data, int32_t size );
 struct orig_node *get_orig_node( uint32_t addr );
-int update_lq_bits( struct orig_node *orig_node, uint8_t update, uint16_t in_seqno, struct batman_if *this_if, uint8_t direct_undupl_neigh_ogm, uint16_t read_range );
+int update_lq_bits_INVALID( struct orig_node *orig_node, uint8_t update, uint16_t in_seqno, struct batman_if *this_if, uint8_t direct_undupl_neigh_ogm, uint16_t read_range );
+void set_dbg_rcvd_all_bits( struct orig_node *orig_node, uint16_t in_seqno, struct batman_if *this_if, uint8_t bidirect_ogm );
+
+void set_lq_bits( struct orig_node *orig_node, uint16_t in_seqno, struct batman_if *this_if, uint8_t direct_undupl_neigh_ogm );
+int get_lq_bits( struct orig_node *orig_node, struct batman_if *this_if, uint16_t read_range );
+
+
 int update_bi_link_bits ( struct orig_node *orig_neigh_node, struct batman_if * this_if, uint8_t write, uint16_t read_range );
 int nlq_rate( struct orig_node *orig_neigh_node, struct batman_if *if_incoming );
 int nlq_power( int nlq_rate_value );
-int acceptance( int nlq_assumption, uint16_t lq_assumtion );
+int acceptance_rate( int nlq_assumption, uint16_t lq_assumtion );
 void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t neigh, struct batman_if *if_incoming, unsigned char *hna_recv_buff, int16_t hna_buff_len, uint32_t rcvd_time );
 void purge_orig( uint32_t curr_time );
 void debug_orig();

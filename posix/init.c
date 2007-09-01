@@ -116,18 +116,19 @@ void apply_init_args( int argc, char *argv[] ) {
 		int32_t option_index = 0;
 		static struct option long_options[] =
 		{
-   {ADVANCED_SWITCH,          0, 0, 0},
-   {BDLCFRAME_SWITCH,         1, 0, 0},
-   {NBRFSIZE_SWITCH,          1, 0, 0},
-   {TTL_SWITCH,               1, 0, 0},
-   {ASOCIAL_SWITCH,           0, 0, 0},
-   {NO_UNREACHABLE_RULE_SWITCH,           0, 0, 0},
-   {TEST_SWITCH,              1, 0, 0},
-   {SEND_DUPLICATES_SWITCH,   1, 0, 0},
-   {ASYMMETRIC_WEIGHT_SWITCH, 1, 0, 0},
-   {ASYMMETRIC_EXP_SWITCH,    1, 0, 0},
-   {PENALTY_MIN_SWITCH,       1, 0, 0},
-   {PENALTY_EXCEED_SWITCH,    1, 0, 0},
+   {ADVANCED_SWITCH,            0, 0, 0},
+   {BDLCFRAME_SWITCH,           1, 0, 0},
+   {NBRFSIZE_SWITCH,            1, 0, 0},
+   {TTL_SWITCH,                 1, 0, 0},
+   {ASOCIAL_SWITCH,             0, 0, 0},
+   {NO_UNREACHABLE_RULE_SWITCH, 0, 0, 0},
+   {TEST_SWITCH,                1, 0, 0},
+   {DUP_TTL_LIMIT_SWITCH,       1, 0, 0},
+   {SEND_CLONES_SWITCH,         1, 0, 0},
+   {ASYMMETRIC_WEIGHT_SWITCH,   1, 0, 0},
+   {ASYMMETRIC_EXP_SWITCH,      1, 0, 0},
+   {PENALTY_MIN_SWITCH,         1, 0, 0},
+   {PENALTY_EXCEED_SWITCH,      1, 0, 0},
    {0, 0, 0, 0}
 		};
 
@@ -202,19 +203,36 @@ void apply_init_args( int argc, char *argv[] ) {
 						found_args += 2;
 						break;
 
-					} else if ( strcmp( SEND_DUPLICATES_SWITCH, long_options[option_index].name ) == 0 ) {
+					} else if ( strcmp( DUP_TTL_LIMIT_SWITCH, long_options[option_index].name ) == 0 ) {
 
 						errno = 0;
-						int tmp_send_duplicates = strtol (optarg, NULL , 10);
+						int tmp = strtol (optarg, NULL , 10);
 
-						if ( tmp_send_duplicates < MIN_SEND_DUPLICATES || tmp_send_duplicates > MAX_SEND_DUPLICATES ) {
+						if ( tmp < MIN_DUP_TTL_LIMIT || tmp > MAX_DUP_TTL_LIMIT ) {
 
-							printf( "Invalid send-duplicates specified: %i.\n The value must be >= %i and <= %i.\n", tmp_send_duplicates, MIN_SEND_DUPLICATES, MAX_SEND_DUPLICATES );
+							printf( "Invalid --%s specified: %i.\nMust be >= %i and <= %i.\n", DUP_TTL_LIMIT_SWITCH, tmp, MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT );
 
 							exit(EXIT_FAILURE);
 						}
 
-						send_duplicates = tmp_send_duplicates;
+						dup_ttl_limit = tmp;
+
+						found_args += 2;
+						break;
+
+					} else if ( strcmp( SEND_CLONES_SWITCH, long_options[option_index].name ) == 0 ) {
+
+						errno = 0;
+						int tmp_send_clones = strtol (optarg, NULL , 10);
+
+						if ( tmp_send_clones < MIN_SEND_CLONES || tmp_send_clones > MAX_SEND_CLONES ) {
+
+							printf( "Invalid %s specified: %i.\n The value must be >= %i and <= %i.\n", SEND_CLONES_SWITCH, tmp_send_clones, MIN_SEND_CLONES, MAX_SEND_CLONES );
+
+							exit(EXIT_FAILURE);
+						}
+
+						send_clones = tmp_send_clones;
 
 						found_args += 2;
 						break;

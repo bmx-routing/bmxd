@@ -83,7 +83,7 @@ void schedule_own_packet( struct batman_if *batman_if ) {
 
 
 
-void schedule_forward_packet( struct bat_packet *in, uint8_t unidirectional, uint8_t directlink, uint8_t duplicated, unsigned char *hna_recv_buff, int16_t hna_buff_len, struct batman_if *if_outgoing ) {
+void schedule_forward_packet( struct bat_packet *in, uint8_t unidirectional, uint8_t directlink, uint8_t cloned, unsigned char *hna_recv_buff, int16_t hna_buff_len, struct batman_if *if_outgoing ) {
 
 	prof_start( PROF_schedule_forward_packet );
 	struct forw_node *forw_node_new;
@@ -136,9 +136,9 @@ void schedule_forward_packet( struct bat_packet *in, uint8_t unidirectional, uin
 
 		} 
 		
-		if ( duplicated ) {
+		if ( cloned ) {
 			((struct bat_packet *)forw_node_new->pack_buff)->flags = 
-					((struct bat_packet *)forw_node_new->pack_buff)->flags | DUPLICATED_FLAG;
+					((struct bat_packet *)forw_node_new->pack_buff)->flags | CLONED_FLAG;
 		}			
 
 		list_add( &forw_node_new->list, &forw_list );
@@ -207,7 +207,7 @@ void send_outstanding_packets() {
 				
 				int32_t send_bucket = -((int32_t)(rand_num( 100 )));
 				
-				while ( send_bucket <= send_duplicates ) {
+				while ( send_bucket <= send_clones ) {
 					
 					send_bucket = send_bucket + 100;
 					
@@ -251,7 +251,7 @@ void send_outstanding_packets() {
 						}
 						
 					((struct bat_packet *)forw_node->pack_buff)->flags = 
-							((struct bat_packet *)forw_node->pack_buff)->flags | DUPLICATED_FLAG;
+							((struct bat_packet *)forw_node->pack_buff)->flags | CLONED_FLAG;
 					
 					}
 				

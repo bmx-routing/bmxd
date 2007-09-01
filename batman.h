@@ -43,7 +43,7 @@
 
 #define UNIDIRECTIONAL_FLAG 0x80 /* set when re-broadcasting a received OGM via a curretnly not bi-directional link and only together with IDF */
 #define DIRECTLINK_FLAG     0x40 /* set when re-broadcasting a received OGM with identical OG IP and NB IP on the interface link as received */
-#define DUPLICATED_FLAG     0x20 /* set when (re-)broadcasting a OGM not-for-the-first time or re-broadcasting a OGM with this flag */
+#define CLONED_FLAG         0x20 /* set when (re-)broadcasting a OGM not-for-the-first time or re-broadcasting a OGM with this flag */
 
 #define ADDR_STR_LEN 16
 
@@ -83,63 +83,83 @@
  */
 
 #define JITTER 100
+
+extern uint8_t mobile_device;
+extern uint8_t no_unreachable_rule;
+extern uint8_t no_forw_dupl_ttl_check;
+
+extern int16_t originator_interval;
 #define DEFAULT_ORIGINATOR_INTERVAL 1000
 #define MIN_ORIGINATOR_INTERVAL JITTER
 #define MAX_ORIGINATOR_INTERVAL 10000 
 
 #define PURGE_TIMEOUT 200000   /* purge originators after time in ms if no valid packet comes in -> TODO: check influence on SEQ_RANGE */
-#define DEFAULT_SEQ_RANGE 128  /* NBRF: NeighBor Ranking sequence Frame) sliding packet range of received orginator messages in squence numbers (should be a multiple of our word size) */  
+
+extern uint16_t sequence_range;
 #define FULL_SEQ_RANGE ((uint16_t)-1)
 #define MAX_SEQ_RANGE 128      /* TBD: should not be larger until neigh_node.packet_count (and related variables) is only 8 bit */
 #define MIN_SEQ_RANGE 1
+#define DEFAULT_SEQ_RANGE 128  /* NBRF: NeighBor Ranking sequence Frame) sliding packet range of received orginator messages in squence numbers (should be a multiple of our word size) */
+#define NBRFSIZE_SWITCH          "window-size"
 
+extern uint16_t bidirect_link_to;
 #define DEFAULT_BIDIRECT_TIMEOUT 2  
 #define MAX_BIDIRECT_TIMEOUT 100
 #define MIN_BIDIRECT_TIMEOUT 1
+#define BDLCFRAME_SWITCH         "bi-link-timeout"
 
+extern uint8_t ttl;
 #define DEFAULT_TTL 50                /* Time To Live of broadcast messages */
 #define MAX_TTL 63
 #define MIN_TTL 1 /* Values smaller than two currently do not work */
+#define TTL_SWITCH               "t"
+#define TTL_IF_SWITCH		 't'
 
-#define DEF_SEND_DUPLICATES 0
-#define MIN_SEND_DUPLICATES 0
-#define MAX_SEND_DUPLICATES 200
+extern uint8_t dup_ttl_limit;
+#define DEF_DUP_TTL_LIMIT 0
+#define MIN_DUP_TTL_LIMIT 0
+#define MAX_DUP_TTL_LIMIT 2
+#define DUP_TTL_LIMIT_SWITCH	 "dup-ttl-limit"
 
+extern int32_t send_clones;
+#define DEF_SEND_CLONES 0
+#define MIN_SEND_CLONES 0
+#define MAX_SEND_CLONES 200
+#define SEND_CLONES_SWITCH   "send-clones"
+
+extern uint8_t asymmetric_weight;
 #define DEF_ASYMMETRIC_WEIGHT 0
 #define MIN_ASYMMETRIC_WEIGHT 0
 #define MAX_ASYMMETRIC_WEIGHT 100
+#define ASYMMETRIC_WEIGHT_SWITCH "asymmetric-weight"
 
+extern uint8_t asymmetric_exp;
 #define DEF_ASYMMETRIC_EXP 0
 #define MIN_ASYMMETRIC_EXP 0
 #define MAX_ASYMMETRIC_EXP 3
+#define ASYMMETRIC_EXP_SWITCH    "asymmetric-exp"
 
+extern uint16_t penalty_min;
 #define DEF_PENALTY_MIN 0
 #define MIN_PENALTY_MIN 1
 #define MAX_PENALTY_MIN (MAX_SEQ_RANGE/2) /* TBD: this must adapt to the configured value */
+#define PENALTY_MIN_SWITCH       "penalty-min"
 
+extern uint16_t penalty_exceed;
 #define DEF_PENALTY_EXCEED 2
 #define MIN_PENALTY_EXCEED 1
 #define MAX_PENALTY_EXCEED 10
+#define PENALTY_EXCEED_SWITCH    "penalty-exceed"
 
+extern int8_t advanced_opts;
 #define ADVANCED_SWITCH          "dangerous"
-#define BDLCFRAME_SWITCH         "bi-link-timeout"
-#define NBRFSIZE_SWITCH          "window-size"
-#define TTL_SWITCH               "t"
-#define TTL_IF_SWITCH		 't'
 #define OGM_ONLY_VIA_OWNING_IF_SWITCH 'i'
 #define ASOCIAL_SWITCH           "asocial-device"
 #define NO_UNREACHABLE_RULE_SWITCH  "no-unreachable-rule"
 #define TEST_SWITCH              "test"
-#define SEND_DUPLICATES_SWITCH   "send-duplicates"
-#define ASYMMETRIC_WEIGHT_SWITCH "asymmetric-weight"
-#define ASYMMETRIC_EXP_SWITCH    "asymmetric-exp"
-#define PENALTY_MIN_SWITCH       "penalty-min"
-#define PENALTY_EXCEED_SWITCH    "penalty-exceed"
 
 
 #define MAX_NUM_WORDS (( MAX_SEQ_RANGE / WORD_BIT_SIZE ) + ( ( MAX_SEQ_RANGE % WORD_BIT_SIZE > 0)? 1 : 0 )) 
-
-
 
 
 /***
@@ -161,33 +181,12 @@
 #define BATMAN_RT_PRIO_DEFAULT 6600
 #define BATMAN_RT_PRIO_TUNNEL BATMAN_RT_PRIO_DEFAULT + 100
 
-
-
-
-
-
-
-
 extern char *prog_name;
 extern uint8_t debug_level;
 extern uint8_t debug_level_max;
 extern uint8_t gateway_class;
 extern uint8_t routing_class;
 extern uint8_t num_hna;
-extern int16_t originator_interval;
-
-extern int8_t advanced_opts;
-extern uint16_t bidirect_link_to;
-extern uint16_t sequence_range;
-extern uint8_t ttl;
-extern uint8_t mobile_device;
-extern uint8_t no_unreachable_rule;
-extern int32_t send_duplicates;
-extern uint8_t asymmetric_weight;
-extern uint8_t asymmetric_exp;
-extern uint16_t penalty_min;
-extern uint16_t penalty_exceed;
-
 
 extern int16_t num_words;
 
@@ -233,16 +232,26 @@ struct orig_node                 /* structure for orig_list maintaining nodes of
 	struct neigh_node *router;
 	struct batman_if *batman_if;
 	uint16_t *bidirect_link;    /* if node is a bidrectional neighbour, when my originator packet was broadcasted (replied) by this node and received by me */
-	TYPE_OF_WORD *bi_link_bits;       /* for bidirect-link statistics */
-	uint16_t *last_bi_link_seqno;     /* for bidirect-link statistics */
-	TYPE_OF_WORD *lq_bits;            /* for link-quality (lq) statistics */
-	uint16_t last_lq_seqno;           /* for link-quality (lq) statistics */
 	uint32_t last_valid;              /* when last packet from this node was received */
 	uint8_t  gwflags;                 /* flags related to gateway functions: gateway class */
 	unsigned char *hna_buff;
 	int16_t  hna_buff_len;
 	uint16_t last_seqno;              /* last and best known squence number */
+	
+	uint8_t last_seqno_best_ttl;	  /* smallest TTL received with last sequence number */
+	
+	TYPE_OF_WORD *bi_link_bits;       /* for bidirect-link statistics */
+	uint16_t *last_bi_link_seqno;     /* for bidirect-link statistics */
+	
+	TYPE_OF_WORD *lq_bits;            /* for link-quality (lq) statistics */
+	uint16_t last_lq_seqno;           /* for link-quality (lq) statistics */
+	
 	TYPE_OF_WORD send_old_seq_bits[ MAX_NUM_WORDS ]; /* just for debugging, indicates the re-broadcasted (non-unidirectional and non-quickest) OGMs for this foreign OG */
+	
+	TYPE_OF_WORD *dbg_rcvd_bits;
+	uint16_t last_dbg_rcvd_seqno;
+	
+	
 	struct list_head_first neigh_list;
 };
 
@@ -250,6 +259,7 @@ struct neigh_node
 {
 	struct list_head list;
 	uint32_t addr;
+	uint16_t last_considered_seqno;
 	uint8_t packet_count;
 	uint8_t penalty_count;
 	uint8_t  last_ttl;         /* ttl of last received packet */
