@@ -57,15 +57,21 @@ int8_t probe_tun() {
 
 int8_t del_dev_tun( int32_t fd ) {
 
-	if ( ioctl( fd, TUNSETPERSIST, 0 ) < 0 ) {
-
-		debug_output( 0, "Error - can't delete tun device: %s\n", strerror(errno) );
-		return -1;
-
+	if( no_tun_persist == NO ) {
+		
+			if ( ioctl( fd, TUNSETPERSIST, 0 ) < 0 ) {
+	
+			debug_output( 0, "Error - can't delete tun device: %s\n", strerror(errno) );
+			return -1;
+	
+		}
+		
 	}
 
 	close( fd );
 
+//	batman_tun_index--;
+	
 	return 1;
 
 }
@@ -79,10 +85,7 @@ int8_t add_dev_tun( struct batman_if *batman_if, uint32_t tun_addr, char *tun_de
 	struct sockaddr_in addr;
 
 	/* set up tunnel device */
-	memset( &ifr_tun, 0, sizeof(ifr_tun) );
 	memset( &ifr_if, 0, sizeof(ifr_if) );
-	ifr_tun.ifr_flags = IFF_TUN | IFF_NO_PI;
-	sprintf( ifr_tun.ifr_name, "%s%d", BATMAN_TUN_PREFIX, batman_tun_index++ );
 
 	
 	if ( ( *fd = open( "/dev/net/tun", O_RDWR ) ) < 0 ) {
@@ -92,14 +95,37 @@ int8_t add_dev_tun( struct batman_if *batman_if, uint32_t tun_addr, char *tun_de
 
 	}
 
-	if ( ( ioctl( *fd, TUNSETIFF, (void *) &ifr_tun ) ) < 0 ) {
-
-		debug_output( 0, "Error - can't create tun device (TUNSETIFF): %s\n", strerror(errno) );
+	batman_tun_index = 0;
+	uint8_t name_tun_success = NO;
+	
+	while ( batman_tun_index < MAX_BATMAN_TUN_INDEX && !name_tun_success ) {
+		
+		memset( &ifr_tun, 0, sizeof(ifr_tun) );
+		ifr_tun.ifr_flags = IFF_TUN | IFF_NO_PI;
+		sprintf( ifr_tun.ifr_name, "%s%d", BATMAN_TUN_PREFIX, batman_tun_index++ );
+		
+		debug_output( 0, "Trying to name tunnel to %s ... ", ifr_tun.ifr_name );
+		
+		if ( ( ioctl( *fd, TUNSETIFF, (void *) &ifr_tun ) ) < 0 ) {
+	
+			debug_output( 0, "Error - can't create tun device (TUNSETIFF): %s\n", strerror(errno) );
+			
+		} else {
+			
+			name_tun_success = YES;
+			debug_output( 0, "success!\n" );
+		}
+		
+	}
+	
+	if ( !name_tun_success ) {
+		
+		debug_output( 0, "Error - Giving up !\n" );
 		close(*fd);
 		return -1;
-
+		
 	}
-
+	
 	if( no_tun_persist == NO ) {
 		
 		if ( ioctl( *fd, TUNSETPERSIST, 1 ) < 0 ) {

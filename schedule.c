@@ -205,56 +205,63 @@ void send_outstanding_packets() {
 			/* (re-) broadcast to propagate existence of path to OG*/
 			} else {
 				
-				int32_t send_bucket = -((int32_t)(rand_num( 100 )));
+				if ( ( directlink ) && ( forw_node->if_outgoing == NULL ) ) {
+	
+					debug_output( 0, "Error - can't forward packet with IDF: outgoing iface not specified \n" );
+					restore_and_exit(0);
+	
+				}
 				
-				while ( send_bucket <= send_clones ) {
+				int32_t send_bucket = ((int32_t)(rand_num( 100 )));
+								
+				uint8_t not_done = YES;
+				
+				while ( not_done ) {
 					
-					send_bucket = send_bucket + 100;
-					
-					if ( ( directlink ) && ( forw_node->if_outgoing == NULL ) ) {
+					not_done = NO;
 	
-						debug_output( 0, "Error - can't forward packet with IDF: outgoing iface not specified \n" );
-						restore_and_exit(0);
-	
-					} else {
-	
-						list_for_each(if_pos, &if_list) {
-	
-							batman_if = list_entry(if_pos, struct batman_if, list);
-	
-							if ( !send_ogm_only_via_owning_if || forw_node->if_outgoing == batman_if ) { 
+					list_for_each(if_pos, &if_list) {
+
+						batman_if = list_entry(if_pos, struct batman_if, list);
+
+						if ( ( send_bucket <= batman_if->if_send_clones ) && 
+						     ( !send_ogm_only_via_owning_if || forw_node->if_outgoing == batman_if ) ) { 
+						
+							if ( (send_bucket + 100) <= batman_if->if_send_clones )
+								not_done = YES;
 							
-								if ( ( directlink ) && ( forw_node->if_outgoing == batman_if ) ) {
-									((struct bat_packet *)forw_node->pack_buff)->flags = 
-											((struct bat_packet *)forw_node->pack_buff)->flags | DIRECTLINK_FLAG;
-								} else {
-									((struct bat_packet *)forw_node->pack_buff)->flags = 
-											((struct bat_packet *)forw_node->pack_buff)->flags & ~DIRECTLINK_FLAG;
-								}
-		
-								debug_output( 4, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s\n", orig_str, ntohs( ((struct bat_packet *)forw_node->pack_buff)->seqno ), ((struct bat_packet *)forw_node->pack_buff)->ttl, batman_if->dev );
-		
-								/* OGMs for non-primary interfaces do not send hna information */
-								if ( ( forw_node->own ) && ( ((struct bat_packet *)forw_node->pack_buff)->orig != ((struct batman_if *)if_list.next)->addr.sin_addr.s_addr ) ) {
-		
-									if ( send_udp_packet( forw_node->pack_buff, sizeof(struct bat_packet), &batman_if->broad, batman_if->udp_send_sock ) < 0 )
-										restore_and_exit(0);
-		
-								} else {
-		
-									if ( send_udp_packet( forw_node->pack_buff, forw_node->pack_buff_len, &batman_if->broad, batman_if->udp_send_sock ) < 0 )
-										restore_and_exit(0);
-		
-								}
+							if ( ( directlink ) && ( forw_node->if_outgoing == batman_if ) ) {
+								((struct bat_packet *)forw_node->pack_buff)->flags = 
+										((struct bat_packet *)forw_node->pack_buff)->flags | DIRECTLINK_FLAG;
+							} else {
+								((struct bat_packet *)forw_node->pack_buff)->flags = 
+										((struct bat_packet *)forw_node->pack_buff)->flags & ~DIRECTLINK_FLAG;
+							}
+	
+							debug_output( 4, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s\n", orig_str, ntohs( ((struct bat_packet *)forw_node->pack_buff)->seqno ), ((struct bat_packet *)forw_node->pack_buff)->ttl, batman_if->dev );
+	
+							/* OGMs for non-primary interfaces do not send hna information */
+							if ( ( forw_node->own ) && ( ((struct bat_packet *)forw_node->pack_buff)->orig != ((struct batman_if *)if_list.next)->addr.sin_addr.s_addr ) ) {
+	
+								if ( send_udp_packet( forw_node->pack_buff, sizeof(struct bat_packet), &batman_if->broad, batman_if->udp_send_sock ) < 0 )
+									restore_and_exit(0);
+	
+							} else {
+	
+								if ( send_udp_packet( forw_node->pack_buff, forw_node->pack_buff_len, &batman_if->broad, batman_if->udp_send_sock ) < 0 )
+									restore_and_exit(0);
 	
 							}
+
 						}
-						
+					
+					}
+					
 					((struct bat_packet *)forw_node->pack_buff)->flags = 
 							((struct bat_packet *)forw_node->pack_buff)->flags | CLONED_FLAG;
 					
-					}
-				
+					send_bucket = send_bucket + 100;
+							
 				}
 
 			}

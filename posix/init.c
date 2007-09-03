@@ -120,6 +120,7 @@ void apply_init_args( int argc, char *argv[] ) {
 	memset( &tmp_ip_holder, 0, sizeof (struct in_addr) );
 	stop = 0;
 	prog_name = argv[0];
+	sprintf( unix_path, "%s", DEF_UNIX_PATH );
 
 
 	printf( "WARNING: You are using the experimental batman branch. If you are interested in *using* batman get the latest stable release !\n" );
@@ -130,12 +131,17 @@ void apply_init_args( int argc, char *argv[] ) {
 		static struct option long_options[] =
 		{
    {ADVANCED_SWITCH,            0, 0, 0},
-   {BDLCFRAME_SWITCH,           1, 0, 0},
+   {BIDIRECT_TIMEOUT_SWITCH,    1, 0, 0},
    {NBRFSIZE_SWITCH,            1, 0, 0},
    {TTL_SWITCH,                 1, 0, 0},
    {ASOCIAL_SWITCH,             0, 0, 0},
    {NO_UNREACHABLE_RULE_SWITCH, 0, 0, 0},
    {NO_TUNPERSIST_SWITCH,       0, 0, 0},
+   {RT_PRIO_DEFAULT_SWITCH,     1, 0, 0},
+   {NO_PRIO_RULES_SWITCH,       0, 0, 0},
+   {NO_THROW_RULES_SWITCH,      0, 0, 0},
+   {RT_TABLE_OFFSET_SWITCH,     1, 0, 0},
+   {BASE_PORT_SWITCH,           1, 0, 0},
    {TEST_SWITCH,                1, 0, 0},
    {DUP_TTL_LIMIT_SWITCH,       1, 0, 0},
    {SEND_CLONES_SWITCH,         1, 0, 0},
@@ -167,9 +173,9 @@ void apply_init_args( int argc, char *argv[] ) {
 
 				} else /* if ( advanced_opts ) */ {
 
-					if ( strcmp( BDLCFRAME_SWITCH, long_options[option_index].name ) == 0 ) {
+					if ( strcmp( BIDIRECT_TIMEOUT_SWITCH, long_options[option_index].name ) == 0 ) {
 
-						set_init_arg( BDLCFRAME_SWITCH, MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
+						set_init_arg( BIDIRECT_TIMEOUT_SWITCH, MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
 						found_args += 2;
 						break;
 
@@ -224,6 +230,39 @@ void apply_init_args( int argc, char *argv[] ) {
 						found_args += 2;
 						break;
 
+					} else if ( strcmp( RT_PRIO_DEFAULT_SWITCH, long_options[option_index].name ) == 0 ) {
+
+						set_init_arg( RT_PRIO_DEFAULT_SWITCH, MIN_RT_PRIO_DEFAULT, MAX_RT_PRIO_DEFAULT, &rt_prio_default );
+						found_args += 2;
+						break;
+						
+					} else if ( strcmp( BASE_PORT_SWITCH, long_options[option_index].name ) == 0 ) {
+
+						set_init_arg( BASE_PORT_SWITCH, MIN_BASE_PORT, MAX_BASE_PORT, &base_port );
+						
+						sprintf( unix_path, "%s.%d", DEF_UNIX_PATH, base_port);
+
+						found_args += 2;
+						break;
+					
+					} else if ( strcmp( RT_TABLE_OFFSET_SWITCH, long_options[option_index].name ) == 0 ) {
+
+						set_init_arg( RT_TABLE_OFFSET_SWITCH, MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset );
+						
+						rt_table_networks =  rt_table_offset + RT_TABLE_NETWORKS_OFFSET;
+						rt_table_hosts    =  rt_table_offset + RT_TABLE_HOSTS_OFFSET;
+						rt_table_tunnel   =  rt_table_offset + RT_TABLE_TUNNEL_OFFSET;
+						
+						found_args += 2;
+						break;
+						
+/*	this is just a template:
+					} else if ( strcmp( _SWITCH, long_options[option_index].name ) == 0 ) {
+
+						set_init_arg( _SWITCH, MIN_, MAX_, & );
+						found_args += 2;
+						break;
+*/						
 					} else if ( strcmp( ASOCIAL_SWITCH, long_options[option_index].name ) == 0 ) {
 
 						errno = 0;
@@ -245,6 +284,27 @@ void apply_init_args( int argc, char *argv[] ) {
 						found_args += 1;
 						break;
 					
+					} else if ( strcmp( NO_PRIO_RULES_SWITCH, long_options[option_index].name ) == 0 ) {
+
+						errno = 0;
+						no_prio_rules = YES;
+						found_args += 1;
+						break;
+
+					} else if ( strcmp( NO_THROW_RULES_SWITCH, long_options[option_index].name ) == 0 ) {
+
+						errno = 0;
+						no_throw_rules = YES;
+						found_args += 1;
+						break;
+/* this is just a template:
+					} else if ( strcmp( _SWITCH, long_options[option_index].name ) == 0 ) {
+
+						errno = 0;
+						 = YES;
+						found_args += 1;
+						break;
+*/					
 					} else if ( strcmp( TEST_SWITCH, long_options[option_index].name ) == 0 ) {
 
 						errno = 0;
@@ -573,7 +633,9 @@ void apply_init_args( int argc, char *argv[] ) {
 			batman_if->dev = argv[found_args];
 			batman_if->if_num = found_ifs;
 			batman_if->udp_tunnel_sock = 0;
+			batman_if->if_bidirect_link_to = bidirect_link_to;
 			batman_if->if_ttl = ttl;
+			batman_if->if_send_clones = send_clones;
 
 			list_add_tail( &batman_if->list, &if_list );
 
@@ -595,19 +657,54 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			while ( argc > found_args && strlen( argv[found_args] ) >= 2 && *argv[found_args] == '/') {
 
-				if ( (argv[found_args])[1] == TTL_IF_SWITCH && argc > (found_args+1) ) {
+				if ( (argv[found_args])[1] == BIDIRECT_TIMEOUT_IF_SWITCH && argc > (found_args+1) ) {
 
 					errno = 0;
-					uint8_t tmp_ttl = strtol ( argv[ found_args+1 ], NULL , 10 );
+					int16_t tmp = strtol ( argv[ found_args+1 ], NULL , 10 );
 
-					if ( tmp_ttl < MIN_TTL || tmp_ttl > MAX_TTL ) {
+					if ( tmp < MIN_BIDIRECT_TIMEOUT || tmp > MAX_BIDIRECT_TIMEOUT ) {
 
-						printf( "Invalid ttl specified: %i.\nThe ttl must be >= %i and <= %i.\n", tmp_ttl, MIN_TTL, MAX_TTL );
+						printf( "Invalid /%c specified: %i.\n Value must be %i <= value <= %i.\n", 
+								BIDIRECT_TIMEOUT_IF_SWITCH, tmp, MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT );
 
 						exit(EXIT_FAILURE);
 					}
 
-					batman_if->if_ttl = tmp_ttl;
+					batman_if->if_bidirect_link_to = tmp;
+
+					found_args += 2;
+
+				} else if ( (argv[found_args])[1] == TTL_IF_SWITCH && argc > (found_args+1) ) {
+
+					errno = 0;
+					uint8_t tmp = strtol ( argv[ found_args+1 ], NULL , 10 );
+
+					if ( tmp < MIN_TTL || tmp > MAX_TTL ) {
+
+						printf( "Invalid ttl specified: %i.\nThe ttl must be >= %i and <= %i.\n", tmp, MIN_TTL, MAX_TTL );
+
+						exit(EXIT_FAILURE);
+					}
+
+					batman_if->if_ttl = tmp;
+
+					found_args += 2;
+
+				} else if ( (argv[found_args])[1] == SEND_CLONES_IF_SWITCH && argc > (found_args+1) ) {
+
+					errno = 0;
+					int16_t tmp = strtol ( argv[ found_args+1 ], NULL , 10 );
+
+					if ( tmp < MIN_SEND_CLONES || tmp > MAX_SEND_CLONES ) {
+
+						printf( "Invalid /%c specified: %i.\n Value must be %i <= value <= %i.\n", 
+								SEND_CLONES_IF_SWITCH, tmp, MIN_SEND_CLONES, MAX_SEND_CLONES );
+
+						exit(EXIT_FAILURE);
+					}
+
+					printf( "Interface %s specific option specified: /%c %i.\n", batman_if->dev, SEND_CLONES_IF_SWITCH, tmp );
+					batman_if->if_send_clones = tmp;
 
 					found_args += 2;
 
@@ -616,6 +713,7 @@ void apply_init_args( int argc, char *argv[] ) {
 					errno = 0;
 
 					batman_if->send_ogm_only_via_owning_if = YES;
+					batman_if->if_ttl = 1;
 
 					found_args += 1;
 
@@ -629,17 +727,16 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		}
 		
-		
-		unlink( UNIX_PATH );
+		unlink( unix_path );
 		unix_if.unix_sock = socket( AF_LOCAL, SOCK_STREAM, 0 );
 
 		memset( &unix_if.addr, 0, sizeof(struct sockaddr_un) );
 		unix_if.addr.sun_family = AF_LOCAL;
-		strcpy( unix_if.addr.sun_path, UNIX_PATH );
+		strcpy( unix_if.addr.sun_path, unix_path );
 
 		if ( bind ( unix_if.unix_sock, (struct sockaddr *)&unix_if.addr, sizeof (struct sockaddr_un) ) < 0 ) {
 
-			printf( "Error - can't bind unix socket '%s': %s\n", UNIX_PATH, strerror(errno) );
+			printf( "Error - can't bind unix socket '%s': %s\n", unix_path, strerror(errno) );
 			restore_defaults();
 			exit(EXIT_FAILURE);
 
@@ -647,7 +744,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		if ( listen( unix_if.unix_sock, 10 ) < 0 ) {
 
-			printf( "Error - can't listen unix socket '%s': %s\n", UNIX_PATH, strerror(errno) );
+			printf( "Error - can't listen unix socket '%s': %s\n", unix_path, strerror(errno) );
 			restore_defaults();
 			exit(EXIT_FAILURE);
 
@@ -681,7 +778,8 @@ void apply_init_args( int argc, char *argv[] ) {
 		pthread_create( &unix_if.listen_thread_id, NULL, &unix_listen, NULL );
 
 		/* add rule for hna networks */
-		add_del_rule( 0, 0, BATMAN_RT_TABLE_NETWORKS, BATMAN_RT_PRIO_DEFAULT - 1, 0, 1, 0 );
+		if( !no_prio_rules )
+			add_del_rule( 0, 0, BATMAN_RT_TABLE_NETWORKS, rt_prio_default - 1, 0, 1, 0 );
 
 		if ( routing_class > 0 ) {
 
@@ -750,11 +848,11 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		memset( &unix_if.addr, 0, sizeof(struct sockaddr_un) );
 		unix_if.addr.sun_family = AF_LOCAL;
-		strcpy( unix_if.addr.sun_path, UNIX_PATH );
+		strcpy( unix_if.addr.sun_path, unix_path );
 
 		if ( connect ( unix_if.unix_sock, (struct sockaddr *)&unix_if.addr, sizeof(struct sockaddr_un) ) < 0 ) {
 
-			printf( "Error - can't connect to unix socket '%s': %s ! Is batmand running on this host ?\n", UNIX_PATH, strerror(errno) );
+			printf( "Error - can't connect to unix socket '%s': %s ! Is batmand running on this host ?\n", unix_path, strerror(errno) );
 			close( unix_if.unix_sock );
 			exit(EXIT_FAILURE);
 
@@ -955,7 +1053,8 @@ void init_interface ( struct batman_if *batman_if ) {
 
 	batman_if->netaddr = ( ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr & batman_if->addr.sin_addr.s_addr );
 	batman_if->netmask = bit_count( ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr );
-	add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_DEFAULT + batman_if->if_num, 0, 1, 0 );
+	if( !no_prio_rules )
+		add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_HOSTS, rt_prio_default + batman_if->if_num, 0, 1, 0 );
 	
 	if ( no_unreachable_rule == NO )
 		add_del_route( batman_if->netaddr, batman_if->netmask, 0, batman_if->if_index, batman_if->dev, BATMAN_RT_TABLE_HOSTS, 2, 0 );

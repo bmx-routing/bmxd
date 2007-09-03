@@ -69,7 +69,7 @@ struct orig_node *get_orig_node( uint32_t addr ) {
 	struct orig_node *orig_node;
 	struct hashtable_t *swaphash;
 	static char orig_str[ADDR_STR_LEN];
-	size_t i;
+	uint16_t i;
 
 
 	orig_node = ((struct orig_node *)hash_find( orig_hash, &addr ));
@@ -107,8 +107,8 @@ struct orig_node *get_orig_node( uint32_t addr ) {
 	 ((uint16_t) (if_incoming->out.bat_packet.seqno - OUT_SEQNO_OFFSET - bidirect_link_to)); 
 	it may work !
 	*/
-	for ( i=0; i<found_ifs; i++ ) {
-		orig_node->bidirect_link[i] = ((uint16_t) (0 - OUT_SEQNO_OFFSET - bidirect_link_to)); 
+	for ( i=0; i < found_ifs; i++ ) {
+		orig_node->bidirect_link[i] = ((uint16_t) (0 - OUT_SEQNO_OFFSET - MAX_BIDIRECT_TIMEOUT) ); 
 	}
 	
 	hash_add( orig_hash, orig_node );
@@ -786,7 +786,7 @@ void debug_orig() {
 			((struct batman_if *)if_list.next)->dev, orig_str, sequence_range, bidirect_link_to, originator_interval,
 			uptime_sec/86400, ((uptime_sec%86400)/3600), ((uptime_sec)%3600)/60  );
 		
-		debug_output( 1, "%-12s     viaIF    %11s (brc rcvd lseq  lvld) [viaIF l2q lq nlq]...    alternatives (brc)...\n", "Originator", "Router");
+		debug_output( 1, "%-12s        viaIF    %11s (brc rcvd lseq  lvld) [   viaIF l2q  lq nlq].. alternatives...\n", "Originator", "Router");
 		
 		
 		
@@ -817,7 +817,7 @@ void debug_orig() {
 
 			addr_to_string( orig_node->orig, str, sizeof (str) );
 			addr_to_string( orig_node->router->addr, str2, sizeof (str2) );
-			dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s %5s %15s (%3i %3i %5i %5i)", 
+			dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s %8s %15s (%3i %3i %5i %5i)", 
 					str, orig_node->router->if_incoming->dev, str2,
 					orig_node->router->packet_count /* accepted */,
 //					bit_packet_count( orig_node->send_old_seq_bits, sequence_range ) /* old  */,
@@ -837,7 +837,7 @@ void debug_orig() {
 					l2q = update_bi_link_bits( orig_node, neigh_node_if, NO, sequence_range );
 			
 					dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), 
-							" [%s %3i %3i %3i]   ",
+							" [%8s %3i %3i %3i] ",
        /*(( neigh_node->addr == orig_node->router->addr && neigh_node->if_incoming == orig_node->router->if_incoming ) ? "=>" : "  "),*/
 							neigh_node->if_incoming->dev, /*acceptance_rate( nlq, lq ),*/ l2q, lq, nlq );
 
@@ -856,7 +856,7 @@ void debug_orig() {
 					
 					addr_to_string( neigh_node->addr, str, sizeof (str) );
 
-					dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), " %15s (%3i)", str, neigh_node->packet_count );
+					dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), " %17s (%3i)", str, neigh_node->packet_count );
 				
 				
 				}

@@ -102,8 +102,17 @@ int32_t penalty_exceed = DEF_PENALTY_EXCEED;
 
 int16_t num_words = ( DEFAULT_SEQ_RANGE / WORD_BIT_SIZE ) + ( ( DEFAULT_SEQ_RANGE % WORD_BIT_SIZE > 0)? 1 : 0 );
 
+int32_t base_port = DEF_BASE_PORT;
 
+int32_t rt_table_offset = DEF_RT_TABLE_OFFSET;
+int32_t rt_table_networks = DEF_RT_TABLE_OFFSET + RT_TABLE_NETWORKS_OFFSET;
+int32_t rt_table_hosts    = DEF_RT_TABLE_OFFSET + RT_TABLE_HOSTS_OFFSET;
+int32_t rt_table_tunnel   = DEF_RT_TABLE_OFFSET + RT_TABLE_TUNNEL_OFFSET;
 
+int32_t rt_prio_default = DEF_RT_PRIO_DEFAULT;
+
+int32_t no_prio_rules = DEF_NO_PRIO_RULES;
+int32_t no_throw_rules = DEF_NO_THROW_RULES;
 
 
 
@@ -144,13 +153,25 @@ void print_advanced_opts ( int verbose ) {
 	
 	fprintf( stderr, "\n\n advanced and dangerous options (better do not touch):\n" );
 	
-	fprintf( stderr, "\n       --%s <value> : set bidirectional-link-check frame size\n", BDLCFRAME_SWITCH );
-	if ( verbose )
-		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEFAULT_BIDIRECT_TIMEOUT, MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT  );
+	fprintf( stderr, "\n       --%s : does not set the unreachable rule for host routes.\n", NO_UNREACHABLE_RULE_SWITCH );
 	
-	fprintf( stderr, "\n       --%s <value> : set neighbor ranking frame size\n", NBRFSIZE_SWITCH );
+	fprintf( stderr, "\n       --%s : does not set the default priority rules.\n", NO_PRIO_RULES_SWITCH );
+	
+	fprintf( stderr, "\n       --%s : does not set the default throw rules.\n", NO_THROW_RULES_SWITCH );
+	
+	fprintf( stderr, "\n       --%s <value> : set base udp port used batmand.\n", BASE_PORT_SWITCH );
+	fprintf( stderr, "          <value> for OGMs, <value+1> for GW tunnels, <value+2> for visualization server.\n");
 	if ( verbose )
-		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d\n", DEFAULT_SEQ_RANGE, MIN_SEQ_RANGE, MAX_SEQ_RANGE  );
+		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_BASE_PORT, MIN_BASE_PORT, MAX_BASE_PORT  );
+	
+	fprintf( stderr, "\n       --%s <value> : set base routing table used by batmand.\n", RT_TABLE_OFFSET_SWITCH );
+	fprintf( stderr, "          <value> for HNA routes, <value+1> for host routes, <value+2> for GW routes.\n");
+	if ( verbose )
+		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_RT_TABLE_OFFSET, MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET  );
+	
+	fprintf( stderr, "\n       --%s <value> : set base ip-rules priority used by batmand.\n", RT_PRIO_DEFAULT_SWITCH );
+	if ( verbose )
+		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_RT_PRIO_DEFAULT, MIN_RT_PRIO_DEFAULT, MAX_RT_PRIO_DEFAULT  );
 	
 	fprintf( stderr, "\n       --%s <value> : change default TTL of originator packets.\n", TTL_SWITCH );
 	fprintf( stderr, "        \\%c <value> : attached after an interface name\n", TTL_IF_SWITCH );
@@ -159,26 +180,35 @@ void print_advanced_opts ( int verbose ) {
 		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d\n", DEFAULT_TTL, MIN_TTL, MAX_TTL  );
 	
 	fprintf( stderr, "\n        \\%c : attached after an interface name\n", OGM_ONLY_VIA_OWNING_IF_SWITCH );
-	fprintf( stderr, "          to broadcast OGMs representing this interface only via this interface.\n");
+	fprintf( stderr, "          to broadcast OGMs representing this interface only via this interface,\n");
+	fprintf( stderr, "          also reduces the TTL for OGMs representing this interface to 1.\n");
 	
-	fprintf( stderr, "\n       --%s : mode for mobile devices reluctant to help others\n", ASOCIAL_SWITCH );
+	fprintf( stderr, "\n       --%s <value> : set bidirectional timeout value\n", BIDIRECT_TIMEOUT_SWITCH );
+	fprintf( stderr, "        \\%c <value> : attached after an interface name\n", BIDIRECT_TIMEOUT_IF_SWITCH );
+	fprintf( stderr, "          to set individual bidirectionl-timeout value this interface.\n");
+	if ( verbose )
+		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEFAULT_BIDIRECT_TIMEOUT, MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT  );
 	
-	fprintf( stderr, "\n       --%s : does not set the unreachable rule for host routes\n", NO_UNREACHABLE_RULE_SWITCH );
+	fprintf( stderr, "\n       --%s <value> : set neighbor ranking frame size\n", NBRFSIZE_SWITCH );
+	if ( verbose )
+		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d\n", DEFAULT_SEQ_RANGE, MIN_SEQ_RANGE, MAX_SEQ_RANGE  );
 	
-	
-	
-	fprintf( stderr, "\n       --%s <value> : send OGMs multiple times (with given probability)\n", SEND_CLONES_SWITCH );
+	fprintf( stderr, "\n       --%s <value> : (re-)broadcast OGMs with given probability\n", SEND_CLONES_SWITCH );
+	fprintf( stderr, "        \\%c <value> : attached after an interface name\n", SEND_CLONES_IF_SWITCH );
+	fprintf( stderr, "          to specify an individual re-broadcast probability for this interface.\n");
 	if ( verbose )
 		fprintf( stderr, "          default: %d, allowed probability values in percent: %d <= value <= %d\n", DEF_SEND_CLONES, MIN_SEND_CLONES, MAX_SEND_CLONES  );
-	
-	fprintf( stderr, "\n       --%s <value> : ignore rcvd OGMs to respect asymmetric-links.\n", ASYMMETRIC_WEIGHT_SWITCH );
-	if ( verbose )
-		fprintf( stderr, "          default: %d, allowed probability values in percent: %d <= value <=%d\n", DEF_ASYMMETRIC_WEIGHT, MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT  );
 	
 	fprintf( stderr, "\n       --%s <value> : ignore rcvd OGMs to respect asymmetric-links.\n", ASYMMETRIC_EXP_SWITCH );
 	fprintf( stderr, "          Ignore with probability NLQ^<value>.\n");	
 	if ( verbose )
 		fprintf( stderr, "          default: %d, allowed exponent values: %d <= value <=%d\n", DEF_ASYMMETRIC_EXP, MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP  );
+	
+	fprintf( stderr, "\n       --%s <value> : ignore rcvd OGMs to respect asymmetric-links.\n", ASYMMETRIC_WEIGHT_SWITCH );
+	if ( verbose )
+		fprintf( stderr, "          default: %d, allowed probability values in percent: %d <= value <=%d\n", DEF_ASYMMETRIC_WEIGHT, MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT  );
+	
+	fprintf( stderr, "\n       --%s : mode for mobile devices reluctant to help others.\n", ASOCIAL_SWITCH );
 	
 	fprintf( stderr, "\n       --%s <value> : do neighbor ranking based on latest received OGMs.\n", PENALTY_MIN_SWITCH );
 	fprintf( stderr, "          choosing the ranking winner with the most recent <value> OGMs in the NBRF \n");
@@ -300,7 +330,7 @@ void add_del_hna( struct orig_node *orig_node, int8_t del ) {
 		netmask = ( uint32_t )orig_node->hna_buff[ ( hna_buff_count * 5 ) + 4 ];
 
 		if ( ( netmask > 0 ) && ( netmask < 33 ) ) {
-			add_del_route( hna, netmask, orig_node->router->addr, orig_node->batman_if->if_index, orig_node->batman_if->dev, BATMAN_RT_TABLE_NETWORKS, 0, del );
+			add_del_route( hna, netmask, orig_node->router->addr, orig_node->batman_if->if_index, orig_node->batman_if->dev, rt_table_networks, 0, del );
 			
 		}
 

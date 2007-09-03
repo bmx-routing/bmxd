@@ -39,7 +39,7 @@
 
 #define SOURCE_VERSION "0.3-exp" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
 #define COMPAT_VERSION 3
-#define PORT 1966
+
 
 #define UNIDIRECTIONAL_FLAG 0x80 /* set when re-broadcasting a received OGM via a curretnly not bi-directional link and only together with IDF */
 #define DIRECTLINK_FLAG     0x40 /* set when re-broadcasting a received OGM with identical OG IP and NB IP on the interface link as received */
@@ -47,7 +47,8 @@
 
 #define ADDR_STR_LEN 16
 
-#define UNIX_PATH "/var/run/batmand.socket"
+#define DEF_UNIX_PATH "/var/run/batmand.socket"
+char unix_path[sizeof(DEF_UNIX_PATH)+10];
 
 #define VIS_COMPAT_VERSION 20
 
@@ -101,11 +102,11 @@ extern int16_t originator_interval;
 #define MIN_ORIGINATOR_INTERVAL JITTER
 #define MAX_ORIGINATOR_INTERVAL 10000 
 
-#define PURGE_TIMEOUT 200000   /* purge originators after time in ms if no valid packet comes in -> TODO: check influence on SEQ_RANGE */
+#define PURGE_TIMEOUT 400000   /* purge originators after time in ms if no valid packet comes in -> TODO: check influence on SEQ_RANGE */
 
 extern int32_t sequence_range;
 #define FULL_SEQ_RANGE ((uint16_t)-1)
-#define MAX_SEQ_RANGE 128      /* TBD: should not be larger until neigh_node.packet_count (and related variables) is only 8 bit */
+#define MAX_SEQ_RANGE 250      /* TBD: should not be larger until neigh_node.packet_count (and related variables) is only 8 bit */
 #define MIN_SEQ_RANGE 1
 #define DEFAULT_SEQ_RANGE 128  /* NBRF: NeighBor Ranking sequence Frame) sliding packet range of received orginator messages in squence numbers (should be a multiple of our word size) */
 #define NBRFSIZE_SWITCH          "window-size"
@@ -114,7 +115,8 @@ extern int32_t bidirect_link_to;
 #define DEFAULT_BIDIRECT_TIMEOUT 2  
 #define MAX_BIDIRECT_TIMEOUT 100
 #define MIN_BIDIRECT_TIMEOUT 1
-#define BDLCFRAME_SWITCH         "bi-link-timeout"
+#define BIDIRECT_TIMEOUT_SWITCH         "bi-link-timeout"
+#define BIDIRECT_TIMEOUT_IF_SWITCH      'b'
 
 extern int32_t ttl;
 #define DEFAULT_TTL 50                /* Time To Live of broadcast messages */
@@ -129,11 +131,12 @@ extern int32_t dup_ttl_limit;
 #define MAX_DUP_TTL_LIMIT 2
 #define DUP_TTL_LIMIT_SWITCH	 "dup-ttl-limit"
 
-extern int32_t send_clones;
-#define DEF_SEND_CLONES 0
+extern int32_t send_clones; // useful for asymmetric-path and backup-path discovery
+#define DEF_SEND_CLONES 100
 #define MIN_SEND_CLONES 0
-#define MAX_SEND_CLONES 200
+#define MAX_SEND_CLONES 300
 #define SEND_CLONES_SWITCH   "send-clones"
+#define SEND_CLONES_IF_SWITCH 'c'
 
 extern int32_t asymmetric_weight;
 #define DEF_ASYMMETRIC_WEIGHT 0
@@ -167,7 +170,18 @@ extern int8_t advanced_opts;
 
 #define MAX_NUM_WORDS (( MAX_SEQ_RANGE / WORD_BIT_SIZE ) + ( ( MAX_SEQ_RANGE % WORD_BIT_SIZE > 0)? 1 : 0 )) 
 
-#define BATMAN_TUN_PREFIX "batun" 
+#define BATMAN_TUN_PREFIX "bat"
+#define MAX_BATMAN_TUN_INDEX 15 
+
+extern int32_t base_port;
+#define BASE_PORT_SWITCH "base-port"
+#define DEF_BASE_PORT 1966
+#define MIN_BASE_PORT 1025
+#define MAX_BASE_PORT 60000
+
+#define PORT base_port
+
+
 
 /***
  *
@@ -182,11 +196,43 @@ extern int8_t advanced_opts;
  ***/
 
 
-#define BATMAN_RT_TABLE_NETWORKS 65
-#define BATMAN_RT_TABLE_HOSTS 66
-#define BATMAN_RT_TABLE_TUNNEL 67
-#define BATMAN_RT_PRIO_DEFAULT 6600
-#define BATMAN_RT_PRIO_TUNNEL BATMAN_RT_PRIO_DEFAULT + 100
+#define RT_TABLE_NETWORKS_OFFSET 0
+#define RT_TABLE_HOSTS_OFFSET   1
+#define RT_TABLE_TUNNEL_OFFSET   2
+
+extern int32_t rt_table_offset;
+extern int32_t rt_table_networks;
+extern int32_t rt_table_hosts; 
+extern int32_t rt_table_tunnel;
+
+#define RT_TABLE_OFFSET_SWITCH "rt-table-offset"
+#define DEF_RT_TABLE_OFFSET 65
+#define MIN_RT_TABLE_OFFSET 2
+#define MAX_RT_TABLE_OFFSET 250
+
+#define BATMAN_RT_TABLE_NETWORKS rt_table_networks
+#define BATMAN_RT_TABLE_HOSTS    rt_table_hosts
+#define BATMAN_RT_TABLE_TUNNEL   rt_table_tunnel
+
+
+// #define BATMAN_RT_PRIO_DEFAULT 6600
+
+extern int32_t rt_prio_default;
+#define RT_PRIO_DEFAULT_SWITCH "prio-rules-offset"
+#define DEF_RT_PRIO_DEFAULT 6600
+#define MIN_RT_PRIO_DEFAULT 3
+#define MAX_RT_PRIO_DEFAULT 32765
+
+#define BATMAN_RT_PRIO_TUNNEL (rt_prio_default + 100)
+
+extern int32_t no_prio_rules;
+#define NO_PRIO_RULES_SWITCH "no-prio-rules"
+#define DEF_NO_PRIO_RULES NO
+
+extern int32_t no_throw_rules;
+#define NO_THROW_RULES_SWITCH "no-throw-rules"
+#define DEF_NO_THROW_RULES NO
+
 
 extern char *prog_name;
 extern uint8_t debug_level;
@@ -319,7 +365,9 @@ struct batman_if
 	uint8_t netmask;
 	struct bat_packet out;
 	uint8_t if_ttl;
+	uint8_t if_bidirect_link_to;
 	uint8_t send_ogm_only_via_owning_if;
+	int16_t if_send_clones;
 };
 
 struct gw_client
