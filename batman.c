@@ -70,6 +70,7 @@ uint8_t gateway_class = 0;
 
 uint8_t routing_class = 0;
 
+//uint8_t compat_version = DEF_COMPAT_VERSION;
 
 int16_t originator_interval = DEFAULT_ORIGINATOR_INTERVAL;   /* orginator message interval in miliseconds */
 
@@ -94,6 +95,8 @@ int32_t send_clones = DEF_SEND_CLONES;
 int32_t asymmetric_weight = DEF_ASYMMETRIC_WEIGHT;
 
 int32_t asymmetric_exp = DEF_ASYMMETRIC_EXP;
+
+int8_t bmx_defaults = DEF_BMX_DEFAULTS;
 
 
 int32_t penalty_min = DEF_PENALTY_MIN;
@@ -159,7 +162,7 @@ void print_advanced_opts ( int verbose ) {
 	
 	fprintf( stderr, "\n       --%s : does not set the default throw rules.\n", NO_THROW_RULES_SWITCH );
 	
-	fprintf( stderr, "\n       --%s <value> : set base udp port used batmand.\n", BASE_PORT_SWITCH );
+	fprintf( stderr, "\n       --%s <value> : set base udp port used by batmand.\n", BASE_PORT_SWITCH );
 	fprintf( stderr, "          <value> for OGMs, <value+1> for GW tunnels, <value+2> for visualization server.\n");
 	if ( verbose )
 		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_BASE_PORT, MIN_BASE_PORT, MAX_BASE_PORT  );
@@ -174,17 +177,22 @@ void print_advanced_opts ( int verbose ) {
 		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_RT_PRIO_DEFAULT, MIN_RT_PRIO_DEFAULT, MAX_RT_PRIO_DEFAULT  );
 	
 	fprintf( stderr, "\n       --%s <value> : change default TTL of originator packets.\n", TTL_SWITCH );
-	fprintf( stderr, "        \\%c <value> : attached after an interface name\n", TTL_IF_SWITCH );
+	fprintf( stderr, "        /%c <value> : attached after an interface name\n", TTL_IF_SWITCH );
 	fprintf( stderr, "          to change the TTL only for the OGMs representing a specific interface\n");
 	if ( verbose )
 		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d\n", DEFAULT_TTL, MIN_TTL, MAX_TTL  );
 	
-	fprintf( stderr, "\n        \\%c : attached after an interface name\n", OGM_ONLY_VIA_OWNING_IF_SWITCH );
-	fprintf( stderr, "          to broadcast OGMs representing this interface only via this interface,\n");
+	fprintf( stderr, "\n        /%c : attached after an interface name\n", OGM_ONLY_VIA_OWNING_IF_SWITCH );
+	fprintf( stderr, "          to broadcast the OGMs representing this interface only via this interface,\n");
 	fprintf( stderr, "          also reduces the TTL for OGMs representing this interface to 1.\n");
 	
+	fprintf( stderr, "\n        /%c : attached after an interface name\n", MAKE_IP_HNA_IF_SWITCH );
+	fprintf( stderr, "          to add IP address of this interface to the HNA list. Also\n");
+	fprintf( stderr, "          reduces the TTL for OGMs representing this interface to 1 and\n");
+	fprintf( stderr, "          broadcasts the OGMs representing this interface only via this interface\n");
+
 	fprintf( stderr, "\n       --%s <value> : set bidirectional timeout value\n", BIDIRECT_TIMEOUT_SWITCH );
-	fprintf( stderr, "        \\%c <value> : attached after an interface name\n", BIDIRECT_TIMEOUT_IF_SWITCH );
+	fprintf( stderr, "        /%c <value> : attached after an interface name\n", BIDIRECT_TIMEOUT_IF_SWITCH );
 	fprintf( stderr, "          to set individual bidirectionl-timeout value this interface.\n");
 	if ( verbose )
 		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEFAULT_BIDIRECT_TIMEOUT, MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT  );
@@ -194,7 +202,7 @@ void print_advanced_opts ( int verbose ) {
 		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d\n", DEFAULT_SEQ_RANGE, MIN_SEQ_RANGE, MAX_SEQ_RANGE  );
 	
 	fprintf( stderr, "\n       --%s <value> : (re-)broadcast OGMs with given probability\n", SEND_CLONES_SWITCH );
-	fprintf( stderr, "        \\%c <value> : attached after an interface name\n", SEND_CLONES_IF_SWITCH );
+	fprintf( stderr, "        /%c <value> : attached after an interface name\n", SEND_CLONES_IF_SWITCH );
 	fprintf( stderr, "          to specify an individual re-broadcast probability for this interface.\n");
 	if ( verbose )
 		fprintf( stderr, "          default: %d, allowed probability values in percent: %d <= value <= %d\n", DEF_SEND_CLONES, MIN_SEND_CLONES, MAX_SEND_CLONES  );

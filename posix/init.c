@@ -85,10 +85,15 @@ int my_daemon() {
 
 }
 
-void set_init_arg( char* switch_name, int min, int max, int32_t *target_value ) {
+void set_init_arg( char* switch_name, char* switch_arg, int min, int max, int32_t *target_value ) {
 	errno = 0;
-	int16_t tmp = strtol (optarg, NULL , 10);
+	int16_t tmp = strtol (switch_arg, NULL , 10);
 
+	printf ("Long option: %s", switch_name );
+	if (switch_arg)
+		printf (" with argument: %d", tmp );
+	printf ("\n");
+	
 	if ( tmp < min || tmp > max ) {
 
 		printf( "Invalid --%s value specified: %i ! Value must be %i <= <value> <= %i !\n", switch_name, tmp, min, max );
@@ -100,15 +105,72 @@ void set_init_arg( char* switch_name, int min, int max, int32_t *target_value ) 
 	return;
 }
 
+void add_hna_opt ( char *optarg_str ) {
+	
+	struct hna_node *hna_node;
+	struct in_addr tmp_ip_holder;
+	uint16_t netmask;
+//	char str1[17];
+	char *slash_ptr;
+			
+	if ( ( slash_ptr = strchr( optarg_str, '/' ) ) == NULL ) {
+
+		printf( "Invalid announced network (netmask is missing): %s\n", optarg_str );
+		exit(EXIT_FAILURE);
+
+	}
+
+	*slash_ptr = '\0';
+
+	if ( inet_pton( AF_INET, optarg_str, &tmp_ip_holder ) < 1 ) {
+
+		*slash_ptr = '/';
+		printf( "Invalid announced network (IP is invalid): %s\n", optarg_str );
+		exit(EXIT_FAILURE);
+
+	}
+
+	errno = 0;
+
+	netmask = strtol( slash_ptr + 1, NULL, 10 );
+
+	if ( ( errno == ERANGE ) || ( errno != 0 && netmask == 0 ) ) {
+
+		perror("strtol");
+		exit(EXIT_FAILURE);
+
+	}
+
+	if ( netmask < 1 || netmask > 32 ) {
+
+		*slash_ptr = '/';
+		printf( "Invalid announced network (netmask is invalid): %s\n", optarg_str );
+		exit(EXIT_FAILURE);
+
+	}
+
+	hna_node = debugMalloc( sizeof(struct hna_node), 203 );
+	memset( hna_node, 0, sizeof(struct hna_node) );
+	INIT_LIST_HEAD( &hna_node->list );
+
+	hna_node->addr = tmp_ip_holder.s_addr;
+	hna_node->netmask = netmask;
+
+	list_add_tail( &hna_node->list, &hna_list );
+
+	*slash_ptr = '/';
+	
+}
+
 void apply_init_args( int argc, char *argv[] ) {
 
 	struct in_addr tmp_ip_holder;
 	struct batman_if *batman_if;
-	struct hna_node *hna_node;
+//	struct hna_node *hna_node;
 	struct debug_level_info *debug_level_info;
 	struct list_head *list_pos;
 	uint8_t found_args = 1, batch_mode = 0;
-	uint16_t netmask;
+//	uint16_t netmask;
 	int8_t res;
 
 	int32_t optchar, recv_buff_len, bytes_written, download_speed = 0, upload_speed = 0;
@@ -131,6 +193,7 @@ void apply_init_args( int argc, char *argv[] ) {
 		static struct option long_options[] =
 		{
    {ADVANCED_SWITCH,            0, 0, 0},
+   {BMX_DEFAULTS_SWITCH,        0, 0, 0},
    {BIDIRECT_TIMEOUT_SWITCH,    1, 0, 0},
    {NBRFSIZE_SWITCH,            1, 0, 0},
    {TTL_SWITCH,                 1, 0, 0},
@@ -142,7 +205,7 @@ void apply_init_args( int argc, char *argv[] ) {
    {NO_THROW_RULES_SWITCH,      0, 0, 0},
    {RT_TABLE_OFFSET_SWITCH,     1, 0, 0},
    {BASE_PORT_SWITCH,           1, 0, 0},
-   {TEST_SWITCH,                1, 0, 0},
+   {TEST_SWITCH,                0, 0, 0},
    {DUP_TTL_LIMIT_SWITCH,       1, 0, 0},
    {SEND_CLONES_SWITCH,         1, 0, 0},
    {ASYMMETRIC_WEIGHT_SWITCH,   1, 0, 0},
@@ -158,11 +221,14 @@ void apply_init_args( int argc, char *argv[] ) {
 		switch ( optchar ) {
 
 			case 0: {
+				
+				/*
 				printf ("Long option: %s", long_options[option_index].name);
 				if (optarg)
 					printf (" with argument: %s", optarg);
 				printf ("\n");
-
+				*/
+				
 				if( strcmp( ADVANCED_SWITCH, long_options[option_index].name ) == 0 ) {
 
 					errno = 0;
@@ -175,13 +241,13 @@ void apply_init_args( int argc, char *argv[] ) {
 
 					if ( strcmp( BIDIRECT_TIMEOUT_SWITCH, long_options[option_index].name ) == 0 ) {
 
-						set_init_arg( BIDIRECT_TIMEOUT_SWITCH, MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
+						set_init_arg( BIDIRECT_TIMEOUT_SWITCH, optarg, MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
 						found_args += 2;
 						break;
 
 					} else if ( strcmp( NBRFSIZE_SWITCH, long_options[option_index].name ) == 0 ) {
 
-						set_init_arg( NBRFSIZE_SWITCH, MIN_SEQ_RANGE, MAX_SEQ_RANGE, &sequence_range );
+						set_init_arg( NBRFSIZE_SWITCH, optarg, MIN_SEQ_RANGE, MAX_SEQ_RANGE, &sequence_range );
 						
 						num_words = ( sequence_range / WORD_BIT_SIZE ) + ( ( sequence_range % WORD_BIT_SIZE > 0)? 1 : 0 );
 
@@ -190,55 +256,59 @@ void apply_init_args( int argc, char *argv[] ) {
 
 					} else if ( strcmp( TTL_SWITCH, long_options[option_index].name ) == 0 ) {
 
-						set_init_arg( TTL_SWITCH, MIN_TTL, MAX_TTL, &ttl );
+						set_init_arg( TTL_SWITCH, optarg, MIN_TTL, MAX_TTL, &ttl );
 						found_args += 2;
 						break;
 
 					} else if ( strcmp( DUP_TTL_LIMIT_SWITCH, long_options[option_index].name ) == 0 ) {
 
-						set_init_arg( DUP_TTL_LIMIT_SWITCH, MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT, &dup_ttl_limit );
+						set_init_arg( DUP_TTL_LIMIT_SWITCH, optarg, MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT, &dup_ttl_limit );
 						found_args += 2;
 						break;
 
 					} else if ( strcmp( SEND_CLONES_SWITCH, long_options[option_index].name ) == 0 ) {
 
-						set_init_arg( SEND_CLONES_SWITCH, MIN_SEND_CLONES, MAX_SEND_CLONES, &send_clones );
+						set_init_arg( SEND_CLONES_SWITCH, optarg, MIN_SEND_CLONES, MAX_SEND_CLONES, &send_clones );
+						
+//						if( send_clones > DEF_SEND_CLONES )
+//							compat_version = DEF_COMPAT_VERSION + 1;
+
 						found_args += 2;
 						break;
 
 					} else if ( strcmp( ASYMMETRIC_WEIGHT_SWITCH, long_options[option_index].name ) == 0 ) {
 
-						set_init_arg( ASYMMETRIC_WEIGHT_SWITCH, MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT, &asymmetric_weight );
+						set_init_arg( ASYMMETRIC_WEIGHT_SWITCH, optarg, MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT, &asymmetric_weight );
 						found_args += 2;
 						break;
 
 					} else if ( strcmp( ASYMMETRIC_EXP_SWITCH, long_options[option_index].name ) == 0 ) {
 
-						set_init_arg( ASYMMETRIC_EXP_SWITCH, MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP, &asymmetric_exp );
+						set_init_arg( ASYMMETRIC_EXP_SWITCH, optarg, MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP, &asymmetric_exp );
 						found_args += 2;
 						break;
 
 					} else if ( strcmp( PENALTY_MIN_SWITCH, long_options[option_index].name ) == 0 ) {
 
-						set_init_arg( PENALTY_MIN_SWITCH, MIN_PENALTY_MIN, MAX_PENALTY_MIN, &penalty_min );
+						set_init_arg( PENALTY_MIN_SWITCH, optarg, MIN_PENALTY_MIN, MAX_PENALTY_MIN, &penalty_min );
 						found_args += 2;
 						break;
 
 					} else if ( strcmp( PENALTY_EXCEED_SWITCH, long_options[option_index].name ) == 0 ) {
 
-						set_init_arg( PENALTY_EXCEED_SWITCH, MIN_PENALTY_EXCEED, MAX_PENALTY_EXCEED, &penalty_exceed );
+						set_init_arg( PENALTY_EXCEED_SWITCH, optarg, MIN_PENALTY_EXCEED, MAX_PENALTY_EXCEED, &penalty_exceed );
 						found_args += 2;
 						break;
 
 					} else if ( strcmp( RT_PRIO_DEFAULT_SWITCH, long_options[option_index].name ) == 0 ) {
 
-						set_init_arg( RT_PRIO_DEFAULT_SWITCH, MIN_RT_PRIO_DEFAULT, MAX_RT_PRIO_DEFAULT, &rt_prio_default );
+						set_init_arg( RT_PRIO_DEFAULT_SWITCH, optarg, MIN_RT_PRIO_DEFAULT, MAX_RT_PRIO_DEFAULT, &rt_prio_default );
 						found_args += 2;
 						break;
 						
 					} else if ( strcmp( BASE_PORT_SWITCH, long_options[option_index].name ) == 0 ) {
 
-						set_init_arg( BASE_PORT_SWITCH, MIN_BASE_PORT, MAX_BASE_PORT, &base_port );
+						set_init_arg( BASE_PORT_SWITCH, optarg, MIN_BASE_PORT, MAX_BASE_PORT, &base_port );
 						
 						sprintf( unix_path, "%s.%d", DEF_UNIX_PATH, base_port);
 
@@ -247,7 +317,7 @@ void apply_init_args( int argc, char *argv[] ) {
 					
 					} else if ( strcmp( RT_TABLE_OFFSET_SWITCH, long_options[option_index].name ) == 0 ) {
 
-						set_init_arg( RT_TABLE_OFFSET_SWITCH, MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset );
+						set_init_arg( RT_TABLE_OFFSET_SWITCH, optarg, MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset );
 						
 						rt_table_networks =  rt_table_offset + RT_TABLE_NETWORKS_OFFSET;
 						rt_table_hosts    =  rt_table_offset + RT_TABLE_HOSTS_OFFSET;
@@ -262,9 +332,10 @@ void apply_init_args( int argc, char *argv[] ) {
 						set_init_arg( _SWITCH, MIN_, MAX_, & );
 						found_args += 2;
 						break;
-*/						
+*/											
 					} else if ( strcmp( ASOCIAL_SWITCH, long_options[option_index].name ) == 0 ) {
 
+						printf ("Long option: %s \n", long_options[option_index].name);
 						errno = 0;
 						mobile_device = YES;
 						found_args += 1;
@@ -272,6 +343,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 					} else if ( strcmp( NO_UNREACHABLE_RULE_SWITCH, long_options[option_index].name ) == 0 ) {
 
+						printf ("Long option: %s \n", long_options[option_index].name);
 						errno = 0;
 						no_unreachable_rule = YES;
 						found_args += 1;
@@ -279,6 +351,7 @@ void apply_init_args( int argc, char *argv[] ) {
 					
 					} else if ( strcmp( NO_TUNPERSIST_SWITCH, long_options[option_index].name ) == 0 ) {
 
+						printf ("Long option: %s \n", long_options[option_index].name);
 						errno = 0;
 						no_tun_persist = YES;
 						found_args += 1;
@@ -286,6 +359,7 @@ void apply_init_args( int argc, char *argv[] ) {
 					
 					} else if ( strcmp( NO_PRIO_RULES_SWITCH, long_options[option_index].name ) == 0 ) {
 
+						printf ("Long option: %s \n", long_options[option_index].name);
 						errno = 0;
 						no_prio_rules = YES;
 						found_args += 1;
@@ -293,8 +367,33 @@ void apply_init_args( int argc, char *argv[] ) {
 
 					} else if ( strcmp( NO_THROW_RULES_SWITCH, long_options[option_index].name ) == 0 ) {
 
+						printf ("Long option: %s \n", long_options[option_index].name);
 						errno = 0;
 						no_throw_rules = YES;
+						found_args += 1;
+						break;
+
+					} else if ( strcmp( BMX_DEFAULTS_SWITCH, long_options[option_index].name ) == 0 ) {
+
+						printf ("Long option: %s \n", long_options[option_index].name);
+						errno = 0;
+						
+						bmx_defaults = YES;
+						
+						set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "20", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
+						
+						set_init_arg( NBRFSIZE_SWITCH, "64", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &sequence_range );
+						num_words = ( sequence_range / WORD_BIT_SIZE ) + ( ( sequence_range % WORD_BIT_SIZE > 0)? 1 : 0 );
+						
+						set_init_arg( DUP_TTL_LIMIT_SWITCH, "2", MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT, &dup_ttl_limit );
+						
+						set_init_arg( SEND_CLONES_SWITCH, "200", MIN_SEND_CLONES, MAX_SEND_CLONES, &send_clones );
+//						compat_version = DEF_COMPAT_VERSION + 1;
+						
+						set_init_arg( ASYMMETRIC_WEIGHT_SWITCH, "100", MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT, &asymmetric_weight );
+						
+						set_init_arg( ASYMMETRIC_EXP_SWITCH, "2", MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP, &asymmetric_exp );
+						
 						found_args += 1;
 						break;
 /* this is just a template:
@@ -307,10 +406,10 @@ void apply_init_args( int argc, char *argv[] ) {
 */					
 					} else if ( strcmp( TEST_SWITCH, long_options[option_index].name ) == 0 ) {
 
+						printf ("Long option: %s \n", long_options[option_index].name);
 						errno = 0;
-						printf(" test switch \n");
 
-						found_args += 2;
+						found_args += 1;
 						break;
 
 					}
@@ -325,6 +424,8 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			case 'a':
 
+				add_hna_opt( optarg );
+/*					
 				if ( ( slash_ptr = strchr( optarg, '/' ) ) == NULL ) {
 
 					printf( "Invalid announced network (netmask is missing): %s\n", optarg );
@@ -371,7 +472,7 @@ void apply_init_args( int argc, char *argv[] ) {
 				list_add_tail( &hna_node->list, &hna_list );
 
 				*slash_ptr = '/';
-				
+*/				
 				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
 				break;
 
@@ -651,9 +752,28 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			printf( "Using interface %s with address %s and broadcast address %s\n", batman_if->dev, str1, str2 );
 
+			if( bmx_defaults ) {
+				
+				if ( batman_if->if_num > 0 ) {
+					
+					char fake_arg[ADDR_STR_LEN + 4], ifaddr_str[ADDR_STR_LEN];
+					errno = 0;
+						
+					printf ("Interface %s specific option: /%c \n", batman_if->dev, 'a' );
+						
+					addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
+					sprintf( fake_arg, "%s/32", ifaddr_str);
+					add_hna_opt( fake_arg );
+						
+					batman_if->send_ogm_only_via_owning_if = YES;
+					batman_if->if_ttl = 1;
+
+				}
+					
+			}
+			
 			found_ifs++;
 			found_args++;
-
 
 			while ( argc > found_args && strlen( argv[found_args] ) >= 2 && *argv[found_args] == '/') {
 
@@ -661,6 +781,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 					errno = 0;
 					int16_t tmp = strtol ( argv[ found_args+1 ], NULL , 10 );
+					printf ("Interface %s specific option: /%c %d \n", batman_if->dev, ((argv[found_args])[1]), tmp );
 
 					if ( tmp < MIN_BIDIRECT_TIMEOUT || tmp > MAX_BIDIRECT_TIMEOUT ) {
 
@@ -678,6 +799,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 					errno = 0;
 					uint8_t tmp = strtol ( argv[ found_args+1 ], NULL , 10 );
+					printf ("Interface %s specific option: /%c %d \n", batman_if->dev, ((argv[found_args])[1]), tmp );
 
 					if ( tmp < MIN_TTL || tmp > MAX_TTL ) {
 
@@ -694,6 +816,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 					errno = 0;
 					int16_t tmp = strtol ( argv[ found_args+1 ], NULL , 10 );
+					printf ("Interface %s specific option: /%c %d \n", batman_if->dev, ((argv[found_args])[1]), tmp );
 
 					if ( tmp < MIN_SEND_CLONES || tmp > MAX_SEND_CLONES ) {
 
@@ -703,26 +826,58 @@ void apply_init_args( int argc, char *argv[] ) {
 						exit(EXIT_FAILURE);
 					}
 
-					printf( "Interface %s specific option specified: /%c %i.\n", batman_if->dev, SEND_CLONES_IF_SWITCH, tmp );
 					batman_if->if_send_clones = tmp;
+					
+//					if( tmp > DEF_SEND_CLONES )
+//						compat_version = DEF_COMPAT_VERSION + 1;
 
 					found_args += 2;
 
+				
 				} else if ( (argv[found_args])[1] == OGM_ONLY_VIA_OWNING_IF_SWITCH && argc > (found_args) ) {
 
 					errno = 0;
+					printf ("Interface %s specific option: /%c  \n", batman_if->dev, ((argv[found_args])[1]) );
 
 					batman_if->send_ogm_only_via_owning_if = YES;
 					batman_if->if_ttl = 1;
 
 					found_args += 1;
 
+				
+				} else if ( (argv[found_args])[1] == MAKE_IP_HNA_IF_SWITCH && argc > (found_args) ) {
+
+					printf ("Interface %s specific option: /%c  \n", batman_if->dev, ((argv[found_args])[1]) );
+					
+					if ( batman_if->if_num > 0 ) {
+					
+						char fake_arg[ADDR_STR_LEN + 4], ifaddr_str[ADDR_STR_LEN];
+						errno = 0;
+						
+						addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
+						sprintf( fake_arg, "%s/32", ifaddr_str);
+						add_hna_opt( fake_arg );
+						
+						batman_if->send_ogm_only_via_owning_if = YES;
+						batman_if->if_ttl = 1;
+
+					} else {
+						
+						printf( "Never ever add the IP address of the first interface to the HNA list !!! \n" );
+						exit(EXIT_FAILURE);
+	
+					}
+					
+					found_args += 1;
+
+							
 				} else {
+					
 					printf( "Invalid interface specific option specified! \n" );
-
 					exit(EXIT_FAILURE);
+				
 				}
-
+			
 			}
 
 		}

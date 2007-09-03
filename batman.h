@@ -38,7 +38,8 @@
 
 
 #define SOURCE_VERSION "0.3-exp" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
-#define COMPAT_VERSION 3
+
+#define COMPAT_VERSION 4
 
 
 #define UNIDIRECTIONAL_FLAG 0x80 /* set when re-broadcasting a received OGM via a curretnly not bi-directional link and only together with IDF */
@@ -164,7 +165,15 @@ extern int32_t penalty_exceed;
 
 extern int8_t advanced_opts;
 #define ADVANCED_SWITCH          "dangerous"
+
+#define BMX_DEFAULTS_SWITCH      "bmx-defaults"
+#define DEF_BMX_DEFAULTS          0
+extern int8_t bmx_defaults;
+
 #define OGM_ONLY_VIA_OWNING_IF_SWITCH 'i'
+#define MAKE_IP_HNA_IF_SWITCH 'a'
+
+
 #define TEST_SWITCH              "test"
 
 
