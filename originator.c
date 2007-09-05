@@ -786,7 +786,7 @@ void debug_orig() {
 			((struct batman_if *)if_list.next)->dev, orig_str, sequence_range, bidirect_link_to, originator_interval,
 			uptime_sec/86400, ((uptime_sec%86400)/3600), ((uptime_sec)%3600)/60  );
 		
-		debug_output( 1, "%-12s        viaIF    %11s (brc rcvd lseq  lvld) [   viaIF l2q  lq nlq].. alternatives...\n", "Originator", "Router");
+		debug_output( 1, "%-12s        viaIF    %11s (brc rcvd lseq lvld) [   viaIF l2q  lq nlq].. alternatives...\n", "Originator", "Router");
 		
 		
 		
@@ -817,13 +817,13 @@ void debug_orig() {
 
 			addr_to_string( orig_node->orig, str, sizeof (str) );
 			addr_to_string( orig_node->router->addr, str2, sizeof (str2) );
-			dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s %8s %15s (%3i %3i %5i %5i)", 
+			dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s %8s %15s (%3i %3i %5i %4i)", 
 					str, orig_node->router->if_incoming->dev, str2,
 					orig_node->router->packet_count /* accepted */,
 //					bit_packet_count( orig_node->send_old_seq_bits, sequence_range ) /* old  */,
 					get_dbg_rcvd_all_bits( orig_node, orig_node->router->if_incoming, sequence_range ), /* all */
 					orig_node->last_seqno,
-					( get_time() - orig_node->last_valid )/100 ); 
+					( get_time() - orig_node->last_valid )/1000 ); 
 					
 			list_for_each( neigh_pos, &orig_node->neigh_list ) {
 				neigh_node = list_entry( neigh_pos, struct neigh_node, list );

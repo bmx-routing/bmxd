@@ -89,12 +89,15 @@ uint8_t no_unreachable_rule = NO;
 uint8_t no_tun_persist = NO;
 uint8_t no_forw_dupl_ttl_check = NO;
 int32_t dup_ttl_limit = DEF_DUP_TTL_LIMIT;
+int32_t dup_rate =  DEF_DUP_RATE;
 
 int32_t send_clones = DEF_SEND_CLONES;
 
 int32_t asymmetric_weight = DEF_ASYMMETRIC_WEIGHT;
 
 int32_t asymmetric_exp = DEF_ASYMMETRIC_EXP;
+
+int32_t rebrc_delay = DEF_REBRC_DELAY;
 
 int8_t bmx_defaults = DEF_BMX_DEFAULTS;
 
@@ -215,6 +218,17 @@ void print_advanced_opts ( int verbose ) {
 	fprintf( stderr, "\n       --%s <value> : ignore rcvd OGMs to respect asymmetric-links.\n", ASYMMETRIC_WEIGHT_SWITCH );
 	if ( verbose )
 		fprintf( stderr, "          default: %d, allowed probability values in percent: %d <= value <=%d\n", DEF_ASYMMETRIC_WEIGHT, MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT  );
+	
+	fprintf( stderr, "\n       --%s <value> : accept non-quickest OGMs to relieve preference for shortest path. \n", DUP_TTL_LIMIT_SWITCH );
+	fprintf( stderr, "          (< value > - 1) defines how much smaller the TTL of a non-first OGM can be compared to \n");
+	fprintf( stderr, "          the largest TTL received so fare (with the same originator IP and sequencenumber).\n");	
+	if ( verbose )
+		fprintf( stderr, "          default: %d (disabled), allowed values: %d <= value <=%d\n", DEF_DUP_TTL_LIMIT, MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT );
+	
+	fprintf( stderr, "\n       --%s <value> : accept non-quickest OGMs to relieve preference for shortest path. \n", DUP_RATE_SWITCH );
+	fprintf( stderr, "          < value > defines the probability with which non-quickest OGMs are accepted. \n");
+	if ( verbose )
+		fprintf( stderr, "          default: %d (disabled), allowed values in percent: %d <= value <=%d\n", DEF_DUP_RATE, MIN_DUP_RATE, MAX_DUP_RATE );
 	
 	fprintf( stderr, "\n       --%s : mode for mobile devices reluctant to help others.\n", ASOCIAL_SWITCH );
 	
@@ -1076,14 +1090,25 @@ int8_t batman() {
 
 				orig_neigh_node = get_orig_node( neigh );
 
-				debug_output( 4, "received my own OGM via NB lastTxIfSeqno: %d, currRxSeqno: %d, prevRxSeqno: %d, currRxSeqno-prevRxSeqno %d \n", ( if_incoming->out.seqno - OUT_SEQNO_OFFSET ), ((struct bat_packet *)&in)->seqno, orig_neigh_node->bidirect_link[if_incoming->if_num], ((struct bat_packet *)&in)->seqno - orig_neigh_node->bidirect_link[if_incoming->if_num] );
+				debug_output( 4, "received my own OGM via NB, lastTxIfSeqno: %d, currRxSeqno: %d, prevRxSeqno: %d, currRxSeqno-prevRxSeqno %d \n", ( if_incoming->out.seqno - OUT_SEQNO_OFFSET ), ((struct bat_packet *)&in)->seqno, orig_neigh_node->bidirect_link[if_incoming->if_num], ((struct bat_packet *)&in)->seqno - orig_neigh_node->bidirect_link[if_incoming->if_num] );
 
+				if ( ( has_directlink_flag ) &&
+				   ( if_incoming->addr.sin_addr.s_addr == ((struct bat_packet *)&in)->orig ) &&
+				   ( !has_duplicated_flag ) &&
+				   ( ((struct bat_packet *)&in)->seqno != ( if_incoming->out.seqno - OUT_SEQNO_OFFSET ) )
+				   ) {
+				   
+					debug_output( 3, "STRANGE: received own OGM via NB: %s, lastTxIfSeqno: %d, currRxSeqno: %d, prevRxSeqno: %d, currRxSeqno-prevRxSeqno %d \n", neigh_str, ( if_incoming->out.seqno - OUT_SEQNO_OFFSET ), ((struct bat_packet *)&in)->seqno, orig_neigh_node->bidirect_link[if_incoming->if_num], ((struct bat_packet *)&in)->seqno - orig_neigh_node->bidirect_link[if_incoming->if_num] );
+
+				   
+				   }							   
 				/* neighbour has to indicate direct link and it has to come via the corresponding interface */
 				/* if received seqno equals last send seqno save new seqno for bidirectional check */
 				if ( ( has_directlink_flag ) &&
 					( if_incoming->addr.sin_addr.s_addr == ((struct bat_packet *)&in)->orig ) &&
-					( ((struct bat_packet *)&in)->seqno == ( if_incoming->out.seqno - OUT_SEQNO_OFFSET ) ) &&
-				   	( !has_duplicated_flag ) ) {
+					( !has_duplicated_flag ) &&
+					( ((struct bat_packet *)&in)->seqno == ( if_incoming->out.seqno - OUT_SEQNO_OFFSET ) )
+				   ) {
 
 					update_bi_link_bits( orig_neigh_node, if_incoming, YES, NO );
 
@@ -1152,7 +1177,7 @@ int8_t batman() {
 					/* update ranking */
 					if ( is_accepted && ( !is_duplicate || 
 						( dup_ttl_limit && 
-						  ( orig_node->last_seqno == ((struct bat_packet *)&in)->seqno && 
+						  ( ( rand_num( 100 ) < dup_rate ) && orig_node->last_seqno == ((struct bat_packet *)&in)->seqno && 
 						    orig_node->last_seqno_best_ttl < ((struct bat_packet *)&in)->ttl + dup_ttl_limit) ) ) ) {
 						
 						update_orig( orig_node, (struct bat_packet *)in , neigh, if_incoming, hna_recv_buff, hna_buff_len, curr_time );

@@ -130,7 +130,13 @@ extern int32_t dup_ttl_limit;
 #define DEF_DUP_TTL_LIMIT 0
 #define MIN_DUP_TTL_LIMIT 0
 #define MAX_DUP_TTL_LIMIT 2
-#define DUP_TTL_LIMIT_SWITCH	 "dup-ttl-limit"
+#define DUP_TTL_LIMIT_SWITCH	 "accept-dups-ttl"
+
+extern int32_t dup_rate;
+#define DEF_DUP_RATE 0
+#define MIN_DUP_RATE 0
+#define MAX_DUP_RATE 95
+#define DUP_RATE_SWITCH	         "accept-dups-rate"
 
 extern int32_t send_clones; // useful for asymmetric-path and backup-path discovery
 #define DEF_SEND_CLONES 100
@@ -150,6 +156,12 @@ extern int32_t asymmetric_exp;
 #define MIN_ASYMMETRIC_EXP 0
 #define MAX_ASYMMETRIC_EXP 3
 #define ASYMMETRIC_EXP_SWITCH    "asymmetric-exp"
+
+extern int32_t rebrc_delay;
+#define DEF_REBRC_DELAY 0
+#define MIN_REBRC_DELAY 0
+#define MAX_REBRC_DELAY 50
+#define REBRC_DELAY_SWITCH     "re-brc-delay"
 
 extern int32_t penalty_min;
 #define DEF_PENALTY_MIN 0

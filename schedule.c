@@ -117,7 +117,7 @@ void schedule_forward_packet( struct bat_packet *in, uint8_t unidirectional, uin
 
 
 		((struct bat_packet *)forw_node_new->pack_buff)->ttl--;
-		forw_node_new->send_time = get_time();
+		forw_node_new->send_time = get_time() + rand_num( rebrc_delay );
 		forw_node_new->own = 0;
 
 		forw_node_new->if_outgoing = if_outgoing;

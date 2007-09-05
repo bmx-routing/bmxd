@@ -210,6 +210,7 @@ void apply_init_args( int argc, char *argv[] ) {
    {SEND_CLONES_SWITCH,         1, 0, 0},
    {ASYMMETRIC_WEIGHT_SWITCH,   1, 0, 0},
    {ASYMMETRIC_EXP_SWITCH,      1, 0, 0},
+   {REBRC_DELAY_SWITCH,         1, 0, 0},
    {PENALTY_MIN_SWITCH,         1, 0, 0},
    {PENALTY_EXCEED_SWITCH,      1, 0, 0},
    {0, 0, 0, 0}
@@ -287,7 +288,13 @@ void apply_init_args( int argc, char *argv[] ) {
 						set_init_arg( ASYMMETRIC_EXP_SWITCH, optarg, MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP, &asymmetric_exp );
 						found_args += 2;
 						break;
+						
+					} else if ( strcmp( REBRC_DELAY_SWITCH, long_options[option_index].name ) == 0 ) {
 
+						set_init_arg( REBRC_DELAY_SWITCH, optarg, MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
+						found_args += 2;
+						break;
+								
 					} else if ( strcmp( PENALTY_MIN_SWITCH, long_options[option_index].name ) == 0 ) {
 
 						set_init_arg( PENALTY_MIN_SWITCH, optarg, MIN_PENALTY_MIN, MAX_PENALTY_MIN, &penalty_min );
@@ -329,7 +336,7 @@ void apply_init_args( int argc, char *argv[] ) {
 /*	this is just a template:
 					} else if ( strcmp( _SWITCH, long_options[option_index].name ) == 0 ) {
 
-						set_init_arg( _SWITCH, MIN_, MAX_, & );
+						set_init_arg( _SWITCH, optarg, MIN_, MAX_, & );
 						found_args += 2;
 						break;
 */											
@@ -380,19 +387,78 @@ void apply_init_args( int argc, char *argv[] ) {
 						
 						bmx_defaults = YES;
 						
+						/*
+						batmand --bmx-defaults  eth1:bat br0:bat
+						WARNING: You are using the experimental batman branch. If you are interested in *using* batman get the latest stable release !
+						Long option: bmx-defaults
+						Short option: o with argument: 1500
+						Long option: bi-link-timeout with argument: 20
+						Long option: window-size with argument: 128
+						Long option: dup-ttl-limit with argument: 1
+						Long option: send-clones with argument: 200
+						Long option: asymmetric-weight with argument: 100
+						Long option: asymmetric-exp with argument: 1
+						Long option: delay-factor with argument: 80
+						Interface br0:bat specific option: /a
+						Interface br0:bat specific option: /i
+						Interface br0:bat specific option: /t 1
+						Interface br0:bat specific option: /c 100
+
+						dup_rate was hardcoded to: 70
+						
+						--- 105.130.1.67 ping statistics ---
+						100000 packets transmitted, 94057 received, +12 errors, 5% packet loss, time 10096066ms
+						rtt min/avg/max/mdev = 2.992/49.900/5383.018/209.447 ms, pipe 50
+						
+						--- 104.130.1.67 ping statistics ---
+						100000 packets transmitted, 90473 received, +27 errors, 9% packet loss, time 10120150ms
+						rtt min/avg/max/mdev = 2.152/46.843/5365.893/208.498 ms, pipe 50
+						
+						########################################################
+						batmand --bmx-defaults  eth1:bat br0:bat
+						Long option: bmx-defaults
+						Short option: o with argument: 1500
+						Long option: bi-link-timeout with argument: 20
+						Long option: window-size with argument: 64
+						Long option: accept-dups-ttl with argument: 2
+						Long option: accept-dups-rate with argument: 70
+						Long option: send-clones with argument: 200
+						Long option: asymmetric-weight with argument: 100
+						Long option: asymmetric-exp with argument: 1
+						Long option: delay-factor with argument: 80
+						Interface br0:bat specific option: /a
+						Interface br0:bat specific option: /i
+						Interface br0:bat specific option: /t 1
+						Interface br0:bat specific option: /c 100
+
+						resulted in similar packet loss as olsr
+						
+						########################################################
+
+						########################################################
+						########################################################
+						
+						*/
+						originator_interval = 1500;
+						printf ("Short option: o with argument: %d \n", originator_interval );
+						
 						set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "20", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
 						
-						set_init_arg( NBRFSIZE_SWITCH, "64", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &sequence_range );
+						set_init_arg( NBRFSIZE_SWITCH, "100", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &sequence_range );
 						num_words = ( sequence_range / WORD_BIT_SIZE ) + ( ( sequence_range % WORD_BIT_SIZE > 0)? 1 : 0 );
 						
 						set_init_arg( DUP_TTL_LIMIT_SWITCH, "2", MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT, &dup_ttl_limit );
+						
+						set_init_arg( DUP_RATE_SWITCH, "70", MIN_DUP_RATE, MAX_DUP_RATE, &dup_rate );
 						
 						set_init_arg( SEND_CLONES_SWITCH, "200", MIN_SEND_CLONES, MAX_SEND_CLONES, &send_clones );
 //						compat_version = DEF_COMPAT_VERSION + 1;
 						
 						set_init_arg( ASYMMETRIC_WEIGHT_SWITCH, "100", MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT, &asymmetric_weight );
 						
-						set_init_arg( ASYMMETRIC_EXP_SWITCH, "2", MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP, &asymmetric_exp );
+						set_init_arg( ASYMMETRIC_EXP_SWITCH, "1", MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP, &asymmetric_exp );
+						
+						set_init_arg( REBRC_DELAY_SWITCH, "15", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
 						
 						found_args += 1;
 						break;
@@ -759,14 +825,19 @@ void apply_init_args( int argc, char *argv[] ) {
 					char fake_arg[ADDR_STR_LEN + 4], ifaddr_str[ADDR_STR_LEN];
 					errno = 0;
 						
-					printf ("Interface %s specific option: /%c \n", batman_if->dev, 'a' );
 						
 					addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
 					sprintf( fake_arg, "%s/32", ifaddr_str);
 					add_hna_opt( fake_arg );
+					printf ("Interface %s specific option: /%c \n", batman_if->dev, MAKE_IP_HNA_IF_SWITCH );
 						
 					batman_if->send_ogm_only_via_owning_if = YES;
+					printf ("Interface %s specific option: /%c \n", batman_if->dev, OGM_ONLY_VIA_OWNING_IF_SWITCH );
 					batman_if->if_ttl = 1;
+					printf ("Interface %s specific option: /%c %d \n", batman_if->dev, TTL_IF_SWITCH, batman_if->if_ttl );
+
+					batman_if->if_send_clones = 100;
+					printf ("Interface %s specific option: /%c %d \n", batman_if->dev, SEND_CLONES_IF_SWITCH, batman_if->if_send_clones );
 
 				}
 					
