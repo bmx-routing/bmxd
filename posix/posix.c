@@ -491,8 +491,10 @@ void segmentation_fault( int32_t sig ) {
 
 	debug_output( 0, "Error - SIGSEGV received, trying to clean up ... \n" );
 
-	flush_routes_rules(0);
-	flush_routes_rules(1);
+	flush_routes_rules(0 /* flush route */ );
+	
+	if ( !no_prio_rules )
+		flush_routes_rules(1 /* flush rule */);
 
 	restore_and_exit(1);
 

@@ -774,20 +774,21 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		}
 
-		if ( flush_routes_rules(0) < 0 ) {
+		if ( flush_routes_rules(0 /* flush routes */) < 0 ) {
 
 			restore_defaults();
 			exit(EXIT_FAILURE);
 
 		}
 
-		if ( flush_routes_rules(1) < 0 ) {
-
-			restore_defaults();
-			exit(EXIT_FAILURE);
-
+		if ( !no_prio_rules ) {
+			if ( flush_routes_rules(1 /* flush rules */) < 0 ) {
+	
+				restore_defaults();
+				exit(EXIT_FAILURE);
+	
+			}
 		}
-
 
 		FD_ZERO( &receive_wait_set );
 
