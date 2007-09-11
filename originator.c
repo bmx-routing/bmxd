@@ -467,7 +467,7 @@ void purge_orig( uint32_t curr_time ) {
 						if ( orig_node->hna_buff_len > 0 )
 							add_del_hna( orig_node, 1 );
 
-						add_del_route( orig_node->orig, 32, orig_node->router->addr, orig_node->batman_if->if_index, orig_node->batman_if->dev, BATMAN_RT_TABLE_HOSTS, 0, 1 );
+						add_del_route( orig_node->orig, 32, orig_node->router->addr, 0, orig_node->batman_if->if_index, orig_node->batman_if->dev, BATMAN_RT_TABLE_HOSTS, 0, 1 );
 
 						orig_node->router = NULL;
 
@@ -786,7 +786,7 @@ void debug_orig() {
 			((struct batman_if *)if_list.next)->dev, orig_str, sequence_range, bidirect_link_to, originator_interval,
 			uptime_sec/86400, ((uptime_sec%86400)/3600), ((uptime_sec)%3600)/60  );
 		
-		debug_output( 1, "%-12s        viaIF    %11s (brc rcvd lseq lvld) [   viaIF l2q  lq nlq].. alternatives...\n", "Originator", "Router");
+		debug_output( 1, "%-12s         viaIF    %11s (brc rcvd lseq lvld) [    viaIF l2q  lq nlq].. alternatives...\n", "Originator", "Router");
 		
 		
 		
@@ -817,7 +817,7 @@ void debug_orig() {
 
 			addr_to_string( orig_node->orig, str, sizeof (str) );
 			addr_to_string( orig_node->router->addr, str2, sizeof (str2) );
-			dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s %8s %15s (%3i %3i %5i %4i)", 
+			dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s %9s %15s (%3i %3i %5i %4i)", 
 					str, orig_node->router->if_incoming->dev, str2,
 					orig_node->router->packet_count /* accepted */,
 //					bit_packet_count( orig_node->send_old_seq_bits, sequence_range ) /* old  */,
@@ -837,7 +837,7 @@ void debug_orig() {
 					l2q = update_bi_link_bits( orig_node, neigh_node_if, NO, sequence_range );
 			
 					dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), 
-							" [%8s %3i %3i %3i] ",
+							" [%9s %3i %3i %3i] ",
        /*(( neigh_node->addr == orig_node->router->addr && neigh_node->if_incoming == orig_node->router->if_incoming ) ? "=>" : "  "),*/
 							neigh_node->if_incoming->dev, /*acceptance_rate( nlq, lq ),*/ l2q, lq, nlq );
 
@@ -856,7 +856,7 @@ void debug_orig() {
 					
 					addr_to_string( neigh_node->addr, str, sizeof (str) );
 
-					dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), " %17s (%3i)", str, neigh_node->packet_count );
+					dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), " %18s (%3i)", str, neigh_node->packet_count );
 				
 				
 				}

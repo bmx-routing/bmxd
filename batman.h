@@ -85,7 +85,10 @@ char unix_path[sizeof(DEF_UNIX_PATH)+10];
  */
 
 #define JITTER 100
-
+#define MAX_GW_UNAVAIL_FACTOR 20
+#define MAX_GW_UNAVAIL_TIMEOUT 10000
+#define CHOOSE_GW_DELAY_DIVISOR 2
+		
 extern uint8_t mobile_device;
 #define ASOCIAL_SWITCH           "asocial-device"
 

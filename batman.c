@@ -352,7 +352,7 @@ void add_del_hna( struct orig_node *orig_node, int8_t del ) {
 		netmask = ( uint32_t )orig_node->hna_buff[ ( hna_buff_count * 5 ) + 4 ];
 
 		if ( ( netmask > 0 ) && ( netmask < 33 ) ) {
-			add_del_route( hna, netmask, orig_node->router->addr, orig_node->batman_if->if_index, orig_node->batman_if->dev, rt_table_networks, 0, del );
+			add_del_route( hna, netmask, orig_node->router->addr, 0, orig_node->batman_if->if_index, orig_node->batman_if->dev, rt_table_networks, 0, del );
 			
 		}
 
@@ -382,7 +382,7 @@ void choose_gw() {
 	static char orig_str[ADDR_STR_LEN];
 
 
-	if ( ( routing_class == 0 ) || ( ( current_time = get_time() ) < originator_interval * sequence_range ) ) {
+	if ( ( routing_class == 0 ) || ( ( current_time = get_time() ) < originator_interval * sequence_range / CHOOSE_GW_DELAY_DIVISOR ) ) {
 
 		prof_stop( PROF_choose_gw );
 		return;
@@ -409,8 +409,11 @@ void choose_gw() {
 
 		gw_node = list_entry( pos, struct gw_node, list );
 
+		if( gw_node->unavail_factor > MAX_GW_UNAVAIL_FACTOR )
+			gw_node->unavail_factor = MAX_GW_UNAVAIL_FACTOR;
+		
 		/* ignore this gateway if recent connection attempts were unsuccessful */
-		if ( ( gw_node->unavail_factor * gw_node->unavail_factor * 30000 ) + gw_node->last_failure > current_time )
+		if ( ( gw_node->unavail_factor * gw_node->unavail_factor * MAX_GW_UNAVAIL_TIMEOUT ) + gw_node->last_failure > current_time )
 			continue;
 
 		if ( gw_node->orig_node->router == NULL )
@@ -524,7 +527,7 @@ void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, 
 			if ( orig_node->hna_buff_len > 0 )
 				add_del_hna( orig_node, 1 );
 
-			add_del_route( orig_node->orig, 32, orig_node->router->addr, orig_node->batman_if->if_index, orig_node->batman_if->dev, BATMAN_RT_TABLE_HOSTS, 0, 1 );
+			add_del_route( orig_node->orig, 32, orig_node->router->addr, 0, orig_node->batman_if->if_index, orig_node->batman_if->dev, BATMAN_RT_TABLE_HOSTS, 0, 1 );
 
 		}
 
@@ -537,7 +540,7 @@ void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, 
 				debug_output( 4, "Route changed\n" );
 			}
 
-			add_del_route( orig_node->orig, 32, neigh_node->addr, neigh_node->if_incoming->if_index, neigh_node->if_incoming->dev, BATMAN_RT_TABLE_HOSTS, 0, 0 );
+			add_del_route( orig_node->orig, 32, neigh_node->addr, neigh_node->if_incoming->addr.sin_addr.s_addr, neigh_node->if_incoming->if_index, neigh_node->if_incoming->dev, BATMAN_RT_TABLE_HOSTS, 0, 0 );
 
 			orig_node->batman_if = neigh_node->if_incoming;
 			orig_node->router = neigh_node;

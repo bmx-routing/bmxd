@@ -388,7 +388,7 @@ void restore_defaults() {
 				add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_HOSTS, rt_prio_default + batman_if->if_num, 0, 1, 1 );
 			
 			if ( !no_unreachable_rule )
-				add_del_route( batman_if->netaddr, batman_if->netmask, 0, batman_if->if_index, batman_if->dev, BATMAN_RT_TABLE_HOSTS, 2, 1 );
+				add_del_route( batman_if->netaddr, batman_if->netmask, 0, 0, batman_if->if_index, batman_if->dev, BATMAN_RT_TABLE_HOSTS, 2, 1 );
 
 		}
 
