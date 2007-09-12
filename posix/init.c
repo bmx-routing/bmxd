@@ -207,6 +207,7 @@ void apply_init_args( int argc, char *argv[] ) {
    {BASE_PORT_SWITCH,           1, 0, 0},
    {TEST_SWITCH,                0, 0, 0},
    {DUP_TTL_LIMIT_SWITCH,       1, 0, 0},
+   {DUP_RATE_SWITCH,	        1, 0, 0},
    {SEND_CLONES_SWITCH,         1, 0, 0},
    {ASYMMETRIC_WEIGHT_SWITCH,   1, 0, 0},
    {ASYMMETRIC_EXP_SWITCH,      1, 0, 0},
@@ -266,7 +267,19 @@ void apply_init_args( int argc, char *argv[] ) {
 						set_init_arg( DUP_TTL_LIMIT_SWITCH, optarg, MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT, &dup_ttl_limit );
 						found_args += 2;
 						break;
+					
+					} else if ( strcmp( DUP_RATE_SWITCH, long_options[option_index].name ) == 0 ) {
 
+						set_init_arg( DUP_RATE_SWITCH, optarg, MIN_DUP_RATE, MAX_DUP_RATE, &dup_rate );
+						found_args += 2;
+						break;
+
+					} else if ( strcmp( DUP_DEGRAD_SWITCH, long_options[option_index].name ) == 0 ) {
+
+						set_init_arg( DUP_DEGRAD_SWITCH, optarg, MIN_DUP_DEGRAD, MAX_DUP_DEGRAD, &dup_degrad );
+						found_args += 2;
+						break;
+					
 					} else if ( strcmp( SEND_CLONES_SWITCH, long_options[option_index].name ) == 0 ) {
 
 						set_init_arg( SEND_CLONES_SWITCH, optarg, MIN_SEND_CLONES, MAX_SEND_CLONES, &send_clones );
@@ -439,8 +452,12 @@ void apply_init_args( int argc, char *argv[] ) {
 						########################################################
 						
 						*/
-						originator_interval = 1500;
+						
+						originator_interval = 2000;
 						printf ("Short option: o with argument: %d \n", originator_interval );
+						
+						set_init_arg( BASE_PORT_SWITCH, "4305", MIN_BASE_PORT, MAX_BASE_PORT, &base_port );
+						sprintf( unix_path, "%s.%d", DEF_UNIX_PATH, base_port);
 						
 						set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "20", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
 						
@@ -449,7 +466,9 @@ void apply_init_args( int argc, char *argv[] ) {
 						
 						set_init_arg( DUP_TTL_LIMIT_SWITCH, "2", MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT, &dup_ttl_limit );
 						
-						set_init_arg( DUP_RATE_SWITCH, "70", MIN_DUP_RATE, MAX_DUP_RATE, &dup_rate );
+						set_init_arg( DUP_RATE_SWITCH, "95", MIN_DUP_RATE, MAX_DUP_RATE, &dup_rate );
+						
+						set_init_arg( DUP_DEGRAD_SWITCH, "30", MIN_DUP_DEGRAD, MAX_DUP_DEGRAD, &dup_degrad );
 						
 						set_init_arg( SEND_CLONES_SWITCH, "200", MIN_SEND_CLONES, MAX_SEND_CLONES, &send_clones );
 //						compat_version = DEF_COMPAT_VERSION + 1;
@@ -458,7 +477,7 @@ void apply_init_args( int argc, char *argv[] ) {
 						
 						set_init_arg( ASYMMETRIC_EXP_SWITCH, "1", MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP, &asymmetric_exp );
 						
-						set_init_arg( REBRC_DELAY_SWITCH, "15", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
+						set_init_arg( REBRC_DELAY_SWITCH, "35", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
 						
 						found_args += 1;
 						break;

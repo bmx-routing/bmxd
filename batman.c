@@ -90,6 +90,7 @@ uint8_t no_tun_persist = NO;
 uint8_t no_forw_dupl_ttl_check = NO;
 int32_t dup_ttl_limit = DEF_DUP_TTL_LIMIT;
 int32_t dup_rate =  DEF_DUP_RATE;
+int32_t dup_degrad = DEF_DUP_DEGRAD;
 
 int32_t send_clones = DEF_SEND_CLONES;
 
@@ -204,6 +205,10 @@ void print_advanced_opts ( int verbose ) {
 	if ( verbose )
 		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d\n", DEFAULT_SEQ_RANGE, MIN_SEQ_RANGE, MAX_SEQ_RANGE  );
 	
+	fprintf( stderr, "\n       --%s <value> : set maximum of random re-broadcast delay \n", REBRC_DELAY_SWITCH );
+	if ( verbose )
+		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d\n", DEF_REBRC_DELAY, MIN_REBRC_DELAY, MAX_REBRC_DELAY  );
+	
 	fprintf( stderr, "\n       --%s <value> : (re-)broadcast OGMs with given probability\n", SEND_CLONES_SWITCH );
 	fprintf( stderr, "        /%c <value> : attached after an interface name\n", SEND_CLONES_IF_SWITCH );
 	fprintf( stderr, "          to specify an individual re-broadcast probability for this interface.\n");
@@ -229,6 +234,12 @@ void print_advanced_opts ( int verbose ) {
 	fprintf( stderr, "          < value > defines the probability with which non-quickest OGMs are accepted. \n");
 	if ( verbose )
 		fprintf( stderr, "          default: %d (disabled), allowed values in percent: %d <= value <=%d\n", DEF_DUP_RATE, MIN_DUP_RATE, MAX_DUP_RATE );
+	
+	fprintf( stderr, "\n       --%s <value> : accept non-quickest OGMs to relieve preference for shortest path. \n", DUP_DEGRAD_SWITCH );
+	fprintf( stderr, "          < value > defines the probability degradation for each additional hop (compared \n");
+	fprintf( stderr, "          to the OGM arrived via the shortest path) with which non-quickest OGMs are accepted. \n");
+	if ( verbose )
+		fprintf( stderr, "          default: %d (disabled), allowed values in percent: %d <= value <=%d\n", DEF_DUP_DEGRAD, MIN_DUP_DEGRAD, MAX_DUP_DEGRAD );
 	
 	fprintf( stderr, "\n       --%s : mode for mobile devices reluctant to help others.\n", ASOCIAL_SWITCH );
 	
@@ -1173,15 +1184,22 @@ int8_t batman() {
 					
 					/* do we accept or ignore the OGM according to our current policy ? */
 					is_accepted = ( is_bidirectional &&
-							( ( asymmetric_weight == MIN_ASYMMETRIC_WEIGHT ) ||
-							( rand_num_value <  acceptance_rate_value +
+							( ( asymmetric_weight == DEF_ASYMMETRIC_WEIGHT ) ||
+							( rand_num_value < acceptance_rate_value +
 								( ( ((MAX_ASYMMETRIC_WEIGHT - asymmetric_weight) * sequence_range ) / 100 )  ) ) ) );
 					
+					uint16_t rand_num_hundret = rand_num( 100 );
+					
 					/* update ranking */
-					if ( is_accepted && ( !is_duplicate || 
-						( dup_ttl_limit && 
-						  ( ( rand_num( 100 ) < dup_rate ) && orig_node->last_seqno == ((struct bat_packet *)&in)->seqno && 
-						    orig_node->last_seqno_best_ttl < ((struct bat_packet *)&in)->ttl + dup_ttl_limit) ) ) ) {
+					if ( is_accepted && 
+						( !is_duplicate || 
+						  ( ( dup_ttl_limit > 0 ) && 
+						    orig_node->last_seqno == ((struct bat_packet *)&in)->seqno &&
+						    orig_node->last_seqno_best_ttl < ((struct bat_packet *)&in)->ttl + dup_ttl_limit &&
+						    rand_num_hundret < dup_rate && /* using the same rand_num_hundret is important */
+						    rand_num_hundret < 100 - ( dup_degrad * ( orig_node->last_seqno_best_ttl - ((struct bat_packet *)&in)->ttl ) )
+						  )
+						) ) {
 						
 						update_orig( orig_node, (struct bat_packet *)in , neigh, if_incoming, hna_recv_buff, hna_buff_len, curr_time );
 					

@@ -710,7 +710,7 @@ int nlq_power( int nlq_rate_value ) {
 
 }
 					
-
+/* returns value between 0 and sequence_range. Return value of sequence_range indicates 100% acceptance*/
 int acceptance_rate( int nlq_assumption, uint16_t lq_assumtion ) {
 	
 	return ( nlq_power( nlq_assumption ) * lq_assumtion / sequence_range );
