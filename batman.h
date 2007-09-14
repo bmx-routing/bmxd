@@ -205,7 +205,7 @@ extern int8_t bmx_defaults;
 
 extern int32_t base_port;
 #define BASE_PORT_SWITCH "base-port"
-#define DEF_BASE_PORT 1966
+#define DEF_BASE_PORT 4305
 #define MIN_BASE_PORT 1025
 #define MAX_BASE_PORT 60000
 

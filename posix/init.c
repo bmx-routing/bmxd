@@ -453,15 +453,15 @@ void apply_init_args( int argc, char *argv[] ) {
 						
 						*/
 						
-						originator_interval = 2000;
+						originator_interval = 1500;
 						printf ("Short option: o with argument: %d \n", originator_interval );
 						
-						set_init_arg( BASE_PORT_SWITCH, "4305", MIN_BASE_PORT, MAX_BASE_PORT, &base_port );
-						sprintf( unix_path, "%s.%d", DEF_UNIX_PATH, base_port);
+//						set_init_arg( BASE_PORT_SWITCH, "4305", MIN_BASE_PORT, MAX_BASE_PORT, &base_port );
+//						sprintf( unix_path, "%s.%d", DEF_UNIX_PATH, base_port);
 						
 						set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "20", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
 						
-						set_init_arg( NBRFSIZE_SWITCH, "100", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &sequence_range );
+						set_init_arg( NBRFSIZE_SWITCH, "64", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &sequence_range );
 						num_words = ( sequence_range / WORD_BIT_SIZE ) + ( ( sequence_range % WORD_BIT_SIZE > 0)? 1 : 0 );
 						
 						set_init_arg( DUP_TTL_LIMIT_SWITCH, "2", MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT, &dup_ttl_limit );
