@@ -363,7 +363,8 @@ void add_del_hna( struct orig_node *orig_node, int8_t del ) {
 		netmask = ( uint32_t )orig_node->hna_buff[ ( hna_buff_count * 5 ) + 4 ];
 
 		if ( ( netmask > 0 ) && ( netmask < 33 ) ) {
-			add_del_route( hna, netmask, orig_node->router->addr, 0, orig_node->batman_if->if_index, orig_node->batman_if->dev, rt_table_networks, 0, del );
+			
+			add_del_route( hna, netmask, orig_node->router->addr, orig_node->router->if_incoming->addr.sin_addr.s_addr, orig_node->batman_if->if_index, orig_node->batman_if->dev, rt_table_networks, 0, del );
 			
 		}
 
