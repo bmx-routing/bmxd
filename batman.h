@@ -138,12 +138,12 @@ extern int32_t dup_ttl_limit;
 extern int32_t dup_rate;
 #define DEF_DUP_RATE 0
 #define MIN_DUP_RATE 0
-#define MAX_DUP_RATE 95
+#define MAX_DUP_RATE 100
 #define DUP_RATE_SWITCH	         "dups-rate"
 
 extern int32_t dup_degrad;
 #define DEF_DUP_DEGRAD 0
-#define MIN_DUP_DEGRAD 10
+#define MIN_DUP_DEGRAD 0
 #define MAX_DUP_DEGRAD 100
 #define DUP_DEGRAD_SWITCH	  "dups-ttl-degradation"
 

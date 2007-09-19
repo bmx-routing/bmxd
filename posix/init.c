@@ -208,6 +208,7 @@ void apply_init_args( int argc, char *argv[] ) {
    {TEST_SWITCH,                0, 0, 0},
    {DUP_TTL_LIMIT_SWITCH,       1, 0, 0},
    {DUP_RATE_SWITCH,	        1, 0, 0},
+   {DUP_DEGRAD_SWITCH,	        1, 0, 0},
    {SEND_CLONES_SWITCH,         1, 0, 0},
    {ASYMMETRIC_WEIGHT_SWITCH,   1, 0, 0},
    {ASYMMETRIC_EXP_SWITCH,      1, 0, 0},
@@ -466,9 +467,9 @@ void apply_init_args( int argc, char *argv[] ) {
 						
 						set_init_arg( DUP_TTL_LIMIT_SWITCH, "2", MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT, &dup_ttl_limit );
 						
-						set_init_arg( DUP_RATE_SWITCH, "95", MIN_DUP_RATE, MAX_DUP_RATE, &dup_rate );
+						set_init_arg( DUP_RATE_SWITCH, "99", MIN_DUP_RATE, MAX_DUP_RATE, &dup_rate );
 						
-						set_init_arg( DUP_DEGRAD_SWITCH, "30", MIN_DUP_DEGRAD, MAX_DUP_DEGRAD, &dup_degrad );
+						set_init_arg( DUP_DEGRAD_SWITCH, "10", MIN_DUP_DEGRAD, MAX_DUP_DEGRAD, &dup_degrad );
 						
 						set_init_arg( SEND_CLONES_SWITCH, "200", MIN_SEND_CLONES, MAX_SEND_CLONES, &send_clones );
 //						compat_version = DEF_COMPAT_VERSION + 1;
