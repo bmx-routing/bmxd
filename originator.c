@@ -786,7 +786,7 @@ void debug_orig() {
 			((struct batman_if *)if_list.next)->dev, orig_str, sequence_range, bidirect_link_to, originator_interval,
 			uptime_sec/86400, ((uptime_sec%86400)/3600), ((uptime_sec)%3600)/60  );
 		
-		debug_output( 1, "%-12s         viaIF    %11s (brc rcvd lseq lvld) [    viaIF l2q  lq nlq].. alternatives...\n", "Originator", "Router");
+		debug_output( 1, "%-12s         viaIF    %11s (brc rcvd lseq lvld) [    viaIF RTQ  LQ NLQ].. alternatives...\n", "Originator", "Router");
 		
 		
 		
