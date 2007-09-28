@@ -18,11 +18,11 @@
 
 
 CC =			gcc
-CFLAGS =		-Wall -O1 -g -DDEBUG_MALLOC -DMEMORY_USAGE -DPROFILE_DATA
+CFLAGS =		-Wall -O1 -g3 -DDEBUG_MALLOC -DMEMORY_USAGE -DPROFILE_DATA
 STRIP=			strip
 LDFLAGS =		-lpthread
 
-CFLAGS_MIPS =	-Wall -O1 -g -DDEBUG_MALLOC -DMEMORY_USAGE -DPROFILE_DATA -DREVISION_VERSION=$(REVISION_VERSION)
+CFLAGS_MIPS =	-Wall -O1 -g3 -DDEBUG_MALLOC -DMEMORY_USAGE -DPROFILE_DATA -DREVISION_VERSION=$(REVISION_VERSION)
 LDFLAGS_MIPS =	-lpthread
 
 UNAME=		$(shell uname)
@@ -46,10 +46,13 @@ endif
 
 LOG_BRANCH= trunk/batman-experimental
 
+SRC_FILES= "\(\.c\)\|\(\.h\)\|\(Makefile\)\|\(INSTALL\)\|\(LIESMICH\)\|\(README\)\|\(THANKS\)\|\(TRASH\)\|\(Doxyfile\)\|\(./posix\)\|\(./linux\)\|\(./bsd\)\|\(./man\)\|\(./doc\)"
+
 SRC_C= batman.c originator.c schedule.c list-batman.c allocate.c bitarray.c hash.c profile.c $(OS_C)
 SRC_H= batman.h originator.h schedule.h list-batman.h os.h allocate.h bitarray.h hash.h profile.h vis-types.h
 
 PACKAGE_NAME=	batmand-exp
+
 BINARY_NAME=	batmand
 SOURCE_VERSION_HEADER= batman.h
 
@@ -107,16 +110,21 @@ $(BINARY_NAME):	$(SRC_C) $(SRC_H) Makefile
 
 
 
-long:	i386 mipsel-kk-bc mips-kk-at mipsel-wr arm-oe nokia770-oe clean-long
-
-axel:	i386 mipsel-kk-bc mips-kk-at mipsel-wr arm-oe clean-long
+long:	sources i386 mipsel-kk-bc mips-kk-at mipsel-wr arm-oe nokia770-oe clean-long
 
 sources:
 	mkdir -p $(FILE_NAME)
-	cp $(SRC_H) $(SRC_C) Makefile $(FILE_NAME)/
+	
+	for i in $$( find . | grep $(SRC_FILES) | grep -v "\.svn" ); do [ -d $$i ] && mkdir -p $(FILE_NAME)/$$i ; [ -f $$i ] && cp -Lvp $$i $(FILE_NAME)/$$i ;done
+	
 	$(BUILD_PATH)/wget --no-check-certificate -O changelog.html  https://dev.open-mesh.net/batman/log/$(LOG_BRANCH)/
 	html2text -o changelog.txt -nobs -ascii changelog.html
 	awk '/View revision/,/10\/01\/06 20:23:03/' changelog.txt > $(FILE_NAME)/CHANGELOG
+		
+		
+	for i in $$( find man |	grep -v "\.svn" ); do [ -f $$i ] && groff -man -Thtml $$i > $(FILE_NAME)/$$i.html ;done
+	
+	
 	tar czvf $(FILE_NAME).tgz $(FILE_NAME)
 
 	mkdir -p dl/misc
@@ -126,6 +134,8 @@ sources:
 	mkdir -p dl/sources
 	ln -f $(FILE_NAME).tgz dl/sources/
 	ln -f $(FILE_NAME).tgz dl/sources/$(FILE_CURRENT).tgz
+	mv  $(FILE_NAME) dl/sources/$(FILE_CURRENT)
+
 
 
 i386: i386-gc-elf-32-lsb-static i386-gc-elf-32-lsb-dynamic
@@ -165,6 +175,10 @@ mipsel-kk-elf-32-lsb-static:	$(SRC_C) $(SRC_H) Makefile
 	mkdir -p dl/meshcube
 	ln -f $(FILE_NAME).ipk dl/meshcube/
 	ln -f $(FILE_CURRENT).ipk dl/meshcube/
+
+	mkdir -p dl/mipsel-kamikaze
+	ln -f $(FILE_NAME).tgz dl/mipsel-kamikaze/
+	ln -f $(FILE_CURRENT).tgz dl/mipsel-kamikaze/
 
 
 mipsel-kk-elf-32-lsb-dynamic:	$(SRC_C) $(SRC_H) Makefile
@@ -264,8 +278,8 @@ nokia770-oe-elf-32-lsb-dynamic:	$(SRC_C) $(SRC_H) Makefile
 
 
 clean:
-		rm -f batmand *.o
+		rm -f $(BINARY_NAME) *.o
 
 
 clean-long:
-		rm -rf batmand-exp_*
+		rm -rf $(PACKAGE_NAME)_*
