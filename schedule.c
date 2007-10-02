@@ -41,7 +41,8 @@ void schedule_own_packet( struct batman_if *batman_if ) {
 	forw_node_new->if_outgoing = batman_if;
 	forw_node_new->own = 1;
 
-	if ( num_hna > 0 ) {
+	/* non-primary interfaces do not send hna information */
+	if ( ( num_hna > 0 ) && ( batman_if->if_num == 0 ) ) {
 
 		forw_node_new->pack_buff = debugMalloc( sizeof(struct bat_packet) + num_hna * 5 * sizeof(unsigned char), 502 );
 		memcpy( forw_node_new->pack_buff, (unsigned char *)&batman_if->out, sizeof(struct bat_packet) );
@@ -100,7 +101,7 @@ void schedule_forward_packet( struct bat_packet *in, uint8_t unidirectional, uin
 
 		INIT_LIST_HEAD( &forw_node_new->list );
 
-		if ( hna_buff_len > 0 ) {
+		if ( ( hna_buff_len > 0 ) && ( hna_recv_buff != NULL ) ) { 
 
 			forw_node_new->pack_buff = debugMalloc( sizeof(struct bat_packet) + hna_buff_len, 505 );
 			memcpy( forw_node_new->pack_buff, in, sizeof(struct bat_packet) );
