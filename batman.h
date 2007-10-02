@@ -39,7 +39,7 @@
 
 #define SOURCE_VERSION "0.3-exp" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
 
-#define COMPAT_VERSION 4
+#define COMPAT_VERSION 5
 
 
 #define UNIDIRECTIONAL_FLAG 0x80 /* set when re-broadcasting a received OGM via a curretnly not bi-directional link and only together with IDF */
@@ -217,35 +217,34 @@ extern int32_t base_port;
  *
  * Things you should leave as is unless your know what you are doing !
  *
- * BATMAN_RT_TABLE_NETWORKS  routing table for announced networks
- * BATMAN_RT_TABLE_HOSTS      routing table for routes towards originators
- * BATMAN_RT_TABLE_TUNNEL    routing table for the tunnel towards the internet gateway
- * BATMAN_RT_PRIO_DEFAULT    standard priority for routing rules
- * BATMAN_RT_PRIO_TUNNEL     standard priority for tunnel routing rules
+ * BATMAN_RT_TABLE_NETWORKS	routing table for announced networks
+ * BATMAN_RT_TABLE_HOSTS	routing table for routes towards originators
+ * BATMAN_RT_TABLE_UNREACH	routing table for unreachable routing entry
+ * BATMAN_RT_TABLE_TUNNEL	routing table for the tunnel towards the internet gateway
+ * BATMAN_RT_PRIO_DEFAULT	standard priority for routing rules
+ * BATMAN_RT_PRIO_UNREACH	standard priority for unreachable rules
+ * BATMAN_RT_PRIO_TUNNEL	standard priority for tunnel routing rules
  *
  ***/
 
 
 #define RT_TABLE_NETWORKS_OFFSET 0
-#define RT_TABLE_HOSTS_OFFSET   1
-#define RT_TABLE_TUNNEL_OFFSET   2
+#define RT_TABLE_HOSTS_OFFSET    1
+#define RT_TABLE_UNREACH_OFFSET  2
+#define RT_TABLE_TUNNEL_OFFSET   3
 
 extern int32_t rt_table_offset;
-extern int32_t rt_table_networks;
-extern int32_t rt_table_hosts; 
-extern int32_t rt_table_tunnel;
-
 #define RT_TABLE_OFFSET_SWITCH "rt-table-offset"
 #define DEF_RT_TABLE_OFFSET 65
 #define MIN_RT_TABLE_OFFSET 2
 #define MAX_RT_TABLE_OFFSET 250
 
-#define BATMAN_RT_TABLE_NETWORKS rt_table_networks
-#define BATMAN_RT_TABLE_HOSTS    rt_table_hosts
-#define BATMAN_RT_TABLE_TUNNEL   rt_table_tunnel
 
+#define BATMAN_RT_TABLE_NETWORKS (rt_table_offset + RT_TABLE_NETWORKS_OFFSET)
+#define BATMAN_RT_TABLE_HOSTS    (rt_table_offset + RT_TABLE_HOSTS_OFFSET)
+#define BATMAN_RT_TABLE_UNREACH  (rt_table_offset + RT_TABLE_UNREACH_OFFSET)
+#define BATMAN_RT_TABLE_TUNNEL   (rt_table_offset + RT_TABLE_TUNNEL_OFFSET)
 
-// #define BATMAN_RT_PRIO_DEFAULT 6600
 
 extern int32_t rt_prio_default;
 #define RT_PRIO_DEFAULT_SWITCH "prio-rules-offset"
@@ -253,7 +252,9 @@ extern int32_t rt_prio_default;
 #define MIN_RT_PRIO_DEFAULT 3
 #define MAX_RT_PRIO_DEFAULT 32765
 
-#define BATMAN_RT_PRIO_TUNNEL (rt_prio_default + 100)
+#define BATMAN_RT_PRIO_DEFAULT rt_prio_default
+#define BATMAN_RT_PRIO_UNREACH BATMAN_RT_PRIO_DEFAULT + 100
+#define BATMAN_RT_PRIO_TUNNEL BATMAN_RT_PRIO_UNREACH + 100
 
 extern int32_t no_prio_rules;
 #define NO_PRIO_RULES_SWITCH "no-prio-rules"

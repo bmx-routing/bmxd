@@ -111,10 +111,7 @@ int16_t num_words = ( DEFAULT_SEQ_RANGE / WORD_BIT_SIZE ) + ( ( DEFAULT_SEQ_RANG
 
 int32_t base_port = DEF_BASE_PORT;
 
-int32_t rt_table_offset = DEF_RT_TABLE_OFFSET;
-int32_t rt_table_networks = DEF_RT_TABLE_OFFSET + RT_TABLE_NETWORKS_OFFSET;
-int32_t rt_table_hosts    = DEF_RT_TABLE_OFFSET + RT_TABLE_HOSTS_OFFSET;
-int32_t rt_table_tunnel   = DEF_RT_TABLE_OFFSET + RT_TABLE_TUNNEL_OFFSET;
+int32_t rt_table_offset   = DEF_RT_TABLE_OFFSET;
 
 int32_t rt_prio_default = DEF_RT_PRIO_DEFAULT;
 
@@ -364,7 +361,7 @@ void add_del_hna( struct orig_node *orig_node, int8_t del ) {
 
 		if ( ( netmask > 0 ) && ( netmask < 33 ) ) {
 			
-			add_del_route( hna, netmask, orig_node->router->addr, orig_node->router->if_incoming->addr.sin_addr.s_addr, orig_node->batman_if->if_index, orig_node->batman_if->dev, rt_table_networks, 0, del );
+			add_del_route( hna, netmask, orig_node->router->addr, orig_node->router->if_incoming->addr.sin_addr.s_addr, orig_node->batman_if->if_index, orig_node->batman_if->dev, BATMAN_RT_TABLE_NETWORKS, 0, del );
 			
 		}
 
@@ -979,10 +976,10 @@ int8_t batman() {
 
 			
 			/* add throw routing entries for own hna */  
-		        add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", rt_table_networks, 1, 0 );  
-			add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", rt_table_hosts, 1, 0 );  
-//			add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH, 1, 0 );  
-			add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", rt_table_tunnel, 1, 0 );  
+		        add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS, 1, 0 );  
+			add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS, 1, 0 );  
+			add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH, 1, 0 );  
+			add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL, 1, 0 );  
 			
 		}
 
@@ -1381,10 +1378,10 @@ int8_t batman() {
 		hna_node = list_entry( list_pos, struct hna_node, list );
 		
 		/* add throw routing entries for own hna */
-		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", rt_table_networks, 1, 1 );
-		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", rt_table_hosts, 1, 1 );
-//		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH, 1, 1 );
-		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", rt_table_tunnel, 1, 1 );
+		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS, 1, 1 );
+		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS, 1, 1 );
+		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH, 1, 1 );
+		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL, 1, 1 );
 
 		debugFree( hna_node, 1103 );
 
