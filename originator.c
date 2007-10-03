@@ -200,10 +200,10 @@ void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t n
 		best_neigh_node = neigh_node;
 
 	}
-
-	/* this is for remembering the actual re-broadcasted non-unidirectional OGMs */
+/*
+	// this is for remembering the actual re-broadcasted non-unidirectional OGMs 
 	bit_get_packet( orig_node->send_old_seq_bits, in->seqno - orig_node->last_seqno, 0 );
-
+*/
 	
 	orig_node->last_valid = rcvd_time;
 	neigh_node->last_valid = rcvd_time;

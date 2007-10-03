@@ -483,6 +483,7 @@ void *gw_listen( void *arg ) {
 
 	memset( &pack_dest, 0, sizeof(struct sockaddr_in) );
 
+//	TBFixed...
 	pack_dest.sin_family = AF_INET;
 	
 	if ( add_dev_tun( batman_if, *(uint32_t *)my_tun_ip, tun_dev, sizeof(tun_dev), &tun_fd, &tun_ifi ) < 0 )
@@ -531,6 +532,7 @@ void *gw_listen( void *arg ) {
 
 							}
 
+							//	TBFixed...	
 							/* fill in the destination address or the kernel will route us towards the loopback interface */
 							pack_dest.sin_addr.s_addr = ((struct iphdr *)(buff + 1))->daddr;
 

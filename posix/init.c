@@ -458,14 +458,14 @@ void apply_init_args( int argc, char *argv[] ) {
 						
 						set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "20", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
 						
-						set_init_arg( NBRFSIZE_SWITCH, "64", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &sequence_range );
+						set_init_arg( NBRFSIZE_SWITCH, "100", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &sequence_range );
 						num_words = ( sequence_range / WORD_BIT_SIZE ) + ( ( sequence_range % WORD_BIT_SIZE > 0)? 1 : 0 );
 						
 						set_init_arg( DUP_TTL_LIMIT_SWITCH, "2", MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT, &dup_ttl_limit );
 						
-						set_init_arg( DUP_RATE_SWITCH, "99", MIN_DUP_RATE, MAX_DUP_RATE, &dup_rate );
+						set_init_arg( DUP_RATE_SWITCH, "100", MIN_DUP_RATE, MAX_DUP_RATE, &dup_rate );
 						
-						set_init_arg( DUP_DEGRAD_SWITCH, "10", MIN_DUP_DEGRAD, MAX_DUP_DEGRAD, &dup_degrad );
+						set_init_arg( DUP_DEGRAD_SWITCH, "0", MIN_DUP_DEGRAD, MAX_DUP_DEGRAD, &dup_degrad );
 						
 						set_init_arg( SEND_CLONES_SWITCH, "200", MIN_SEND_CLONES, MAX_SEND_CLONES, &send_clones );
 //						compat_version = DEF_COMPAT_VERSION + 1;

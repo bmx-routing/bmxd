@@ -1247,12 +1247,12 @@ int8_t batman() {
 							schedule_forward_packet( (struct bat_packet *)in, 0, 1, has_duplicated_flag, hna_recv_buff, hna_buff_len, if_incoming );
 
 							debug_output( 4, "Forward packet: rebroadcast neighbour packet with direct link flag \n" );
-
+/*
 							if ( is_duplicate ) {
-								/* this is for remembering the actual re-broadcasted non-unidirectional OGMs */
+								// this is for remembering the actual re-broadcasted non-unidirectional OGMs 
 								bit_mark( orig_node->send_old_seq_bits, -( ((struct bat_packet *)&in)->seqno - orig_node->last_seqno ) );
 							}
-							
+*/							
 							
 						/* if an unidirectional neighbour sends us a packet - retransmit it with unidirectional flag to tell him that we get his packets */
 						/* if a bidirectional neighbour sends us a packet who is not our best link to him- retransmit it with unidirectional flag in order to prevent routing problems */
@@ -1305,11 +1305,11 @@ int8_t batman() {
 									schedule_forward_packet( (struct bat_packet *)in, 0, 0, has_duplicated_flag, hna_recv_buff, hna_buff_len, if_incoming );
 
 									debug_output( 4, "Forward packet: duplicate packet received via best neighbour with best ttl \n" );
-
-									/* this is for remembering the actual re-broadcasted non-unidirectional OGMs */
+/*
+									// this is for remembering the actual re-broadcasted non-unidirectional OGMs
 									bit_mark( orig_node->send_old_seq_bits,
 										-( ((struct bat_packet *)&in)->seqno - orig_node->last_seqno ) );
-
+*/
 								} else {
 
 									debug_output( 4, "Drop packet: duplicate packet received via best neighbour but not best ttl \n" );
