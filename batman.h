@@ -228,10 +228,10 @@ extern int32_t base_port;
  ***/
 
 
-#define RT_TABLE_NETWORKS_OFFSET 0
-#define RT_TABLE_HOSTS_OFFSET    1
-#define RT_TABLE_UNREACH_OFFSET  2
-#define RT_TABLE_TUNNEL_OFFSET   3
+#define RT_TABLE_NETWORKS_OFFSET 0 /* 65 */
+#define RT_TABLE_HOSTS_OFFSET    1 /* 66 */
+#define RT_TABLE_UNREACH_OFFSET  2 /* 67 */
+#define RT_TABLE_TUNNEL_OFFSET   3 /* 68 */
 
 extern int32_t rt_table_offset;
 #define RT_TABLE_OFFSET_SWITCH "rt-table-offset"
@@ -263,6 +263,10 @@ extern int32_t no_prio_rules;
 extern int32_t no_throw_rules;
 #define NO_THROW_RULES_SWITCH "no-throw-rules"
 #define DEF_NO_THROW_RULES NO
+
+extern int32_t no_unresponsive_check;
+#define NO_UNRESP_CHECK_SWITCH "no-unresp-gw-check"
+#define DEF_NO_UNRESP_CHECK NO
 
 
 extern char *prog_name;
@@ -322,7 +326,7 @@ struct orig_node                 /* structure for orig_list maintaining nodes of
 	int16_t  hna_buff_len;
 	uint16_t last_seqno;              /* last and best known squence number */
 	
-	uint8_t last_seqno_best_ttl;	  /* smallest TTL received with last sequence number */
+	uint8_t last_seqno_largest_ttl;	  /* largest (best) TTL received with last sequence number */
 	
 	TYPE_OF_WORD *bi_link_bits;       /* for bidirect-link statistics */
 	uint16_t *last_bi_link_seqno;     /* for bidirect-link statistics */

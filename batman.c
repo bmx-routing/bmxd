@@ -116,9 +116,10 @@ int32_t rt_table_offset   = DEF_RT_TABLE_OFFSET;
 int32_t rt_prio_default = DEF_RT_PRIO_DEFAULT;
 
 int32_t no_prio_rules = DEF_NO_PRIO_RULES;
+
 int32_t no_throw_rules = DEF_NO_THROW_RULES;
 
-
+int32_t no_unresponsive_check = DEF_NO_UNRESP_CHECK;
 
 
 
@@ -162,6 +163,8 @@ void print_advanced_opts ( int verbose ) {
 	fprintf( stderr, "\n       --%s : does not set the default priority rules.\n", NO_PRIO_RULES_SWITCH );
 	
 	fprintf( stderr, "\n       --%s : does not set the default throw rules.\n", NO_THROW_RULES_SWITCH );
+	
+	fprintf( stderr, "\n       --%s : disables the unresponsive-GW check.\n", NO_UNRESP_CHECK_SWITCH );
 	
 	fprintf( stderr, "\n       --%s <value> : set base udp port used by batmand.\n", BASE_PORT_SWITCH );
 	fprintf( stderr, "          <value> for OGMs, <value+1> for GW tunnels, <value+2> for visualization server.\n");
@@ -1205,9 +1208,9 @@ int8_t batman() {
 						( !is_duplicate || 
 						  ( ( dup_ttl_limit > 0 ) && 
 						    orig_node->last_seqno == ((struct bat_packet *)&in)->seqno &&
-						    orig_node->last_seqno_best_ttl < ((struct bat_packet *)&in)->ttl + dup_ttl_limit &&
+						    orig_node->last_seqno_largest_ttl < ((struct bat_packet *)&in)->ttl + dup_ttl_limit &&
 						    rand_num_hundret < dup_rate && /* using the same rand_num_hundret is important */
-						    rand_num_hundret < 100 - ( dup_degrad * ( orig_node->last_seqno_best_ttl - ((struct bat_packet *)&in)->ttl ) )
+						    rand_num_hundret < (100 - (dup_degrad * (orig_node->last_seqno_largest_ttl - ((struct bat_packet *)&in)->ttl) ))
 						  )
 						) ) {
 						
@@ -1218,7 +1221,7 @@ int8_t batman() {
 					set_dbg_rcvd_all_bits( orig_node, ((struct bat_packet *)&in)->seqno, if_incoming, (is_bidirectional && ( !is_duplicate || 
 							( dup_ttl_limit && 
 									( orig_node->last_seqno == ((struct bat_packet *)&in)->seqno && 
-									orig_node->last_seqno_best_ttl < ((struct bat_packet *)&in)->ttl + dup_ttl_limit) ) ) ) );
+									orig_node->last_seqno_largest_ttl < ((struct bat_packet *)&in)->ttl + dup_ttl_limit) ) ) ) );
 
 					
 					is_bntog = isBntog( neigh, orig_node );

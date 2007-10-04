@@ -214,12 +214,12 @@ void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t n
 
 		orig_node->last_seqno = in->seqno;
 		neigh_node->last_ttl = in->ttl;
-		orig_node->last_seqno_best_ttl = in->ttl;
+		orig_node->last_seqno_largest_ttl = in->ttl;
 
 	}
 
-	if ( orig_node->last_seqno == in->seqno && orig_node->last_seqno_best_ttl > in->ttl )
-		orig_node->last_seqno_best_ttl = in->ttl;
+	if ( orig_node->last_seqno == in->seqno && in->ttl > orig_node->last_seqno_largest_ttl )
+		orig_node->last_seqno_largest_ttl = in->ttl;
 	
 	if( penalty_min > 0 ) {
 		
