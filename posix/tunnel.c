@@ -46,22 +46,25 @@
 #define GW_STATE_UNKNOWN  0x01
 #define GW_STATE_VERIFIED 0x02
 
-#define GW_STATE_UNKNOWN_TIMEOUT 60000
-#define GW_STATE_VERIFIED_TIMEOUT 5 * GW_STATE_UNKNOWN_TIMEOUT
+#define ONE_MINUTE                60000
 
-#define IP_LEASE_TIMEOUT 4 * GW_STATE_VERIFIED_TIMEOUT
+#define GW_STATE_UNKNOWN_TIMEOUT  1  * ONE_MINUTE
+#define GW_STATE_VERIFIED_TIMEOUT 5  * ONE_MINUTE
 
+#define IP_LEASE_TIMEOUT          20 * ONE_MINUTE
 
+#define MAX_TUNNEL_IP_REQUESTS 12
 
+#define INVALIDIP_WARNING_PERIOD 5000
 
 int8_t get_tun_ip( struct sockaddr_in *gw_addr, int32_t udp_sock, uint32_t *tun_addr ) {
 
 	struct sockaddr_in sender_addr;
 	struct timeval tv;
-	unsigned char buff[100];
+	unsigned char buff[100]; //question: why so large ??
 	int32_t res, buff_len;
 	uint32_t addr_len;
-	int8_t i = 12;
+	int8_t i = MAX_TUNNEL_IP_REQUESTS;
 	fd_set wait_sockets;
 
 
@@ -142,6 +145,7 @@ void *client_to_gw_tun( void *arg ) {
 	struct timeval tv;
 	int32_t res, max_sock, buff_len, udp_sock, tun_fd, tun_ifi, sock_opts;
 	uint32_t addr_len, current_time, ip_lease_time = 0, gw_state_time = 0, got_new_ip = 0, my_tun_addr = 0;
+	uint32_t last_invalidip_warning = 0;
 	char tun_if[IFNAMSIZ], my_str[ADDR_STR_LEN], gw_str[ADDR_STR_LEN], gw_state = GW_STATE_UNKNOWN;
 	unsigned char buff[1501];
 	fd_set wait_sockets, tmp_wait_sockets;
@@ -213,7 +217,7 @@ void *client_to_gw_tun( void *arg ) {
 	while ( ( !is_aborted() ) && ( curr_gateway != NULL ) && ( ! curr_gw_data->gw_node->deleted ) ) {
 
 		tv.tv_sec = 0;
-		tv.tv_usec = 250;
+		tv.tv_usec = 250; // question: why so small? to react faster on pthread_join?
 
 		memcpy( &tmp_wait_sockets, &wait_sockets, sizeof(fd_set) );
 
@@ -223,7 +227,7 @@ void *client_to_gw_tun( void *arg ) {
 
 		if ( res > 0 ) {
 
-			/* udp message (tunnel data) */
+			/* udp message (tunnel data) from gateway */
 			if ( FD_ISSET( udp_sock, &tmp_wait_sockets ) ) {
 
 				while ( ( buff_len = recvfrom( udp_sock, buff, sizeof(buff) - 1, 0, (struct sockaddr *)&sender_addr, &addr_len ) ) > 0 ) {
@@ -284,6 +288,7 @@ void *client_to_gw_tun( void *arg ) {
 
 				ip_lease_time = current_time;
 
+			/* Got data to be send to gateway */
 			} else if ( FD_ISSET( tun_fd, &tmp_wait_sockets ) ) {
 
 				while ( ( buff_len = read( tun_fd, buff + 1, sizeof(buff) - 2 ) ) > 0 ) {
@@ -317,12 +322,22 @@ void *client_to_gw_tun( void *arg ) {
 					buff[0] = TUNNEL_DATA;
 
 					/* fill in new ip - the packets in the buffer don't know it yet */
-					if ( got_new_ip + 1000 > ip_lease_time )
-						memcpy( buff + 13, (unsigned char *)&my_tun_addr, 4 );
-
-					if ( sendto( udp_sock, buff, buff_len + 1, 0, (struct sockaddr *)&gw_addr, sizeof (struct sockaddr_in) ) < 0 )
-						debug_output( 0, "Error - can't send data to gateway: %s\n", strerror(errno) );
-
+					// some applications tend to set their own IP or an IP from another interface. This would trigger the GW to complain 
+//					if ( got_new_ip + 1000 > ip_lease_time )
+					
+					if ( memcmp( buff + 13, (unsigned char *)&my_tun_addr, 4 ) == 0 ) {
+						
+						if ( sendto( udp_sock, buff, buff_len + 1, 0, (struct sockaddr *)&gw_addr, sizeof (struct sockaddr_in) ) < 0 )
+							debug_output( 0, "Error - can't send data to gateway: %s\n", strerror(errno) );
+					
+					} else if ( last_invalidip_warning == 0 || last_invalidip_warning + INVALIDIP_WARNING_PERIOD < current_time ) {
+						
+						last_invalidip_warning = current_time;
+						
+						addr_to_string( my_tun_addr, my_str, sizeof(my_str) );
+						debug_output( 3, "Gateway client - Invalid outgoing src IP: %i.%i.%i.%i, should be %s \n", (uint8_t)buff[13], (uint8_t)buff[14], (uint8_t)buff[15], (uint8_t)buff[16],  my_str );
+					
+					}
 				}
 
 				if ( errno != EWOULDBLOCK ) {
@@ -362,7 +377,8 @@ void *client_to_gw_tun( void *arg ) {
 		}
 
 		/* drop connection to gateway if the gateway does not respond */
-		if ( ( gw_state == GW_STATE_UNKNOWN ) && ( gw_state_time != 0 ) && ( ( gw_state_time + GW_STATE_UNKNOWN_TIMEOUT ) < current_time ) ) {
+		
+		if ( !no_unresponsive_check && ( gw_state == GW_STATE_UNKNOWN ) && ( gw_state_time != 0 ) && ( ( gw_state_time + GW_STATE_UNKNOWN_TIMEOUT ) < current_time ) ) {
 			
 			debug_output( 3, "Gateway client - disconnecting from unresponsive gateway: %s \n", gw_str );
 
@@ -377,7 +393,7 @@ void *client_to_gw_tun( void *arg ) {
 		if ( ( gw_state == GW_STATE_VERIFIED ) && ( ( gw_state_time + GW_STATE_VERIFIED_TIMEOUT ) < current_time ) ) {
 
 			gw_state = GW_STATE_UNKNOWN;
-			gw_state_time = 0;
+			gw_state_time = 0; // the timer is not started before the next packet is send to the GW
 
 		}
 
@@ -449,9 +465,9 @@ void *gw_listen( void *arg ) {
 
 	struct batman_if *batman_if = (struct batman_if *)arg;
 	struct timeval tv;
-	struct sockaddr_in addr, client_addr, pack_dest;
+	struct sockaddr_in addr, client_addr /*, pack_dest */;
 	struct gw_client *gw_client[256];
-	char gw_addr[16], str[16], tun_dev[IFNAMSIZ];
+	char gw_addr[16], str[16], /* str2[16], */ tun_dev[IFNAMSIZ];
 	unsigned char buff[1501];
 	int32_t res, max_sock, buff_len, tun_fd, tun_ifi, raw_fd;
 	uint32_t addr_len, client_timeout, current_time;
@@ -481,10 +497,6 @@ void *gw_listen( void *arg ) {
 	client_addr.sin_family = AF_INET;
 	client_addr.sin_port = htons(PORT + 1);
 
-	memset( &pack_dest, 0, sizeof(struct sockaddr_in) );
-
-//	TBFixed...
-	pack_dest.sin_family = AF_INET;
 	
 	if ( add_dev_tun( batman_if, *(uint32_t *)my_tun_ip, tun_dev, sizeof(tun_dev), &tun_fd, &tun_ifi ) < 0 )
 		return NULL;
@@ -508,7 +520,7 @@ void *gw_listen( void *arg ) {
 
 		if ( res > 0 ) {
 
-			/* is udp packet */
+			/* is udp packet from GW-Client*/
 			if ( FD_ISSET( batman_if->udp_tunnel_sock, &tmp_wait_sockets ) ) {
 
 				while ( ( buff_len = recvfrom( batman_if->udp_tunnel_sock, buff, sizeof(buff) - 1, 0, (struct sockaddr *)&addr, &addr_len ) ) > 0 ) {
@@ -532,13 +544,25 @@ void *gw_listen( void *arg ) {
 
 							}
 
-							//	TBFixed...	
 							/* fill in the destination address or the kernel will route us towards the loopback interface */
+							// TBFixed? are long-int assignements from unaligned memory addresse ok? known problems with arm
+							/*
+							memset( &pack_dest, 0, sizeof(struct sockaddr_in) );
+							pack_dest.sin_family = AF_INET;
+							pack_dest.sin_port = 0;
 							pack_dest.sin_addr.s_addr = ((struct iphdr *)(buff + 1))->daddr;
+
+							addr_to_string( addr.sin_addr.s_addr, str, sizeof(str) );
+							addr_to_string( pack_dest.sin_addr.s_addr, str2, sizeof(str2) );
+							debug_output( 0, "forward packet from client: %s (virtual ip %i.%i.%i.%i) dst: %s \n", str, (uint8_t)buff[13], (uint8_t)buff[14], (uint8_t)buff[15], (uint8_t)buff[16], str2 );
 
 							if ( sendto( raw_fd, buff + 1, buff_len - 1, 0, (struct sockaddr *)&pack_dest, sizeof(struct sockaddr_in) ) < 0 )
 								debug_output( 0, "Error - can't send packet: %s\n", strerror(errno) );
-
+							*/
+														
+							if ( write( tun_fd, buff + 1, buff_len - 1 ) < 0 )  
+					                        debug_output( 0, "Error - can't write packet: %s\n", strerror(errno) );  
+							
 						} else if ( buff[0] == TUNNEL_IP_REQUEST ) {
 
 							if ( get_ip_addr( addr.sin_addr.s_addr, &my_tun_ip[3], gw_client ) > 0 ) {
