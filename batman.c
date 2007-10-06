@@ -74,7 +74,10 @@ uint8_t routing_class = 0;
 
 int16_t originator_interval = DEFAULT_ORIGINATOR_INTERVAL;   /* orginator message interval in miliseconds */
 
-int8_t advanced_opts = 0;
+int8_t advanced_opts = DEF_ADVANCED_SWITCH;
+
+int8_t resist_blocked_send = DEF_RESIST_BLOCKED_SEND;
+
 
 
 /* bidirectional link timeout in number+1 of maximum acceptable missed (not received by this node)
@@ -166,6 +169,8 @@ void print_advanced_opts ( int verbose ) {
 	fprintf( stderr, "\n       --%s : does not set the default throw rules.\n", NO_THROW_RULES_SWITCH );
 	
 	fprintf( stderr, "\n       --%s : disables the unresponsive-GW check.\n", NO_UNRESP_CHECK_SWITCH );
+	
+	fprintf( stderr, "\n       --%s : lets daemon survive if firewall blocks outgoing OGMs.\n", RESIST_BLOCKED_SEND_SWITCH );
 	
 	fprintf( stderr, "\n       --%s <vlue>: Use hysteresis for fast-switch gw connections (-r 3).\n", GW_CHANGE_HYSTERESIS_SWITCH );
 	fprintf( stderr, "          <value> for number additional rcvd OGMs before changing to more stable GW.\n");

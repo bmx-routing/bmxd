@@ -46,6 +46,7 @@ extern struct vis_if vis_if;
 static clock_t start_time;
 static float system_tick;
 
+static uint32_t last_blocked_send_warning = 0;
 
 
 uint32_t get_time( void ) {
@@ -327,7 +328,15 @@ int8_t send_udp_packet( unsigned char *packet_buff, int32_t packet_buff_len, str
 
 		if ( errno == 1 ) {
 
-			debug_output( 0, "Error - can't send udp packet: %s.\nDoes your firewall allow outgoing packets on port %i ?\n", strerror(errno), ntohs( broad->sin_port ) );
+			if ( last_blocked_send_warning == 0 || last_blocked_send_warning + WARNING_PERIOD < get_time() ) {
+						
+				last_blocked_send_warning = get_time();
+						
+				debug_output( 0, "Error - can't send udp packet: %s.\nDoes your firewall allow outgoing packets on port %i ?\n", strerror(errno), ntohs( broad->sin_port ) );
+			}
+			
+			if( resist_blocked_send )
+				return 0;
 
 		} else {
 

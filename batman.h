@@ -91,6 +91,8 @@ char unix_path[sizeof(DEF_UNIX_PATH)+10];
 
 #define PURGE_TIMEOUT 400000   /* purge originators after time in ms if no valid packet comes in -> TODO: check influence on SEQ_RANGE */
 
+#define WARNING_PERIOD 20000
+
 #define BATMAN_TUN_PREFIX "bat"
 #define MAX_BATMAN_TUN_INDEX 15 
 
@@ -193,6 +195,11 @@ extern int32_t penalty_exceed;
 
 extern int8_t advanced_opts;
 #define ADVANCED_SWITCH          "dangerous"
+#define DEF_ADVANCED_SWITCH NO;
+
+extern int8_t resist_blocked_send;
+#define RESIST_BLOCKED_SEND_SWITCH "resist-blocked-send"
+#define DEF_RESIST_BLOCKED_SEND NO
 
 extern int8_t bmx_defaults;
 #define BMX_DEFAULTS_SWITCH      "bmx-defaults"

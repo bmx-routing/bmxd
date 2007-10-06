@@ -205,6 +205,7 @@ void apply_init_args( int argc, char *argv[] ) {
    {NO_PRIO_RULES_SWITCH,       0, 0, 0},
    {NO_THROW_RULES_SWITCH,      0, 0, 0},
    {NO_UNRESP_CHECK_SWITCH,     0, 0, 0},
+   {RESIST_BLOCKED_SEND_SWITCH, 0, 0, 0},
    {RT_TABLE_OFFSET_SWITCH,     1, 0, 0},
    {BASE_PORT_SWITCH,           1, 0, 0},
    {TEST_SWITCH,                0, 0, 0},
@@ -406,7 +407,15 @@ void apply_init_args( int argc, char *argv[] ) {
 						no_unresponsive_check = YES;
 						found_args += 1;
 						break;
+						
+					} else if ( strcmp( RESIST_BLOCKED_SEND_SWITCH, long_options[option_index].name ) == 0 ) {
 
+						printf ("Long option: %s \n", long_options[option_index].name);
+						errno = 0;
+						resist_blocked_send = YES;
+						found_args += 1;
+						break;
+								
 					} else if ( strcmp( BMX_DEFAULTS_SWITCH, long_options[option_index].name ) == 0 ) {
 
 						printf ("Long option: %s \n", long_options[option_index].name);

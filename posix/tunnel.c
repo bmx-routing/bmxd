@@ -55,7 +55,6 @@
 
 #define MAX_TUNNEL_IP_REQUESTS 12
 
-#define INVALIDIP_WARNING_PERIOD 5000
 
 int8_t get_tun_ip( struct sockaddr_in *gw_addr, int32_t udp_sock, uint32_t *tun_addr ) {
 
@@ -330,7 +329,7 @@ void *client_to_gw_tun( void *arg ) {
 						if ( sendto( udp_sock, buff, buff_len + 1, 0, (struct sockaddr *)&gw_addr, sizeof (struct sockaddr_in) ) < 0 )
 							debug_output( 0, "Error - can't send data to gateway: %s\n", strerror(errno) );
 					
-					} else if ( last_invalidip_warning == 0 || last_invalidip_warning + INVALIDIP_WARNING_PERIOD < current_time ) {
+					} else if ( last_invalidip_warning == 0 || last_invalidip_warning + WARNING_PERIOD < current_time ) {
 						
 						last_invalidip_warning = current_time;
 						
