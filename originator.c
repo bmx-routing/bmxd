@@ -141,6 +141,7 @@ void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t n
 	struct list_head *neigh_pos;
 	struct neigh_node *neigh_node = NULL, *tmp_neigh_node = NULL, *best_neigh_node = NULL;
 	uint8_t max_packet_count = 0, is_new_seqno = 0; // TBD: check max_packet_count for overflows if MAX_SEQ_RANGE > 256
+	static char new_gw_str[ADDR_STR_LEN], old_gw_str[ADDR_STR_LEN];
 	
 
 	debug_output( 4, "update_originator(): Searching and updating originator entry of received packet,  \n" );
@@ -284,18 +285,26 @@ void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t n
 	/* update routing table and check for changed hna announcements */
 	update_routes( orig_node, best_neigh_node, hna_recv_buff, hna_buff_len );
 
+	
 	if ( orig_node->gwflags != in->gwflags )
 		update_gw_list( orig_node, in->gwflags );
 
-	orig_node->gwflags = in->gwflags;
-
+//	orig_node->gwflags = in->gwflags;
 
 	/* restart gateway selection if we have more packets and routing class 3 */
-	if ( ( routing_class == 3 ) && ( orig_node->gwflags != 0 ) && ( curr_gateway != NULL ) ) {
+	if ( ( orig_node->gwflags != 0 ) && ( routing_class == 3 ) && ( curr_gateway != NULL ) ) {
 
-		if ( ( curr_gateway->orig_node != orig_node ) && ( curr_gateway->orig_node->router->packet_count < orig_node->router->packet_count ) )
+		if ( ( curr_gateway->orig_node != orig_node ) && (pref_gateway == 0 || pref_gateway == orig_node->orig ) && ( (curr_gateway->orig_node->router->packet_count + gw_change_hysteresis) <= orig_node->router->packet_count ) ) {
+			
+			addr_to_string( orig_node->orig, new_gw_str, ADDR_STR_LEN );
+			addr_to_string( curr_gateway->orig_node->orig, old_gw_str, ADDR_STR_LEN );
+			
+			debug_output( 3, "Restart gateway selection. Routing class 3 and %d OGMs from GW %s (compared to %d from GW %s)\n",
+				      orig_node->router->packet_count, new_gw_str, curr_gateway->orig_node->router->packet_count, old_gw_str );
+			
 			curr_gateway = NULL;
-
+		
+		}
 	}
 
 	prof_stop( PROF_update_originator );

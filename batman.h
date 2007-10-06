@@ -88,7 +88,29 @@ char unix_path[sizeof(DEF_UNIX_PATH)+10];
 #define MAX_GW_UNAVAIL_FACTOR 2 /* 10 */
 #define MAX_GW_UNAVAIL_TIMEOUT 30000 /* 10000 */
 #define CHOOSE_GW_DELAY_DIVISOR 10 /* 1 */
-		
+
+#define PURGE_TIMEOUT 400000   /* purge originators after time in ms if no valid packet comes in -> TODO: check influence on SEQ_RANGE */
+
+#define BATMAN_TUN_PREFIX "bat"
+#define MAX_BATMAN_TUN_INDEX 15 
+
+#define TEST_SWITCH              "test"
+
+extern int32_t sequence_range;
+#define FULL_SEQ_RANGE ((uint16_t)-1)
+#define MAX_SEQ_RANGE 250      /* TBD: should not be larger until neigh_node.packet_count (and related variables) is only 8 bit */
+#define MIN_SEQ_RANGE 1
+#define DEFAULT_SEQ_RANGE 128  /* NBRF: NeighBor Ranking sequence Frame) sliding packet range of received orginator messages in squence numbers (should be a multiple of our word size) */
+#define NBRFSIZE_SWITCH          "window-size"
+
+#define MAX_NUM_WORDS (( MAX_SEQ_RANGE / WORD_BIT_SIZE ) + ( ( MAX_SEQ_RANGE % WORD_BIT_SIZE > 0)? 1 : 0 )) 
+
+
+extern int16_t originator_interval;
+#define DEFAULT_ORIGINATOR_INTERVAL 1000
+#define MIN_ORIGINATOR_INTERVAL JITTER
+#define MAX_ORIGINATOR_INTERVAL 10000 
+	
 extern uint8_t mobile_device;
 #define ASOCIAL_SWITCH           "asocial-device"
 
@@ -99,21 +121,6 @@ extern uint8_t no_forw_dupl_ttl_check;
 
 extern uint8_t no_tun_persist;
 #define NO_TUNPERSIST_SWITCH  "no-tunpersist"
-
-
-extern int16_t originator_interval;
-#define DEFAULT_ORIGINATOR_INTERVAL 1000
-#define MIN_ORIGINATOR_INTERVAL JITTER
-#define MAX_ORIGINATOR_INTERVAL 10000 
-
-#define PURGE_TIMEOUT 400000   /* purge originators after time in ms if no valid packet comes in -> TODO: check influence on SEQ_RANGE */
-
-extern int32_t sequence_range;
-#define FULL_SEQ_RANGE ((uint16_t)-1)
-#define MAX_SEQ_RANGE 250      /* TBD: should not be larger until neigh_node.packet_count (and related variables) is only 8 bit */
-#define MIN_SEQ_RANGE 1
-#define DEFAULT_SEQ_RANGE 128  /* NBRF: NeighBor Ranking sequence Frame) sliding packet range of received orginator messages in squence numbers (should be a multiple of our word size) */
-#define NBRFSIZE_SWITCH          "window-size"
 
 extern int32_t bidirect_link_to;
 #define DEFAULT_BIDIRECT_TIMEOUT 2  
@@ -187,21 +194,12 @@ extern int32_t penalty_exceed;
 extern int8_t advanced_opts;
 #define ADVANCED_SWITCH          "dangerous"
 
+extern int8_t bmx_defaults;
 #define BMX_DEFAULTS_SWITCH      "bmx-defaults"
 #define DEF_BMX_DEFAULTS          0
-extern int8_t bmx_defaults;
 
 #define OGM_ONLY_VIA_OWNING_IF_SWITCH 'i'
 #define MAKE_IP_HNA_IF_SWITCH 'a'
-
-
-#define TEST_SWITCH              "test"
-
-
-#define MAX_NUM_WORDS (( MAX_SEQ_RANGE / WORD_BIT_SIZE ) + ( ( MAX_SEQ_RANGE % WORD_BIT_SIZE > 0)? 1 : 0 )) 
-
-#define BATMAN_TUN_PREFIX "bat"
-#define MAX_BATMAN_TUN_INDEX 15 
 
 extern int32_t base_port;
 #define BASE_PORT_SWITCH "base-port"
@@ -268,12 +266,19 @@ extern int32_t no_unresponsive_check;
 #define NO_UNRESP_CHECK_SWITCH "no-unresp-gw-check"
 #define DEF_NO_UNRESP_CHECK NO
 
+extern int32_t gw_change_hysteresis;
+#define GW_CHANGE_HYSTERESIS_SWITCH "gw-change-hysteresis"
+#define DEF_GW_CHANGE_HYSTERESIS 1
+#define MIN_GW_CHANGE_HYSTERESIS 1
+#define MAX_GW_CHANGE_HYSTERESIS ((sequence_range / 2) + 1) /*TBD: what if sequence range is decreased after setting this? */
+
+extern uint8_t routing_class;
+
+extern uint8_t gateway_class;
 
 extern char *prog_name;
 extern uint8_t debug_level;
 extern uint8_t debug_level_max;
-extern uint8_t gateway_class;
-extern uint8_t routing_class;
 extern uint8_t num_hna;
 
 extern int16_t num_words;

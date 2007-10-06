@@ -85,7 +85,7 @@ void debug_output( int8_t debug_prio, char *format, ... ) {
 
 				debug_level_info = list_entry(debug_pos, struct debug_level_info, list);
 
-				if ( debug_prio_intern == 3 )
+				if ( debug_prio_intern >= 2 )
 					dprintf( debug_level_info->fd, "[%10u] ", get_time() );
 
 				if ( ( ( debug_level == 1 ) || ( debug_level == 2 ) ) && ( debug_level_info->fd == 1 ) && ( strncmp( format, "BOD", 3 ) == 0 ) ) {

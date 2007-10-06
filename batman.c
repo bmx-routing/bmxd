@@ -121,6 +121,7 @@ int32_t no_throw_rules = DEF_NO_THROW_RULES;
 
 int32_t no_unresponsive_check = DEF_NO_UNRESP_CHECK;
 
+int32_t gw_change_hysteresis = DEF_GW_CHANGE_HYSTERESIS;
 
 
 
@@ -166,6 +167,11 @@ void print_advanced_opts ( int verbose ) {
 	
 	fprintf( stderr, "\n       --%s : disables the unresponsive-GW check.\n", NO_UNRESP_CHECK_SWITCH );
 	
+	fprintf( stderr, "\n       --%s <vlue>: Use hysteresis for fast-switch gw connections (-r 3).\n", GW_CHANGE_HYSTERESIS_SWITCH );
+	fprintf( stderr, "          <value> for number additional rcvd OGMs before changing to more stable GW.\n");
+	if ( verbose )
+		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_GW_CHANGE_HYSTERESIS, MIN_GW_CHANGE_HYSTERESIS, MAX_GW_CHANGE_HYSTERESIS  );
+		
 	fprintf( stderr, "\n       --%s <value> : set base udp port used by batmand.\n", BASE_PORT_SWITCH );
 	fprintf( stderr, "          <value> for OGMs, <value+1> for GW tunnels, <value+2> for visualization server.\n");
 	if ( verbose )
@@ -440,11 +446,14 @@ void choose_gw() {
 			case 1:   /* fast connection */
 				get_gw_speeds( gw_node->orig_node->gwflags, &download_speed, &upload_speed );
 
-				if ( ( ( tmp_gw_factor = ( ( ( gw_node->orig_node->router->packet_count * 100 ) / sequence_range ) *
-								     ( ( gw_node->orig_node->router->packet_count * 100 ) / sequence_range ) *
-								     ( download_speed / 64 ) ) ) > max_gw_factor ) ||
-								     ( ( tmp_gw_factor == max_gw_factor ) && ( gw_node->orig_node->router->packet_count > max_packets ) ) )
+				tmp_gw_factor = ( ( ( gw_node->orig_node->router->packet_count * 100 ) / sequence_range ) *
+						( ( gw_node->orig_node->router->packet_count * 100 ) / sequence_range ) *
+						( download_speed / 64 ) );
+				
+				if ( ( tmp_gw_factor > max_gw_factor ) || 
+				     ( ( tmp_gw_factor == max_gw_factor ) && ( gw_node->orig_node->router->packet_count > max_packets ) ) )
 					tmp_curr_gw = gw_node;
+				
 				break;
 
 			case 2:   /* stable connection (use best statistic) */
@@ -655,8 +664,10 @@ void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags ) {
 	INIT_LIST_HEAD( &gw_node->list );
 
 	gw_node->orig_node = orig_node;
+	orig_node->gwflags = new_gwflags;
 	gw_node->unavail_factor = 0;
 	gw_node->last_failure = get_time();
+	
 
 	list_add_tail( &gw_node->list, &gw_list );
 
