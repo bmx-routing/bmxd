@@ -185,7 +185,7 @@ void apply_init_args( int argc, char *argv[] ) {
 	sprintf( unix_path, "%s", DEF_UNIX_PATH );
 
 
-	printf( "WARNING: You are using the experimental batman branch. If you are interested in *using* batman get the latest stable release !\n" );
+	printf( "WARNING: You are using the experimental batman branch!\n" );
 
 	while ( 1 ) {
 
@@ -425,7 +425,7 @@ void apply_init_args( int argc, char *argv[] ) {
 						
 						/*
 						batmand --bmx-defaults  eth1:bat br0:bat
-						WARNING: You are using the experimental batman branch. If you are interested in *using* batman get the latest stable release !
+						WARNING: You are using the experimental batman branch. 
 						Long option: bmx-defaults
 						Short option: o with argument: 1500
 						Long option: bi-link-timeout with argument: 20

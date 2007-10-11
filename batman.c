@@ -227,33 +227,34 @@ void print_advanced_opts ( int verbose ) {
 		fprintf( stderr, "          default: %d, allowed probability values in percent: %d <= value <= %d\n", DEF_SEND_CLONES, MIN_SEND_CLONES, MAX_SEND_CLONES  );
 	
 	fprintf( stderr, "\n       --%s <value> : ignore rcvd OGMs to respect asymmetric-links.\n", ASYMMETRIC_EXP_SWITCH );
-	fprintf( stderr, "          Ignore with probability NLQ^<value>.\n");	
+	fprintf( stderr, "          Ignore with probability TQ^<value>.\n");	
 	if ( verbose )
-		fprintf( stderr, "          default: %d, allowed exponent values: %d <= value <=%d\n", DEF_ASYMMETRIC_EXP, MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP  );
+		fprintf( stderr, "          default: %d, allowed exponent values: %d <= value <= %d\n", DEF_ASYMMETRIC_EXP, MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP  );
 	
 	fprintf( stderr, "\n       --%s <value> : ignore rcvd OGMs to respect asymmetric-links.\n", ASYMMETRIC_WEIGHT_SWITCH );
 	if ( verbose )
-		fprintf( stderr, "          default: %d, allowed probability values in percent: %d <= value <=%d\n", DEF_ASYMMETRIC_WEIGHT, MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT  );
+		fprintf( stderr, "          default: %d, allowed probability values in percent: %d <= value <= %d\n", DEF_ASYMMETRIC_WEIGHT, MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT  );
 	
 	fprintf( stderr, "\n       --%s <value> : accept non-quickest OGMs to relieve preference for shortest path. \n", DUP_TTL_LIMIT_SWITCH );
 	fprintf( stderr, "          (< value > - 1) defines how much smaller the TTL of a non-first OGM can be compared to \n");
 	fprintf( stderr, "          the largest TTL received so fare (with the same originator IP and sequencenumber).\n");	
 	if ( verbose )
-		fprintf( stderr, "          default: %d (disabled), allowed values: %d <= value <=%d\n", DEF_DUP_TTL_LIMIT, MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT );
+		fprintf( stderr, "          default: %d (disabled), allowed values: %d <= value <= %d\n", DEF_DUP_TTL_LIMIT, MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT );
 	
 	fprintf( stderr, "\n       --%s <value> : accept non-quickest OGMs to relieve preference for shortest path. \n", DUP_RATE_SWITCH );
 	fprintf( stderr, "          < value > defines the probability with which non-quickest OGMs are accepted. \n");
 	if ( verbose )
-		fprintf( stderr, "          default: %d (disabled), allowed values in percent: %d <= value <=%d\n", DEF_DUP_RATE, MIN_DUP_RATE, MAX_DUP_RATE );
+		fprintf( stderr, "          default: %d (disabled), allowed values in percent: %d <= value <= %d\n", DEF_DUP_RATE, MIN_DUP_RATE, MAX_DUP_RATE );
 	
 	fprintf( stderr, "\n       --%s <value> : accept non-quickest OGMs to relieve preference for shortest path. \n", DUP_DEGRAD_SWITCH );
 	fprintf( stderr, "          < value > defines the probability degradation for each additional hop (compared \n");
 	fprintf( stderr, "          to the OGM arrived via the shortest path) with which non-quickest OGMs are accepted. \n");
 	if ( verbose )
-		fprintf( stderr, "          default: %d (disabled), allowed values in percent: %d <= value <=%d\n", DEF_DUP_DEGRAD, MIN_DUP_DEGRAD, MAX_DUP_DEGRAD );
+		fprintf( stderr, "          default: %d (disabled), allowed values in percent: %d <= value <= %d\n", DEF_DUP_DEGRAD, MIN_DUP_DEGRAD, MAX_DUP_DEGRAD );
 	
-	fprintf( stderr, "\n       --%s : mode for mobile devices reluctant to help others.\n", ASOCIAL_SWITCH );
+	fprintf( stderr, "\n       --%s : mobile device mode reluctant to help others.\n", ASOCIAL_SWITCH );
 	
+/*
 	fprintf( stderr, "\n       --%s <value> : do neighbor ranking based on latest received OGMs.\n", PENALTY_MIN_SWITCH );
 	fprintf( stderr, "          choosing the ranking winner with the most recent <value> OGMs in the NBRF \n");
 	if ( verbose )
@@ -264,7 +265,7 @@ void print_advanced_opts ( int verbose ) {
 	fprintf( stderr, "          than the previous ranking winner \n");
 	if ( verbose )
 		fprintf( stderr, "          default: off, allowed values:  %d <= value <= %d\n", MIN_PENALTY_EXCEED, MAX_PENALTY_EXCEED  );
-
+*/
 }
 
 void usage( void ) {

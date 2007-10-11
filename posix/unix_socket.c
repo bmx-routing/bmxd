@@ -79,8 +79,6 @@ void debug_output( int8_t debug_prio, char *format, ... ) {
 
 		if ( pthread_mutex_trylock( (pthread_mutex_t *)debug_clients.mutex[debug_prio_intern] ) == 0 ) {
 
-//			va_start( args, format );
-
 			list_for_each( debug_pos, (struct list_head *)debug_clients.fd_list[debug_prio_intern] ) {
 
 				debug_level_info = list_entry(debug_pos, struct debug_level_info, list);
@@ -98,14 +96,7 @@ void debug_output( int8_t debug_prio, char *format, ... ) {
 
 						va_start( args, format );
 						vsnprintf( tmp_string, MAX_DBG_STR_SIZE, format, args );
-// TODO: this causes lots of errors if enabled:
-//						if( vdprintf( debug_level_info->fd, format, args ) < 0) {
-//						if(
-							dprintf( debug_level_info->fd, "%s", tmp_string );
-//														< 0) {
-//							printf("error: could not write to fd !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! \n");
-//						}
-
+						dprintf( debug_level_info->fd, "%s", tmp_string );
 						va_end( args );
 
 					}
@@ -113,8 +104,6 @@ void debug_output( int8_t debug_prio, char *format, ... ) {
 				}
 
 			}
-
-//			va_end( args );
 
 			if ( pthread_mutex_unlock( (pthread_mutex_t *)debug_clients.mutex[debug_prio_intern] ) < 0 )
 				debug_output( 0, "Error - could not unlock mutex (debug_output): %s \n", strerror( errno ) );
