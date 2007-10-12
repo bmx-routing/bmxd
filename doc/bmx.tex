@@ -91,7 +91,7 @@ of
 B.A.T.M.A.N Experimental 
 %(BMX)
 
-\vspace{1.5cm}
+%\vspace{1.5cm}
 
 %\noindent
 %\today
@@ -111,7 +111,7 @@ B.A.T.M.A.N Experimental
 
 \tableofcontents
 
-\vspace{1.5cm}
+%\vspace{1.5cm}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -147,7 +147,7 @@ The main differences for the above given documentations are:
 \begin{itemize}
  \item The exact download URL for the batmand-experimental sources \cite{bmx-source-url}.
 %http://downloads.open-mesh.net/batman/development/sources/batmand-exp\_0.3-exp-current\_sources.tgz . 
-Precompiled binaries for various linux systems can be found in the corresponding folder at:\\ 
+Pre-compiled binaries for various linux systems can be found in the corresponding folder at:\\ 
 http://downloads.open-mesh.net/batman/development/ .
 
 %\item The port numbers used by batmand have recently changed. The new base-port is 4305. Port 4306 is used for GW-traffic and port 4307 is used for the visualization server. If you have a firewall you have to open these ports.
@@ -167,7 +167,7 @@ But batmand-experimental offers a bunch of optionally switches which can be used
 %
  switches. More about the switches is subject to the remainder of this document.
 
-%\item A number of promising parametrization sets have already been preconfigured in the code. The currently most performant and most general parametrization can be activated using the --bmx-defaults switch. 
+%\item A number of promising parametrization sets have already been pre-configured in the code. The currently most performant and most general parametrization can be activated using the --bmx-defaults switch. 
 
 
 \end{itemize}
@@ -197,9 +197,16 @@ Finally, Section \ref{sec:acks} reveals the names of the people that are investi
 
 \subsection{The path-detection algorithm}
 \label{sec:algorithm}
-The general path-detection algorithm works as follows: Every node propagates the knowledge about its existence over the mesh simply by flooding the network with originator messages.
+The general path-detection algorithm works as follows.
+Every node propagates the knowledge about its own existence over the mesh simply by flooding the network with originator messages (OGMs).
 %
-Each originator message (OGM) can be uniquely identified by a sequence number and the IP address of the node that initiated the message.
+Each OGM can be uniquely identified by a sequence number and the IP address of the node that initiated the message.
+%
+OGMs send via a poor or congested links will suffer from delay and packetloss.
+OGMs flooded via good and uncongested links will propagate further, faster, and more reliable.
+
+
+%Nodes with two interfaces propagate two different sequences of OGMs, one for each interface IP.
 %
 Every node selects one of its neighbors as the best neighbor and gateway towards a specific other node.
 %
@@ -207,24 +214,29 @@ This process of identifying the best neighbor towards a distant node is called n
 %
 The selected neighbor is referred as the best-ranking neighbor. 
 %
-Every node maintains one best-ranking neighbor for each known node and interface in the mesh.
+Every node maintains one best-ranking neighbor for each known node (and interface) in the mesh.
 %
 The neighbor-ranking algorithm simply selects the neighbor via which it received (and accepted) the most recent OGMs from the node that initiated the OGMs.
 %Every node simply selects the neighbor via which it received (and accepted) the most recent OGMs from a distant node as its gateway towards this distant node. 
+%
 
 
-In the first place, OGMs transmitted via a poor or saturated link will suffer from packetloss and delay.
+The propagation of OGMs over the mesh relies on intermediate nodes on the paths to re-broadcast a received OGM.
 %
-Additionally, the propagation of OGMs over the mesh relies on intermediate nodes on the paths to re-broadcast a received OGM.
+One general rule of the batman algorithm is: 
+Each node re-broadcasts only those OGMs received via its currently best-ranking neighbor. 
 %
-One general rule of the batman algorithm is: Each node only re-broadcasts the OGMs received via its currently best-ranking neighbor. 
+%This way, each node promotes only the most promising routes in the mesh.
 %
-This way, each node promotes only the most promising routes in the mesh.
+%
+This way, the path that proved to be the quickest and most reliable will establish as a continuous unidirectional route from the receiver to the originator of the OGM.
+
 
 %This way only the most promising path is promoted by propagating only the OGMs received via that path.
 % towards the originator of the received OGM.
 %
-By intentionally not accepting an OGM for the neighbor ranking, each node (along the propagation path of an OGM) also has the possibility to counteract on the propagation via specific links and influence the establishment of resulting routes in the mesh.
+By intentionally not accepting an OGM for the neighbor ranking, each node (along the propagation path of an OGM) also has the possibility to counteract on the propagation via specific links. 
+This way, each node can influence the establishment of resulting end-to-end routes in the mesh.
 %
 In batman-experimental the decision whether to accept or not accept a received OGM for the neighbor ranking is made in the configurable "acceptance-function".
 %
@@ -238,16 +250,16 @@ Thereby OGMs selectively flooded on good routes will propagate further, faster, 
 %
 The computation of the best neighbor towards a distant node is reduced to the counting on local observations of the reality.
 %
-The computation of the complete end-to-end path between nodes is eliminated.
+The need for computation and knowledge of the complete end-to-end paths at a single node is eliminated.
 %
-And the knowledge about the best end-to-end paths between nodes is divided to all nodes participating in the mesh. Each node perceives and maintains only the information about the best next hop towards all other nodes.
+Instead, it is divided to all participating nodes in the mesh. Each node perceives and maintains only the information about the best next hop towards all other nodes.
 
 
 
 
 \section{Debug-Level Parameters}
 \label{sec:debug-levels}
-The main difference between the debug-level outputs of batmand-0.2 and batmand-experimental is in the output of debug level one.
+The main difference between the debug-level outputs of batmand-0.2 and batmand-experimental is the output of debug level one.
 
 %\subsection{Debuglevel one}
 \label{sec:debug-level-1}
@@ -675,7 +687,7 @@ The following two parameters can be used to accept duplicate OGMs only with a re
 
 
 
-\subsection{Reflecting the impact of asymmetric links}
+\subsection{The impact of asymmetric links}
 \label{sec:asymmetric-links}
 
 The phenomenon of an asymmetric link can be observed in every-day life. Given for example the conversation between a Diskjockey and one of his fans as illustrated in Figure \ref{fig:asymmetric-link}. In this scenario the DJ, having his ears covered with booming headphones, is well understood by the fan. But in the other direction, because the DJ is exposed to the noisy music from his headphones, he can not understand anything from his fan. 
@@ -842,7 +854,7 @@ $ p(t) = (w/100) * (t/s)^e $
 
 \subsubsection{Reflecting the link receive quality (RQ)}
 
-As described in Section \ref{sec:batman-link-reflection}, the reflection of the RQ characteristics (along the paths in a mesh) is an inherent part of the flooding algorithm.
+As described in Section \ref{sec:batman-link-reflection}, the reflection of the RQ characteristics (along the paths in a mesh) is an inherent characteristic of the flooding algorithm.
 %
 The previous discussion in Section \ref{sec:asymmetric-links} and \ref{sec:batman-link-reflection} has also indicated that a prevailing reflection of the link-RQs can even be contraproductive for the establishment of performant routes.
  
@@ -859,7 +871,7 @@ Kind of brute-force approach to reduce the influence of a weak RQs is to simply 
 %
 And one way to achieve that is to simply broadcast OGMs multiple times, increasing the chance that at least one of the multiple times broadcasted OGMs could be received.
 %
-This approach incorporates a number of further attributes and advantages.
+Besides the obvious disadvantage of an increased protocol-traffic overhead, this approach incorporates also a number of advantages.
 
 \begin{itemize}
 
@@ -897,18 +909,105 @@ An argument in of 150 specifies that each to be propagated OGM is broadcasted at
 %
 An argument of 200 specifies that each to-be-broadcasted OGM is broadcasted exactly twice!
 
+The \emph{/c} parameter can be used to configure an individual (re-)broadcast probability for a specific interface. 
+This makes particularly sense for wired lan interfaces because such links are usually not showing the huge packet-loss which is typical for wireless links.
+
 %This approach also causes OGMs to dissapear depending on the number of hops and link qualities it has passed.
 %
 %To counteract on the fast disappearance of OGMs by selectively rebroadcasting accepted OGMs twice.
 
 
-\section{Parameters for Adapting to Fancy Network Environments}
+\section{Customizing the Daemon for Individual Network Requiremets}
+%\section{Parameters for Adapting to Fancy Network Environments}
 \label{system-adaption}
 
-The following parameters exist to adapt batmand-experimental to fancy network environments. A more detailed documentation will follow...
+Batmand-experimental supports a number of parameters to customize the routing daemon for various network environments.
 
-\begin{small}
-\begin{verbatim}
+% and the requirements coming along with that.
+
+
+
+\subsection{Achieving in-the-field protocol migration}
+A typical desire for an already existing mesh network is the possibility to test and compare a new routing protocol before any of the functionality needed by the currently operating protocol is disabled.
+%
+A straight forward approach to achieve this desire is to execute the new protocol in parallel to the already existing protocol and ensure that none of the two protocols is influencing the other. 
+%
+
+The batmand-0.2 and 0.3 implementations already provided all necessary functionality to operate in parallel to OLSR. 
+%
+The following batmand-experimental parameters can be used to simultaneously run two (or even more) batman versions on the same devices.
+Therefore, the following system attributes should be decoupled.
+\begin{itemize}
+
+ \item The IP-address ranges (or netmasks) used for each routing protocol should be non-overlapping. Achievable by equipping the already used network interfaces with an additional alias address and a non-overlapping address range.
+  
+ \item The port numbers (used for transferring protocol data) and the unix-socket (used to obtain runtime-debug informations) must be different. A corresponding parameter is described below.
+
+ \item The routing table used by the different protocols. A corresponding parameter is described below.
+
+ \item The routing-priority rules used for assigning dedicated routing tables to selected address ranges. A corresponding parameter is described below.
+
+ \item Optionally, to simplify monitoring of cpu-load and memory-consumption, the binary name of the daemons should be different. Achievable by renaming the corresponding binary file to an new name before executing it.
+
+\end{itemize}
+%
+Related examples are also given in Section \ref{sec:howto}.
+
+\subsubsection{Customizing the protocol ports}
+
+By default, batman uses the UDP port 4305 (as assigned by IANA \cite{iana-ports}) for the flooding of OGMs.
+This port is referred as batmands base-port.
+%
+Optionally, the two sequently following port numbers are used for gateway connectivity and visualization.
+%
+The port number (base-port + 1) is used for tunneling packets between internet-gateway nodes and client nodes. 
+The port number (base-port + 2) is used for sending visualization data to a dedicated visualization server.
+The base-port can be configured with the following parameter.
+
+
+\begin{small} \begin{verbatim}
+       --base-port <value> : set base udp port used by batmand.
+          <value> for OGMs, <value+1> for GW tunnels, <value+2> for visualization server.
+          default: 4305, allowed values: 1025 <= value <= 60000
+\end{verbatim} \end{small}
+
+Whenever applying the \emph{--base-port} parameter during the execution of the main daemon, this parameter must be applied again and with the same value for obtaining the correct debug informations. A simple example is given below.
+
+\begin{small} \begin{verbatim}
+root@ng1e:~# ln -s /usr/sbin/batmand /usr/sbin/bmxd
+root@ng1e:~# bmxd --base-port 24305 --rt-table-offset 77 --prio-rules-offset 26600 ath0:bmx
+WARNING: You are using the experimental batman branch!
+Long option: base-port with argument: 24305
+Long option: rt-table-offset with argument: 77
+Long option: prio-rules-offset with argument: 26600
+Using interface ath0:bmx with address 103.130.30.201 and broadcast address 103.255.255.255
+root@ng1e:~#
+root@ng1e:~# bmxd --base-port 24305 -c -d 1 -b
+WARNING: You are using the experimental batman branch!
+Long option: base-port with argument: 24305
+B.A.T.M.A.N. 0.3-exp rv687, MainIF/IP: ath0:bmx 103.130.30.201, WindSize: 128, BLT: 2, OGI: 1000, UT: 0d 0h 2m
+Originator           viaIF         Router (brc rcvd lseq lvld) [    viaIF RTQ  RQ  TQ].. alternatives...
+103.130.30.202   ath0:bmx  103.130.30.202 ( 26  26    95    0) [ ath0:bmx  26  95  35]
+root@ng1e:~#
+
+\end{verbatim} \end{small}
+
+\subsubsection{Customizing the used routing table and priority rules}
+
+The following switches can be used to change the default routing tables and the priority rules. 
+
+\begin{small} \begin{verbatim}
+       --rt-table-offset <value> : set base routing table used by batmand.
+          <value> for HNA routes, <value+1> for host routes, <value+2> for GW routes.
+          default: 65, allowed values: 2 <= value <= 250
+
+       --prio-rules-offset <value> : set base ip-rules priority used by batmand.
+          default: 6600, allowed values: 3 <= value <= 32765
+\end{verbatim} \end{small}
+
+\subsection{Reconfiguring network integration}
+
+\begin{small} \begin{verbatim}
 
        --no-unreachable-rule : does not set the unreachable rule for host routes.
 
@@ -916,25 +1015,32 @@ The following parameters exist to adapt batmand-experimental to fancy network en
 
        --no-throw-rules : does not set the default throw rules.
 
-       --no-unresp-gw-check : disables the unresponsive-GW check.
-
        --resist-blocked-send : lets daemon survive if firewall blocks outgoing OGMs.
 
-       --gw-change-hysteresis <vlue>: Use hysteresis for fast-switch gw connections (-r 3).
-          <value> for number additional rcvd OGMs before changing to more stable GW.
-          default: 1, allowed values: 1 <= value <= 65
+\end{verbatim} \end{small}
 
-       --base-port <value> : set base udp port used by batmand.
-          <value> for OGMs, <value+1> for GW tunnels, <value+2> for visualization server.
-          default: 4305, allowed values: 1025 <= value <= 60000
+\subsection{Hiding local topology information beyond the neighborhood}
 
-       --rt-table-offset <value> : set base routing table used by batmand.
-          <value> for HNA routes, <value+1> for host routes, <value+2> for GW routes.
-          default: 65, allowed values: 2 <= value <= 250
+Nodes may alter (i.e. reduce) the default TTL of their own OGMs to limit the number of hops that these OGMs are propagated through the mesh. 
+This can be done for all OGMS or just for OGMs propagating the existence of particular interfaces. 
+This does not affect the routing between other nodes in the mesh, but may be used to limit the range of presence (existence) of individual nodes. 
+For example, a node with three interfaces may be configured to send OGMs with a high TTL only for the first interface and a TTL of one for OGMs representing the second and third interface. 
+%
+This way, the node is still reachable via the IP of it's first interface. 
+But it does not burden the nodes beyond its neighbor horizon with the efforts of maintaining and re-broadcasting OGMs from it's second and third interface.
 
-       --prio-rules-offset <value> : set base ip-rules priority used by batmand.
-          default: 6600, allowed values: 3 <= value <= 32765
+One side effect of the one-TTL OGMs is that traffic generated on these nodes may leave the node with the source address
+of such a secondary interface. 
+%which is not known beyond the neighbor horizon of the node.
+%
+This has the consequence that non-neighboring nodes could not reply to this source address, simply because the OGMs for this source address have never been propagated that fare.
+A Solution to counter the above problem is to automatically make an HNA announcement for all "hidden interfaces". 
+%Because of the policy-routing (enabled since 0.3) this approach could easily be integration in the current code. 
+This behavior is can be enabled using the interface-specific \emph{/a} switch. 
 
+The following parameters can be used to reduce the TTL of OGMs representing specific interfaces.
+
+\begin{small} \begin{verbatim}
        --t <value> : change default TTL of originator packets.
         /t <value> : attached after an interface name
           to change the TTL only for the OGMs representing a specific interface
@@ -945,13 +1051,32 @@ The following parameters exist to adapt batmand-experimental to fancy network en
           also reduces the TTL for OGMs representing this interface to 1.
 
         /a : attached after an interface name
-          to add IP address of this interface to the HNA list. Also
+          to add the IP address of this interface to the HNA list. Also
           reduces the TTL for OGMs representing this interface to 1 and
           broadcasts the OGMs representing this interface only via this interface
+\end{verbatim} \end{small}
 
 
-\end{verbatim}
-\end{small}
+Especially for (back-bone) nodes, which are not supposed to generate pay-load traffic itself and which were only installed to improve the connectivity and coverage of the mesh by relaying other nodes traffic, the possibility of using a small TTL for all their OGMs comes with the following advantages.
+Firstly, the topology and even the existence of the back-bone nodes could be completely hidden beyond their local neighbor horizon and secondly, the number of back-bone nodes (and resulting coverage) can be increased to any size with virtually no side affects to the overall traffic and processing cost.
+
+
+\subsection{Miscellaneous}
+
+
+\begin{small} \begin{verbatim}
+
+       --no-unresp-gw-check : disables the unresponsive-GW check.
+
+       --gw-change-hysteresis <vlue>: Use hysteresis for fast-switch gw connections (-r 3).
+          <value> for number additional rcvd OGMs before changing to more stable GW.
+          default: 1, allowed values: 1 <= value <= 65
+
+\end{verbatim} \end{small}
+
+
+
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -960,18 +1085,55 @@ The following parameters exist to adapt batmand-experimental to fancy network en
 \section{Proposed Parametrization Sets}
 \label{sec:proposed-parametrizations}
 
+Batmand-experimental implements a number of proconfigured parametrization sets.
+These parametrization sets have been gained from (subjectively) successfull experiments and deployments.
+The parameters applied by a specific set can be overwitten by subsequent parameters.
+
+The parametrization applied by a specific set is always revealed during startup sequence.
 
 \subsection{The --bmx-defaults switch}
-\begin{itemize}
- \item wlan interface must be given first
-\end{itemize}
 
-to be done...
+The \emph{--bmx-defaults} switch is supposed to always enable the latest and most promising mechanisms that
+are available in the current implementation. 
+Therefore, configured parameters and values will change with future code versions.
+
+When writing this document, this directive assigned the same parameters as described in Section \ref{sec:graz-2007-switch}.
+
+See the daemons initialization printout to obtain information about the performed parametrization.
 
 
 \subsection{The --graz-2007 switch}
 
-to be done...
+This switch reflects the experience gained at the wireless community weekend in Graz 2007.
+As described, related parametrizations can be obtained from the daemons initialization printout. 
+
+\begin{small} \begin{verbatim}
+root@ng2e:~# batmand --bmx-default ath0:bat eth0.0:bat
+WARNING: You are using the experimental batman branch!
+Applying graz-2007 !
+This parametrization expects the first given interface argument to be a wireless interface !
+Parametrization based on experience gained from the Wireless Community Weekend in Graz 2007!
+Short option: o with argument: 1500
+Long option: bi-link-timeout with argument: 20
+Long option: window-size with argument: 100
+Long option: gw-change-hysteresis with argument: 2
+Long option: dups-ttl with argument: 2
+Long option: dups-rate with argument: 100
+Long option: dups-ttl-degradation with argument: 2
+Long option: send-clones with argument: 200
+Long option: asymmetric-weight with argument: 100
+Long option: asymmetric-exp with argument: 1
+Long option: re-brc-delay with argument: 35
+Using interface ath0:bat with address 10.10.0.2 and broadcast address 10.10.255.255
+Using interface eth0.0:bat with address 10.10.1.2 and broadcast address 10.10.255.255
+Interface eth0.0:bat specific option: /a
+Interface eth0.0:bat specific option: /i
+Interface eth0.0:bat specific option: /t 1
+Interface eth0.0:bat specific option: /c 100
+root@ng2e:~#
+\end{verbatim} \end{small}
+
+
 
 %\subsection{The fast-handover switch}
 
@@ -1034,7 +1196,7 @@ root@ng1e:~# ipkg install http://downloads.open-mesh.net/batman/development/wrt-
 root@ng1e:~# modprobe kmod-tun
 \end{verbatim} \end{tiny} 
 
-\item For a i386-based system precompiled binaries can be downloaded and installed at /usr/sbin/batmand with:
+\item For a i386-based system pre-compiled binaries can be downloaded and installed at /usr/sbin/batmand with:
 \begin{tiny}  \begin{verbatim}
 root@ng1e:~# wget http://downloads.open-mesh.net/batman/development/i386/batmand-exp_0.3-exp-current_i386-gc-elf-32-lsb-static.tgz
 root@ng1e:~# tar xvzf batmand-exp_0.3-exp-current_i386-gc-elf-32-lsb-static.tgz

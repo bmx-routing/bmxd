@@ -194,6 +194,7 @@ void apply_init_args( int argc, char *argv[] ) {
 		{
    {ADVANCED_SWITCH,            0, 0, 0},
    {BMX_DEFAULTS_SWITCH,        0, 0, 0},
+   {GRAZ07_DEFAULTS_SWITCH,     0, 0, 0},
    {BIDIRECT_TIMEOUT_SWITCH,    1, 0, 0},
    {NBRFSIZE_SWITCH,            1, 0, 0},
    {GW_CHANGE_HYSTERESIS_SWITCH,1, 0, 0},
@@ -416,65 +417,29 @@ void apply_init_args( int argc, char *argv[] ) {
 						found_args += 1;
 						break;
 								
+/* this is just a template:
+					} else if ( strcmp( _SWITCH, long_options[option_index].name ) == 0 ) {
+
+						errno = 0;
+						= YES;
+						found_args += 1;
+						break;
+*/					
+					
 					} else if ( strcmp( BMX_DEFAULTS_SWITCH, long_options[option_index].name ) == 0 ) {
 
-						printf ("Long option: %s \n", long_options[option_index].name);
+						printf ("Applying %s ! \nThis parametrization expects the first given interface argument to be a wireless interface !\n", long_options[option_index].name);
+						
 						errno = 0;
 						
-						bmx_defaults = YES;
-						
-						/*
-						batmand --bmx-defaults  eth1:bat br0:bat
-						WARNING: You are using the experimental batman branch. 
-						Long option: bmx-defaults
-						Short option: o with argument: 1500
-						Long option: bi-link-timeout with argument: 20
-						Long option: window-size with argument: 128
-						Long option: dup-ttl-limit with argument: 1
-						Long option: send-clones with argument: 200
-						Long option: asymmetric-weight with argument: 100
-						Long option: asymmetric-exp with argument: 1
-						Long option: delay-factor with argument: 80
-						Interface br0:bat specific option: /a
-						Interface br0:bat specific option: /i
-						Interface br0:bat specific option: /t 1
-						Interface br0:bat specific option: /c 100
-
-						dup_rate was hardcoded to: 70
-						
-						--- 105.130.1.67 ping statistics ---
-						100000 packets transmitted, 94057 received, +12 errors, 5% packet loss, time 10096066ms
-						rtt min/avg/max/mdev = 2.992/49.900/5383.018/209.447 ms, pipe 50
-						
-						--- 104.130.1.67 ping statistics ---
-						100000 packets transmitted, 90473 received, +27 errors, 9% packet loss, time 10120150ms
-						rtt min/avg/max/mdev = 2.152/46.843/5365.893/208.498 ms, pipe 50
-						
-						########################################################
-						batmand --bmx-defaults  eth1:bat br0:bat
-						Long option: bmx-defaults
-						Short option: o with argument: 1500
-						Long option: bi-link-timeout with argument: 20
-						Long option: window-size with argument: 64
-						Long option: accept-dups-ttl with argument: 2
-						Long option: accept-dups-rate with argument: 70
-						Long option: send-clones with argument: 200
-						Long option: asymmetric-weight with argument: 100
-						Long option: asymmetric-exp with argument: 1
-						Long option: delay-factor with argument: 80
-						Interface br0:bat specific option: /a
-						Interface br0:bat specific option: /i
-						Interface br0:bat specific option: /t 1
-						Interface br0:bat specific option: /c 100
-
-						resulted in similar packet loss as olsr
-						
-						########################################################
-
-						########################################################
-						########################################################
-						
-						*/
+						if ( bmx_para_set == DEF_BMX_PARA_SET || bmx_para_set == PARA_SET_BMX )
+							bmx_para_set = PARA_SET_BMX;
+							//set_init_arg( BMX_DEFAULTS_SWITCH, "PARA_SET_BMX", MIN_BMX_PARA_SET, MAX_BMX_PARA_SET, &bmx_para_set );
+						else {
+							printf( "Error - Default parametrization set can only be specified once !\n" );
+							exit(EXIT_FAILURE);
+						}
+								
 						
 						originator_interval = 1500;
 						printf ("Short option: o with argument: %d \n", originator_interval );
@@ -506,22 +471,49 @@ void apply_init_args( int argc, char *argv[] ) {
 						
 						found_args += 1;
 						break;
-/* this is just a template:
-					} else if ( strcmp( _SWITCH, long_options[option_index].name ) == 0 ) {
 
+
+					} else if ( strcmp( GRAZ07_DEFAULTS_SWITCH, long_options[option_index].name ) == 0 ) {
+
+						printf ("Applying %s ! \nThis parametrization expects the first given interface argument to be a wireless interface !\n", long_options[option_index].name);
+						printf ("Parametrization based on experience gained from the Wireless Community Weekend in Graz 2007!\n");
 						errno = 0;
-						 = YES;
+						
+						if ( bmx_para_set == DEF_BMX_PARA_SET || bmx_para_set == PARA_SET_GRAZ07 )
+							bmx_para_set = PARA_SET_GRAZ07;
+						else {
+							printf( "Error - Default parametrization set can only be specified once !\n" );
+							exit(EXIT_FAILURE);
+						}
+						
+						originator_interval = 1500;
+						printf ("Short option: o with argument: %d \n", originator_interval );
+						
+						set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "20", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
+						
+						set_init_arg( NBRFSIZE_SWITCH, "100", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &sequence_range );
+						num_words = ( sequence_range / WORD_BIT_SIZE ) + ( ( sequence_range % WORD_BIT_SIZE > 0)? 1 : 0 );
+						
+						set_init_arg( GW_CHANGE_HYSTERESIS_SWITCH, "2", MIN_GW_CHANGE_HYSTERESIS, MAX_GW_CHANGE_HYSTERESIS, &gw_change_hysteresis ); 
+						
+						set_init_arg( DUP_TTL_LIMIT_SWITCH, "2", MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT, &dup_ttl_limit );
+						
+						set_init_arg( DUP_RATE_SWITCH, "100", MIN_DUP_RATE, MAX_DUP_RATE, &dup_rate );
+						
+						set_init_arg( DUP_DEGRAD_SWITCH, "2", MIN_DUP_DEGRAD, MAX_DUP_DEGRAD, &dup_degrad );
+						
+						set_init_arg( SEND_CLONES_SWITCH, "200", MIN_SEND_CLONES, MAX_SEND_CLONES, &send_clones );
+//						compat_version = DEF_COMPAT_VERSION + 1;
+						
+						set_init_arg( ASYMMETRIC_WEIGHT_SWITCH, "100", MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT, &asymmetric_weight );
+						
+						set_init_arg( ASYMMETRIC_EXP_SWITCH, "1", MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP, &asymmetric_exp );
+						
+						set_init_arg( REBRC_DELAY_SWITCH, "35", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
+						
 						found_args += 1;
 						break;
-*/					
-					} else if ( strcmp( TEST_SWITCH, long_options[option_index].name ) == 0 ) {
-
-						printf ("Long option: %s \n", long_options[option_index].name);
-						errno = 0;
-
-						found_args += 1;
-						break;
-
+					
 					}
 
 				}
@@ -535,54 +527,7 @@ void apply_init_args( int argc, char *argv[] ) {
 			case 'a':
 
 				add_hna_opt( optarg );
-/*					
-				if ( ( slash_ptr = strchr( optarg, '/' ) ) == NULL ) {
-
-					printf( "Invalid announced network (netmask is missing): %s\n", optarg );
-					exit(EXIT_FAILURE);
-
-				}
-
-				*slash_ptr = '\0';
-
-				if ( inet_pton( AF_INET, optarg, &tmp_ip_holder ) < 1 ) {
-
-					*slash_ptr = '/';
-					printf( "Invalid announced network (IP is invalid): %s\n", optarg );
-					exit(EXIT_FAILURE);
-
-				}
-
-				errno = 0;
-
-				netmask = strtol( slash_ptr + 1, NULL, 10 );
-
-				if ( ( errno == ERANGE ) || ( errno != 0 && netmask == 0 ) ) {
-
-					perror("strtol");
-					exit(EXIT_FAILURE);
-
-				}
-
-				if ( netmask < 1 || netmask > 32 ) {
-
-					*slash_ptr = '/';
-					printf( "Invalid announced network (netmask is invalid): %s\n", optarg );
-					exit(EXIT_FAILURE);
-
-				}
-
-				hna_node = debugMalloc( sizeof(struct hna_node), 203 );
-				memset( hna_node, 0, sizeof(struct hna_node) );
-				INIT_LIST_HEAD( &hna_node->list );
-
-				hna_node->addr = tmp_ip_holder.s_addr;
-				hna_node->netmask = netmask;
-
-				list_add_tail( &hna_node->list, &hna_list );
-
-				*slash_ptr = '/';
-*/				
+				
 				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
 				break;
 
@@ -863,13 +808,34 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			printf( "Using interface %s with address %s and broadcast address %s\n", batman_if->dev, str1, str2 );
 
-			if( bmx_defaults ) {
+			if( bmx_para_set == PARA_SET_BMX ) {
 				
 				if ( batman_if->if_num > 0 ) {
 					
 					char fake_arg[ADDR_STR_LEN + 4], ifaddr_str[ADDR_STR_LEN];
 					errno = 0;
 						
+					addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
+					sprintf( fake_arg, "%s/32", ifaddr_str);
+					add_hna_opt( fake_arg );
+					printf ("Interface %s specific option: /%c \n", batman_if->dev, MAKE_IP_HNA_IF_SWITCH );
+						
+					batman_if->send_ogm_only_via_owning_if = YES;
+					printf ("Interface %s specific option: /%c \n", batman_if->dev, OGM_ONLY_VIA_OWNING_IF_SWITCH );
+					batman_if->if_ttl = 1;
+					printf ("Interface %s specific option: /%c %d \n", batman_if->dev, TTL_IF_SWITCH, batman_if->if_ttl );
+
+					batman_if->if_send_clones = 100;
+					printf ("Interface %s specific option: /%c %d \n", batman_if->dev, SEND_CLONES_IF_SWITCH, batman_if->if_send_clones );
+
+				}
+					
+			} else if( bmx_para_set == PARA_SET_GRAZ07 ) {
+				
+				if ( batman_if->if_num > 0 ) {
+					
+					char fake_arg[ADDR_STR_LEN + 4], ifaddr_str[ADDR_STR_LEN];
+					errno = 0;
 						
 					addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
 					sprintf( fake_arg, "%s/32", ifaddr_str);
@@ -887,6 +853,7 @@ void apply_init_args( int argc, char *argv[] ) {
 				}
 					
 			}
+
 			
 			found_ifs++;
 			found_args++;

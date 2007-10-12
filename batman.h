@@ -201,9 +201,20 @@ extern int8_t resist_blocked_send;
 #define RESIST_BLOCKED_SEND_SWITCH "resist-blocked-send"
 #define DEF_RESIST_BLOCKED_SEND NO
 
-extern int8_t bmx_defaults;
+//extern int8_t bmx_defaults;
+//#define DEF_BMX_DEFAULTS          0
 #define BMX_DEFAULTS_SWITCH      "bmx-defaults"
-#define DEF_BMX_DEFAULTS          0
+#define GENIII_DEFAULTS_SWITCH   "generation-III"
+#define GRAZ07_DEFAULTS_SWITCH   "graz-2007"
+
+//#define MIN_BMX_PARA_SET   0
+#define PARA_SET_BATIII    1
+#define PARA_SET_BMX       2
+#define PARA_SET_GRAZ07    3
+//#define MAX_BMX_PARA_SET   3
+
+extern int32_t bmx_para_set;
+#define DEF_BMX_PARA_SET PARA_SET_BATIII
 
 #define OGM_ONLY_VIA_OWNING_IF_SWITCH 'i'
 #define MAKE_IP_HNA_IF_SWITCH 'a'

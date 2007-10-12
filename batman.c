@@ -103,7 +103,8 @@ int32_t asymmetric_exp = DEF_ASYMMETRIC_EXP;
 
 int32_t rebrc_delay = DEF_REBRC_DELAY;
 
-int8_t bmx_defaults = DEF_BMX_DEFAULTS;
+//int8_t bmx_defaults = DEF_BMX_DEFAULTS;
+int32_t bmx_para_set =  DEF_BMX_PARA_SET;
 
 
 int32_t penalty_min = DEF_PENALTY_MIN;
@@ -202,7 +203,7 @@ void print_advanced_opts ( int verbose ) {
 	fprintf( stderr, "          also reduces the TTL for OGMs representing this interface to 1.\n");
 	
 	fprintf( stderr, "\n        /%c : attached after an interface name\n", MAKE_IP_HNA_IF_SWITCH );
-	fprintf( stderr, "          to add IP address of this interface to the HNA list. Also\n");
+	fprintf( stderr, "          to add the IP address of this interface to the HNA list. Also\n");
 	fprintf( stderr, "          reduces the TTL for OGMs representing this interface to 1 and\n");
 	fprintf( stderr, "          broadcasts the OGMs representing this interface only via this interface\n");
 
@@ -282,7 +283,11 @@ void usage( void ) {
 	fprintf( stderr, "       -p preferred gateway\n" );
 	fprintf( stderr, "       -r routing class\n" );
 	fprintf( stderr, "       -s visualization server\n" );
-	fprintf( stderr, "       -v print version\n" );
+	fprintf( stderr, "       -v print version\n\n" );
+	
+	fprintf( stderr, "       --%s : parametrize the routing-algorithm to the best of bmx knowledge!\n", BMX_DEFAULTS_SWITCH );
+	fprintf( stderr, "       --%s : parametrize the routing-algorithm according to the WCW Graz 2007 experiments!\n\n", GRAZ07_DEFAULTS_SWITCH );
+	
 	fprintf( stderr, "       --dangerous -h : show additional but dangerous options \n" );
 	fprintf( stderr, "       --dangerous -H : show additional but dangerous verbose options \n" );
 
@@ -333,6 +338,8 @@ void verbose_usage( void ) {
 	fprintf( stderr, "                           3 -> use fast-switch internet connection (packet count but change as soon as a better gateway appears)\n\n" );
 	fprintf( stderr, "       -s visualization server\n" );
 	fprintf( stderr, "          default: none, allowed values: IP\n\n" );
+	fprintf( stderr, "       --%s : parametrize the routing-algorithm to the best of bmx knowledge!\n", BMX_DEFAULTS_SWITCH );
+	fprintf( stderr, "       --%s : parametrize the routing-algorithm according to the WCW Graz 2007 experiments!\n\n", GRAZ07_DEFAULTS_SWITCH );
 	fprintf( stderr, "       -v print version\n" );
 	fprintf( stderr, "\n       --dangerous -H : show addinional but dangerous options \n" );
 
