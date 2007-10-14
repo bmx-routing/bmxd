@@ -422,6 +422,7 @@ On the other hand, if you think about setting up a mesh which allows almost seam
 
 
 \subsection{Re-broadcast delay}
+\label{sec:re-brc-delay}
 
 \begin{small}
 \begin{verbatim}
@@ -442,7 +443,7 @@ Assuming the typical hidden node scenario with nodes A, B, and C as illustrated 
   \end{center}
 \end{figure}
 
-Whenever B broadcasts its OGMs, these messages are received simultaneously by A and C. According to the batman-0.2 algorithm these OGMs are instantly re-broadcasted by node A and node C. Because A and C can not hear each other they have no chance to coordinate their sending using the 802.11 carrier-sense mechanism.
+Whenever B broadcasts its OGMs, these messages are received simultaneously by A and C. According to the batman-0.2 algorithm these OGMs are instantly re-broadcasted by node A and node C. Because A and C can not hear each other they have no chance to coordinate their transmissions using the 802.11 carrier-sense mechanism.
 
 As a consequence (the hidden nodes) A and C will both rebroadcast Bs OGM at almost the same moment and cause a collision at (the exposed node) B. Therefore, node B will miss many of its own OGMs re-broadcasted by its neighboring nodes and will often consider these links as non-bidirectional. Subsequently, node B will ignore OGMs from its neighbors in the neighbor-ranking process due to the failed bidirectional-link check and (if exist) favor an alternative path. This happens, despite having a collusion-free unidirectional connection from B to A and from B to C.
 
@@ -820,6 +821,7 @@ Only accepted OGMs received via the best-ranking neighbor are reboradcasted.
 
 
 \subsubsection{Reflecting the link transmit quality (TQ)}
+\label{sec:reflecting-tq}
 
 The following parameters exist to configure the acceptance-function when to accept or not to accept a received OGM depending on the TQ to the corresponding link neighbor.
 
@@ -853,6 +855,7 @@ $ p(t) = (w/100) * (t/s)^e $
 
 
 \subsubsection{Reflecting the link receive quality (RQ)}
+\label{sec:reflecting-rq}
 
 As described in Section \ref{sec:batman-link-reflection}, the reflection of the RQ characteristics (along the paths in a mesh) is an inherent characteristic of the flooding algorithm.
 %
@@ -1020,7 +1023,7 @@ The following switches can be used to change the default routing tables and the 
 \end{verbatim} \end{small}
 
 \subsection{Hiding local topology information beyond the neighborhood}
-
+\label{sec:hiding-topology}
 Nodes may alter (i.e. reduce) the default TTL of their own OGMs to limit the number of hops that these OGMs are propagated through the mesh. 
 This can be done for all OGMS or just for OGMs propagating the existence of particular interfaces. 
 This does not affect the routing between other nodes in the mesh, but may be used to limit the range of presence (existence) of individual nodes. 
@@ -1097,15 +1100,32 @@ The \emph{--bmx-defaults} switch is supposed to always enable the latest and mos
 are available in the current implementation. 
 Therefore, configured parameters and values will change with future code versions.
 
-When writing this document, this directive assigned the same parameters as described in Section \ref{sec:graz-2007-switch}.
+When writing this document, this directive assigned the same parameters as described in Section \ref{sec:graz-2007-parameters}.
 
 See the daemons initialization printout to obtain information about the performed parametrization.
 
 
 \subsection{The --graz-2007 switch}
+\label{sec:graz-2007}
 
 This switch reflects the experience gained at the wireless community weekend in Graz 2007.
+During the preparations of the event an experimental mesh network has been setup at the exhibition area.
+The network consisted of twenty nodes distributed over the 4 floors of the exhibition building. 
+The nodes have been configured with a very small transmission power to achieve rather small cells. 
+The setup resulted in routes with up to 7 hops.
+Each node was running the freifunk firmware \cite{freifunk-firmware} version 1.6.2 and three mesh routing protocol daemons in parallel, namely the firmware-buildin olsrd version 0.5.4pre \cite{olsr-org}, batmand-0.2, and batmand-experimental revision 623. 
+The parametrization used for the experimental batman daeomon are described in Section \ref{sec:graz-2007-parameters}.
+A short summary about the gained experience is given in Section \ref{sec:graz-2007-summary}.
+%
+Some further informations about the experiment (including a topology snaphot and some smoke-ping based performance measurements) are available at \cite{graz-experience}.
+
+
+
+\subsubsection{Assigned parameters and arguments}
+\label{sec:graz-2007-parameters}
+
 As described, related parametrizations can be obtained from the daemons initialization printout. 
+
 
 \begin{small} \begin{verbatim}
 root@ng2e:~# batmand --bmx-default ath0:bat eth0.0:bat
@@ -1116,7 +1136,6 @@ Parametrization based on experience gained from the Wireless Community Weekend i
 Short option: o with argument: 1500
 Long option: bi-link-timeout with argument: 20
 Long option: window-size with argument: 100
-Long option: gw-change-hysteresis with argument: 2
 Long option: dups-ttl with argument: 2
 Long option: dups-rate with argument: 100
 Long option: dups-ttl-degradation with argument: 2
@@ -1134,8 +1153,168 @@ root@ng2e:~#
 \end{verbatim} \end{small}
 
 
+The selection of the given parameters was driven by the following considerations.
+\begin{itemize}
 
-%\subsection{The fast-handover switch}
+
+\item One clear objective was to test the mechanisms to reflect asymmetric links as described in Section \ref{sec:asymmetric-links}. 
+
+\begin{itemize}
+
+\item The \emph{--asymmetric-weight 100 --asymmetric-exp 1} parameters are supposed to improove the reflection of the link transmit qualities during the path detection. 
+%
+They ensure that received OGMs are accepted only with a probability equivalent to the TQ measured for the incoming link (see Section \ref{sec:reflecting-tq}). 
+
+\item The reasons for having a bidirectional link check becomes redundant because of the new mechanisms to reflect asymmetric links. Choosing a bi-link-timeout of 20 almost disables its behavior.
+
+\item The \emph{--send-clones 200} parameter is supposed to relieve the strong impact of the link-receive qualities as described in Section \ref{sec:reflecting-rq}. It causes the daemon to re-broadcast all accepted OGMs (received via the best-ranking neighbor) twice.
+
+\end{itemize}
+
+%Clearly, the behavior of broadcasting selected OGMs twice will increase the resource consumption in terms of CPU load and protocol-traffic overhead.
+\item Another objective was to test the mechanisms to pay more attention on paths with many hops but good links (see Section \ref{sec:batman-link-reflection}). 
+Related parameters have been configured as \emph{--dups-ttl 2 --dups-rate 100 --dups-ttl-degradation 2}. Ensuring, that also non-quickest received OGMs are accepted for the neighbor-ranking as long as these OGMs have not passed two or more additional hops. Also, each additional traversed hop is penalized with a 2\%-acceptance degradation.
+
+
+\item \emph{-o 1500} sets the originator interval to 1500. and \emph{--window-size 100} sets the neighbor ranking frame (NBRF) size to 100. These values have been chosen rather arbitrarily. The selection was driven by the following considerations.
+\begin{itemize}
+
+  \item Choosing a smaller window size (than the default of 128) reduces the convergence latency -- the protocol latency to react on topology changes. There have also been experiments with a window size of 64 and even 10 with reasonable results. However, a larger value clearly provides more information for the calculation of representative link and path statistics. On the other hand, choosing a window size of 10 allowed to even walk around on the exhibition side and experience seamless handover and path adaption. But it also resulted in lots of superfluous routing changes and less performant routes. Finally we stick to the window size of 100 because of its simple interpretation character which is equal to the percent unit.
+
+
+  \item Choosing a larger originator interval (than the default of 1000 ms) is a simple way to reduce the resource consumption as described in \cite{batman-status-report} Section 4.3. The side effect of an increased originator interval is an increased convergence latency. It is equivalent to the product of originator interval and window size. Therefore the increased window size could almost be balanced by the reduced window size.
+
+\end{itemize}
+
+\item The \emph{--re-brc-delay 35} parametrization evinced to adequately handle the hidden node problematic in scenarios with up to 5 neighbors. More background is given in Section \ref{sec:re-brc-delay}.
+
+\item Finally, the \emph{--graz-2007} parametrization is tailored for nodes with one wireless and zero or more wired interfaces. The parametrization automatically hides the existence of all non-primary interfaces beyond the direct neighbor horizon. Therefore each non-primary interface is configured with the \emph{/a /i /t 1} parameters (see Section \ref{sec:hiding-topology}).
+
+ Additionally, the previously \emph{--send-clones 200} parameter is reset to its default value of 100 with the \emph{/c 100} parameter. This ensures that no efforts are undertaken to counter the OGM packet loss on a usually loss-less wired link (see Section \ref{sec:reflecting-tq}).
+
+\end{itemize}
+
+
+\subsubsection{Summary of measurement results}
+\label{sec:graz-2007-summary}
+
+Due to the short time, the observations made about the three routing protocols do not reflect a profound and in-depth analysis. Nevertheless, a few interesting numbers about the performance and resource-consumption have been captured.
+
+\paragraph{The CPU-load} has been captured with the linux command top over a period of 70 seconds and with one measurement sample per second. The average CPU load per node is given in Table \ref{tab:cpu-load}.
+
+%PID of bmxd = 18548
+%grep "18548 root" cpuload-log-analysis.txt | awk '{ x += $6 }{ print $6 " "x } END {print "total: " x " average: " x/70}'
+%total: 126.4 average: 1.80571
+
+%PID of olsrd = 1177
+%total: 35.8 average: 0.511429
+
+%PID of batmand = 1267
+%total: 269.5 average: 3.85
+
+\begin{table}[htb]
+\begin{center}
+% use packages: array
+\begin{tabular}{|l||l|l|l|}
+\hline
+&olsrd 0.5.4pre & batmand-0.2 & batmand-exp --graz-2007 \\
+\hline
+avg. CPU load in percent: & 0.51 & 3.85 & 1.81 \\
+\hline
+\end{tabular}
+\caption{Average CPU consumption}
+\label{tab:cpu-load}
+\end{center}
+\end{table}%[htb]
+
+The results show that CPU consumption of the parametrized experimental batmand is less than half of the batmand-0.2 implementation. This is probably mostly caused by the hidden secondary interfaces as described in Section \ref{sec:hiding-topology}.
+%
+However, the numbers reveal that despite broadcasting OGMs twice, the overall CPU consumption can be decreased.
+The numbers also show that the CPU load of olsrd is much less than the load caused by batmand. 
+It would be interesting to evaluate how these numbers scale in larger networks.
+
+
+\paragraph{The protocol traffic overhead} has been measured with a independent wireless card in monitor mode . The Graph illustrated in Figure \ref{fig:protocol-traffic} has been generated with wireshark \cite{wireshark}.
+It shows the protocol traffic generated by each of the three routing protocols (identified by its protocol port number) over a period of 200 seconds.
+
+
+\begin{figure}[htb]
+  \begin{center}
+    \includegraphics[width=16cm]{io-graph-bat-bmx-olsr-select.jpg}
+    \caption{Graph showing the wireless IP traffic in bytes per second as generated by olsrd (green), batmand (red), and batmand-experimental (blue).}
+    \label{fig:protocol-traffic}
+  \end{center}
+\end{figure}
+
+
+\paragraph{The OGM flooding range} is another interesting aspect of the B.A.T.M.A.N protocol. 
+%
+%The protocol establishes end-to-end routes based on the number of OGMs received from other nodes. 
+%
+The quality of the established end-to-end routes depends on the number of recently received OGMs that can be used for calculating representative path statistics. The more recent OGMs could be received from a distant node, the more representative should be the identified best path.
+%
+If not even one OGM could be received, no end-to-path could be established.
+
+Table \ref{tab:ogm-range} summarizes the number of received and accepted OGMs by node 01 from a subset of other (rather distant) nodes. 
+
+\begin{table}[htb]
+\begin{center}
+% use packages: array
+\begin{tabular}{|l|rrrrrrrr|}
+
+\hline
+rcvd OGMs from node:    & 03 & 04 & 15 & 16 & 17 & 18 & 19 & 20 \\
+\hline
+batmand-0.2		& 7  & 9  & 8  & 5  & 8  & 7  & 8  & 33 \\
+batmand-exp --graz-2007	& 48 & 34 & 26 & 16 & 22 & 24 & 29 & 56 \\
+\hline
+\end{tabular}
+\caption{Snapshot of received and accepted OGMs by node 01 from other nodes}
+\label{tab:ogm-range}
+\end{center}
+\end{table}%[htb]
+
+
+The table shows that the number of accepted OGMs using the batmand-experimental implementation is always greater than the number of OGMs received with the batmand-0.2 implementation.
+
+\paragraph{The path quality} has been tested by sending ping packets from one node to a subset of other nodes over a period of 40 minutes using smokeping \cite{smokeping}. The packet size of each ping request and reply was 1400 bytes. Table \ref{tab:ping-loss} illustrates the measured packet loss from one node to a subset of other nodes and Table \ref{tab:ping-delay} illustrates the average measured round trip time.
+
+
+\begin{table}[htb]
+\begin{center}
+% use packages: array
+\begin{tabular}{|l|rrrrrrr|r|}
+\hline
+from node 02 to node:   & 05    & 06    & 08   & 10   & 12    & 15    & 18    & total avg. \\
+\hline
+olsrd 0.5.4pre		& 14.84 & 5.74  & 0.70 & 2.77 & 65.63 & 27.87 & 26.58 & 20.59 \\
+batmand-0.2		& 28.21 & 12.53 & 0.59 & 2.68 & 35.52 & 29.36 & 59.45 & 24.05 \\
+batmand-exp --graz-2007	& 12.85 & 1.94  & 0.35 & 2.16 & 32.25 & 39.13 & 26.06 & 16.39 \\
+\hline
+\end{tabular}
+\caption{Snapshot of average ping packet loss}
+\label{tab:ping-loss}
+\end{center}
+\end{table}%[htb]
+
+\begin{table}[htb]
+\begin{center}
+% use packages: array
+\begin{tabular}{|l|rrrrrrr|r|}
+\hline
+from node 02 to node:   & 05    & 06    & 08   & 10   & 12    & 15    & 18    & total avg. \\
+\hline
+olsrd 0.5.4pre		&  64.62 & 164.42 & 123.25 & 157.04 & 244.29 & 335.05 & 335.14 & 203.41 \\
+batmand-0.2		&  81.64 & 143.34 & 106.31 & 179.11 & 354.70 & 400.33 & 446.07 & 244.50 \\
+batmand-exp --graz-2007	& 123.66 &  18.00 &  12.04 & 114.58 & 365.72 & 188.09 & 339.69 & 165.97 \\
+\hline
+\end{tabular}
+\caption{Snapshot of average ping round trip time}
+\label{tab:ping-delay}
+\end{center}
+\end{table}%[htb]
+
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1494,6 +1673,13 @@ Wesley Tsai (wesleyboy-at-gmail.com)
 	{\it High-speed Physical Layer in the 5GHz Band },
   {June, 12 2003},	
 	http://standards.ieee.org/getieee802/download/802.11a-1999.pdf
+
+\bibitem{graz-experience} http://open-mesh.net/batman/experience/WCWGraz2007 
+
+\bibitem{wireshark} http://www.wireshark.org/
+
+\bibitem{smokeping} http://oss.oetiker.ch/smokeping/
+
 
 \end{thebibliography}
 
