@@ -1095,6 +1095,7 @@ The parameters applied by a specific set can be overwitten by subsequent paramet
 The parametrization applied by a specific set is always revealed during startup sequence.
 
 \subsection{The --bmx-defaults switch}
+\label{sec:bmx-defaults}
 
 The \emph{--bmx-defaults} switch is supposed to always enable the latest and most promising mechanisms that
 are available in the current implementation. 
@@ -1321,10 +1322,10 @@ batmand-exp --graz-2007	& 123.66 &  18.00 &  12.04 & 114.58 & 365.72 & 188.09 & 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
-\section{Short Tutorial}
+\section{Tutorials}
 \label{sec:howto}
 
-%\subsection{Setting up a basic testbed}
+\subsection{Setting up a basic testbed}
 \label{sec:howto-basics}
 
 This Section provides a brief summary how to setup a simple three-nodes mesh network using the batmand-experimental routing daemon. 
@@ -1399,7 +1400,7 @@ root@ng1e:~# iptables -I FORWARD 1  -d 10.10.0.0/16 -j ACCEPT
 %
 Starting with only two nodes, each running batmand on one wireless interface. 
 %
-Assuming your wireless interfaces are labelled \verb wlan0. The wireless parameters of all nodes must be configured with the same essid (e.g. batman-test), channel (e.g 10), and mode (ad-hoc). Using iwconfig 
+Assuming your wireless interfaces are labelled \verb ath0. The wireless parameters of all nodes must be configured with the same essid (e.g. batman-test), channel (e.g 10), and mode (ad-hoc). Using iwconfig 
 \begin{small} \begin{verbatim}
 root@ng1e:~# iwconfig ath0 mode ad-hoc essid batman-test channel 1
 \end{verbatim} \end{small} 
@@ -1413,7 +1414,7 @@ root@ng1e:~# ifconfig ath0:bat 10.10.0.1 netmask 255.255.0.0 broadcast 10.10.255
 %
 The wireless interface on node B is configured using:
 \begin{small} \begin{verbatim}
-root@ng1e:~# ifconfig wlan0:bat 10.10.0.2 netmask 255.255.0.0 broadcast 10.10.255.255
+root@ng1e:~# ifconfig ath0:bat 10.10.0.2 netmask 255.255.0.0 broadcast 10.10.255.255
 \end{verbatim} \end{small}
 
 Finally it should be possible to do a first connectivity test. 
@@ -1448,7 +1449,6 @@ The argument \emph{-c} tells batmand to connect to a running batman daemon.
 The argument \emph{-d 1} tells the batmand to printout debug-level-one informations and 
 \emph{-b} tells batmand to provide this information only once. 
 If \emph{-b} is omitted, the debug information will be updated every second until the process is terminated using \emph{ctrl-c}.
-Try this afterwards.
 
 \begin{small} \begin{verbatim}
 root@ng2e:~# batmand -c -d 1 -b
@@ -1495,7 +1495,7 @@ The \emph{ip rule} command also revealed that the ip stack will look out for all
 
 \item Next, we introduce one additional link and involve the node C into the mesh. 
 Therefore we configure the lan interfaces on the three nodes and plug an ethernet cable between the lan interface of node B and node C. 
-Assuming the lan interfaces are labelled eth0, one of the following must be executed on each corresponding node.
+Assuming the lan interfaces are labelled eth0, one of the following lines must be executed on each corresponding node.
 
 \begin{small} \begin{verbatim}
 root@ng1e:~# ifconfig eth0:bat 10.10.1.1 netmask 255.255.0.0 broadcast 10.10.255.255
@@ -1505,7 +1505,7 @@ root@ng2e:~# ifconfig eth0:bat 10.10.1.2 netmask 255.255.0.0 broadcast 10.10.255
 root@ng3e:~# ifconfig eth0:bat 10.10.1.3 netmask 255.255.0.0 broadcast 10.10.255.255
 \end{verbatim} \end{small}
 
-Be aware, that now node A and B have two interfaces configured for batmand (the lan and the wlan interface) but node C has only the lan interface configured.
+Be aware, that now node A and B have two batman interfaces (the lan and the wlan interface) but node C has only the lan interface configured.
 
 \item This time the batman daemon on node A and B must be executed with two trailing interface arguments (\emph{ath0:bat eth0:bat}) where on node C only the single lan interface argument \emph{eth0:bat} must be applied. 
 On node B the procedure will look like this:
@@ -1526,7 +1526,7 @@ Originator           viaIF         Router (brc rcvd lseq lvld) [    viaIF RTQ  R
 root@ng2e:~#  
 \end{verbatim} \end{small}
 
-The debug-level-one output on node B now shows also the outgoing interface and best-ranking neighbor towards lan interface of node A and the wlan interface of node C.
+The debug-level-one output on node B now also shows the outgoing interface and best-ranking neighbor towards the lan interface of node A and the wlan interface of node C.
 The debug-level-one output on node C should show:
 \begin{small} \begin{verbatim}
 root@ng3e:~# batmand -c -d 1 -b
@@ -1540,15 +1540,25 @@ Originator           viaIF         Router (brc rcvd lseq lvld) [    viaIF RTQ  R
 root@ng3e:~#
 \end{verbatim} \end{small}
 
-\item So fare (despite the different looking debug-level-one output) everything behaved just with like with batmand-0.2
+\item So fare (despite the different looking debug-level-one output) everything behaved just like with batmand-0.2
 %
 Now it is time to make the first experiments with some batmand-experimental concepts.
 Therefore we once again \emph{killall batmand} processes and relaunch them with the \emph{--bmx-defaults} argument as shown for node A:
 
 \begin{small} \begin{verbatim}
-root@ng1e:~# batmand --bmx-defaults ath0:bat eth0:bat
+root@ng1e:~# batmand -c -d 1 -b
 WARNING: You are using the experimental batman branch!
-Long option: bmx-defaults
+B.A.T.M.A.N. 0.3-exp rv687, MainIF/IP: ath0:bat 10.10.0.1, WindSize: 128, BLT: 2, OGI: 1000, UT: 0d 0h 0m
+Originator           viaIF         Router (brc rcvd lseq lvld) [    viaIF RTQ  RQ  TQ].. alternatives...
+10.10.0.2        ath0:bat       10.10.0.2 ( 38  38    63    0) [ ath0:bat  38  39 124]
+10.10.1.2        ath0:bat       10.10.0.2 ( 39  39    64    0)
+10.10.1.3        ath0:bat       10.10.0.2 ( 37  37    47    0)
+root@ng1e:~# killall batmand
+root@ng1e:~#
+root@ng1e:~# batmand --bmx-defaults ath0:bat eth0.0:bat
+WARNING: You are using the experimental batman branch!
+Applying bmx-defaults !
+This parametrization expects the first given interface argument to be a wireless interface !
 Short option: o with argument: 1500
 Long option: bi-link-timeout with argument: 20
 Long option: window-size with argument: 100
@@ -1562,37 +1572,185 @@ Long option: asymmetric-exp with argument: 1
 Long option: re-brc-delay with argument: 35
 Using interface ath0:bat with address 10.10.0.1 and broadcast address 10.10.255.255
 Using interface eth0:bat with address 10.10.1.1 and broadcast address 10.10.255.255
-Interface eth0:bat specific option: /a
-Interface eth0:bat specific option: /i
-Interface eth0:bat specific option: /t 1
-Interface eth0:bat specific option: /c 100
+Interface eth0.0:bat specific option: /a
+Interface eth0.0:bat specific option: /i
+Interface eth0.0:bat specific option: /t 1
+Interface eth0.0:bat specific option: /c 100
 root@ng1e:~#
-root@ng1e:~# echo dont forget to start batmand --bmx-defaults... also on the other nodes before continueing
-dont forget to start batmand --bmx-defaults... also on the other nodes before continueing
+root@ng1e:~# echo dont forget to start batmand --bmx-defaults... also on the other nodes before continueing :-)
+dont forget to start batmand --bmx-defaults... also on the other nodes before continueing :-)
 root@ng1e:~#
 root@ng1e:~# batmand -c -d 1 -b
 WARNING: You are using the experimental batman branch!
-B.A.T.M.A.N. 0.3-exp rv686, MainIF/IP: ath0:bat 10.10.0.1, WindSize: 100, BLT: 20, OGI: 1500, UT: 0d 0h 3m
+B.A.T.M.A.N. 0.3-exp rv687, MainIF/IP: ath0:bat 10.10.0.1, WindSize: 100, BLT: 20, OGI: 1500, UT: 0d 0h 0m
 Originator           viaIF         Router (brc rcvd lseq lvld) [    viaIF RTQ  RQ  TQ].. alternatives...
-10.10.0.2        ath0:bat       10.10.0.2 ( 28  69   169    1) [ ath0:bat  63 100  63]
-10.10.1.3        ath0:bat       10.10.0.2 ( 25  69   195    0)
-root@ng1e:~# 
+10.10.0.2        ath0:bat       10.10.0.2 (  4   5   739    0) [ ath0:bat   5   6  83]
+10.10.1.3        ath0:bat       10.10.0.2 (  3   4   743    1)
+root@ng1e:~#
 
 \end{verbatim} \end{small}
 
-to be continued...
+The parametrization applied with the \emph{--bmx-defaults} switch is described in Secion \ref{sec:bmx-defaults}. 
+One of the activated features is that all non-primary interfaces do not announce their existence beyond their local neighbor horizon. 
+Instead the IP address of secondary and further interfaces are announced by host-network announcement (HNA) messages. 
+The HNA messages are conveyed with the OGMs of the primary interface. 
+This reduces the protocol-traffic overhead and the CPU load of the daemon.
+%
+Compared to the debug-level-one output before killing batmand, the output now does not show the originator IP of 10.10.1.2 anymore. This is because related OGMs are propagated beyond the direct-link neighborhood of node Bs secondary interface and Node A is not connected to that link. Nonetheless, node Bs secondary interface IP is still reachable because it has been announced using HNA messages. Thereby, node A has learned that all packets for 10.10.1.2 must be forwarded towards the IP of node Bs primary interface.
+%
+Therefore batman uses the routing table 65 (which has been unused in previous examples)
+
+\begin{small} \begin{verbatim}
+root@ng1e:~# ip route list table 65
+throw 10.10.1.1  proto static
+10.10.1.2 via 10.10.0.2 dev ath0  proto static
+root@ng1e:~# 
+root@ng1e:~# ping -c 1 10.10.1.2
+PING 10.10.1.2 (10.10.1.2): 56 data bytes
+64 bytes from 10.10.1.2: icmp_seq=0 ttl=64 time=6.8 ms
+
+--- 10.10.1.2 ping statistics ---
+1 packets transmitted, 1 packets received, 0% packet loss
+round-trip min/avg/max = 6.8/6.8/6.8 ms
+root@ng1e:~# 
+\end{verbatim} \end{small}
 
 
 \end{enumerate}
 
 
-
-%\subsection{Setting up an internet-gateway node}
+\subsection{Setting up internet gateway and client nodes}
 \label{sec:howto-gw}
+
+This Section follows the track of the previous tutorial but focuses on how to enable internet connectivity for the nodes in the testbed. 
+Therefore, the involved nodes are separated into two categories. 
+The one category is referred as gateway (GW) nodes and are offering internet connectivity and the other category is referred as client nodes. Client nodes are looking for internet connectivity. 
+Because of the few number of node we have, there will be only one GW node in this example, namely node A. 
+This GW node needs a real internet connection which can be used to forward traffic. 
+
+The following steps describe step by step how to configure one GW and two client nodes so that the GW node announces its internet connectivity and that the clients automatically detect the existence of an available GW and setup tunnels to the GW to forward their internet traffic.
+
+\begin{enumerate}
+
+\item Starting with the GW node, we use the lan interface of node A for accessing a dhcp server, obtain an IP address and a default route.
+But first, the running batmand should be terminated and the \emph{eth0:bat} alias interface should be disabled.
+In the following capture, the program udhcpc is used to contact the dhcp server, any other dhcp client should be fine as well.
+Afterwards, a ping to the famous open-mesh.net web site is used to verify that the internet connectivity from the GW node is up and running.
+
+\begin{small} \begin{verbatim}
+root@ng1e:~# killall batmand
+root@ng1e:~# ifconfig eth0:bat down
+root@ng1e:~#
+root@ng1e:~# udhcpc -i eth0
+udhcpc (v1.4.2) started
+Sending discover...
+Sending select for 192.168.3.35...
+Lease of 192.168.3.35 obtained, lease time 60000
+adding router 192.168.3.6
+route: SIOC[ADD|DEL]RT: File exists
+deleting old routes
+route: resolving 104.130.30.205;
+adding dns 213.191.74.11
+root@ng1e:~# 
+root@ng1e:~# ping open-mesh.net
+PING open-mesh.net (88.198.145.69): 56 data bytes
+64 bytes from 88.198.145.69: icmp_seq=0 ttl=53 time=31.2 ms
+64 bytes from 88.198.145.69: icmp_seq=1 ttl=53 time=29.5 ms
+
+--- open-mesh.net ping statistics ---
+2 packets transmitted, 2 packets received, 0% packet loss
+round-trip min/avg/max = 29.5/30.3/31.2 ms
+root@ng1e:~#
+\end{verbatim} \end{small}
+
+\item Next, node A must be configured to share its internet connection with other client nodes in the mesh. 
+Because all the nodes in the internet do not know anything about the IP addresses of the client nodes in our mesh there must be a network address translation (NAT) on the lan interface of node A. 
+On a linux system NAT is achieved with iptables (which is hopefully installed on your system) and the easiest way to activate NAT is to configure a MASQUERSING rule for the lan interface of node A.
+
+\begin{small} \begin{verbatim}
+root@ng1e:~# iptables -t nat -I POSTROUTING 1 -o eth0 -j MASQUERADE
+root@ng1e:~# iptables -L -t nat -n -vv
+Chain PREROUTING (policy ACCEPT 5408 packets, 1635K bytes)
+ pkts bytes target     prot opt in     out     source               destination
+
+Chain POSTROUTING (policy ACCEPT 39 packets, 4554 bytes)
+ pkts bytes target     prot opt in     out     source               destination
+    0     0 MASQUERADE  all  --  *      eth0  0.0.0.0/0            0.0.0.0/0
+
+Chain OUTPUT (policy ACCEPT 63 packets, 8014 bytes)
+ pkts bytes target     prot opt in     out     source               destination
+\end{verbatim} \end{small}
+
+\item Relaunching batmand on node A with the \emph{-g bandwidth } switch causes the daemon to announce its GW services to other nodes in the mesh. The daemon will create a tunnel devices labelled as batX for each interface participating in the mesh. The tunnel devices are used for forwarding internet traffic between the GW node and the connected client nodes.
+
+\begin{small} \begin{verbatim}
+root@ng1e:~# batmand --bmx-default -g 5000 ath0:bat
+\end{verbatim} \end{small}
+
+
+\item Finally, batmand must be restarted on the client nodes with the \emph{-r routing-class} directive. 
+The routing class must be a value between 1 and 3 to define a policy for the GW selection. 
+Routing class 1 causes the client to prefer fast connections (focusing on the announced bandwidth of the GW) and routing class 2 prefers stable connections. 
+Routing class 3 also prefers stable connections but changes the currently selected GW if another GW shows up with a more stable connection between the GW and the client.
+For the setup of this tutorial the routing class does not matter because there is only one available GW. So lets try routing class 3.
+After restarting batmand the daemon waits some time to gather some statistics about the path qualities to the available internet GWs. Use debug-level two (\emph{-c -d 2 -b}) to monitor the available GW nodes and see when the client mode has decided for one of them. 
+Et voila, now also the clients can access internet.
+
+\begin{small} \begin{verbatim}
+root@ng3e:~# killall batmand
+root@ng3e:~# batmand --bmx-defaults -r 3 eth0.0:bat
+WARNING: You are using the experimental batman branch!
+Applying bmx-defaults !
+...
+Using interface eth0.0:bat with address 10.10.1.3 and broadcast address 10.10.255.255
+root@ng3e:~# 
+root@ng3e:~# batmand -c -d 2 -b
+WARNING: You are using the experimental batman branch!
+     Gateway              Router (#/100)
+   10.10.0.1             10.10.1.2 ( 13), gw_class 49 - 4MBit/1024KBit, reliability: 0
+root@ng3e:~#
+root@ng3e:~# echo wait some time until debug-level two shows that the client has connected
+echo wait some time until debug-level two shows that the client has connected
+root@ng3e:~#
+root@ng3e:~# batmand -c -d 2 -b
+WARNING: You are using the experimental batman branch!
+     Gateway              Router (#/100)
+=> 10.10.0.1             10.10.1.2 ( 98), gw_class 49 - 4MBit/1024KBit, reliability: 0
+root@ng3e:~#
+root@ng3e:~# ping open-mesh.net
+PING open-mesh.net (88.198.145.69): 56 data bytes
+64 bytes from 88.198.145.69: icmp_seq=0 ttl=52 time=34.3 ms
+64 bytes from 88.198.145.69: icmp_seq=1 ttl=52 time=31.0 ms
+64 bytes from 88.198.145.69: icmp_seq=2 ttl=52 time=31.2 ms
+
+--- open-mesh.net ping statistics ---
+3 packets transmitted, 3 packets received, 0% packet loss
+round-trip min/avg/max = 31.0/32.1/34.3 ms
+root@ng3e:~#
+\end{verbatim} \end{small}
+
+The first packet often takes more time or even gets lost because the client node needs to obtain an IP address from the GW node to configure its tunnel correctly (Be aware that the first packet is usually the DNS request to resolve the requested domain name. Also ensure that /etc/resolv.conf contains a valid nameserver).
+Often, there are problems with the firewall configuration on the client as well as on the GW node resulting in packets to simply get dropped. 
+This can become quite tricky to debug, especially because the client node tries to observe the traffic send via the tunnel and disconnects from the currently selected GW if no packets do return via the tunnel.
+Simply flushing the firewall might be a good idea.
+There is also a \emph{--no-unresp-gw-check} switch which disables the GW monitoring.
+Additional tools to debug a broken internet connectivity are of course tcpdump and debug level 3.
+
+
+
+
+
+
+
+
+\end{enumerate}
 
 %\subsection{Setting up an internet-client node}
 \label{sec:howto-client}
 
+\subsection{Seamless in-the-field migration between different batman implementations}
+
+to be continued...
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1601,7 +1759,7 @@ to be continued...
 \section {Acknowledgments}
 \label{sec:acks}
 
-The B.A.T.M.A.N. mesh routing protocol is currently developed by:
+The B.A.T.M.A.N. mesh routing protocol is currently developed and documented by:
 
 Andreas Langer (a.langer-at-q-dsl.de)
 

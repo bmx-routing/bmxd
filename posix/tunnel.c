@@ -27,6 +27,7 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <netinet/ip.h>
+#include <netinet/udp.h>
 #if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__Darwin__)
 #include <sys/sockio.h>
 #endif
@@ -54,6 +55,32 @@
 #define IP_LEASE_TIMEOUT          20 * ONE_MINUTE
 
 #define MAX_TUNNEL_IP_REQUESTS 12
+
+
+/* ip_sum_calc from Richard Stevens Book */
+uint16_t ip_sum_calc(uint16_t ip_header_len, uint16_t ip_header_buff[])
+{
+	uint32_t sum = 0;
+
+	while (ip_header_len > 1) {
+		sum += *ip_header_buff++;
+
+		if (sum & 0x80000000)   /* if high order bit set, fold */
+			sum = (sum & 0xFFFF) + (sum >> 16);
+
+		ip_header_len -= 2;
+	}
+
+	if (ip_header_len)       /* take care of left over byte */
+		sum += (uint16_t) *((unsigned char *)ip_header_buff);
+
+	while (sum >> 16)
+		sum = (sum & 0xFFFF) + (sum >> 16);
+
+	return ~sum;
+
+}
+
 
 
 int8_t get_tun_ip( struct sockaddr_in *gw_addr, int32_t udp_sock, uint32_t *tun_addr ) {
@@ -144,7 +171,7 @@ void *client_to_gw_tun( void *arg ) {
 	struct timeval tv;
 	int32_t res, max_sock, buff_len, udp_sock, tun_fd, tun_ifi, sock_opts;
 	uint32_t addr_len, current_time, ip_lease_time = 0, gw_state_time = 0, got_new_ip = 0, my_tun_addr = 0;
-	uint32_t last_invalidip_warning = 0;
+//	uint32_t last_invalidip_warning = 0;
 	char tun_if[IFNAMSIZ], my_str[ADDR_STR_LEN], gw_str[ADDR_STR_LEN], gw_state = GW_STATE_UNKNOWN;
 	unsigned char buff[1501];
 	fd_set wait_sockets, tmp_wait_sockets;
@@ -329,14 +356,30 @@ void *client_to_gw_tun( void *arg ) {
 						if ( sendto( udp_sock, buff, buff_len + 1, 0, (struct sockaddr *)&gw_addr, sizeof (struct sockaddr_in) ) < 0 )
 							debug_output( 0, "Error - can't send data to gateway: %s\n", strerror(errno) );
 					
-					} else if ( last_invalidip_warning == 0 || last_invalidip_warning + WARNING_PERIOD < current_time ) {
+					} else /* if ( got_new_ip + 1000 > ip_lease_time ) */ {
+
+						((struct iphdr *)(buff + 1))->saddr = my_tun_addr;
+						((struct iphdr *)(buff + 1))->check = 0;
+						((struct iphdr *)(buff + 1))->check = ip_sum_calc(((struct iphdr *)(buff + 1))->ihl*4, (uint16_t *)(buff + 1));
+
+						/*
+						if (((struct iphdr *)(buff + 1))->protocol == IPPROTO_UDP ) {
+							((struct udphdr *) ((buff + 1) + sizeof(struct iphdr)))->check = 0;
+						}
+						*/
+						if ( sendto( udp_sock, buff, buff_len + 1, 0, (struct sockaddr *)&gw_addr, sizeof (struct sockaddr_in) ) < 0 )
+							debug_output( 0, "Error - can't send data to gateway: %s\n", strerror(errno) );
+
+					} 
+					/*
+					else if ( last_invalidip_warning == 0 || last_invalidip_warning + WARNING_PERIOD < current_time ) {
 						
 						last_invalidip_warning = current_time;
 						
 						addr_to_string( my_tun_addr, my_str, sizeof(my_str) );
 						debug_output( 3, "Gateway client - Invalid outgoing src IP: %i.%i.%i.%i, should be %s \n", (uint8_t)buff[13], (uint8_t)buff[14], (uint8_t)buff[15], (uint8_t)buff[16],  my_str );
-					
 					}
+					*/
 				}
 
 				if ( errno != EWOULDBLOCK ) {
