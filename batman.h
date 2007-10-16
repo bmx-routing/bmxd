@@ -290,6 +290,12 @@ extern int32_t gw_change_hysteresis;
 #define MIN_GW_CHANGE_HYSTERESIS 1
 #define MAX_GW_CHANGE_HYSTERESIS ((sequence_range / 2) + 1) /*TBD: what if sequence range is decreased after setting this? */
 
+extern uint32_t gw_tunnel_prefix;
+extern uint8_t  gw_tunnel_netmask;
+#define DEF_GW_TUNNEL_PREFIX  0x0000FEA9 /* 169.254.0.0 */
+#define DEF_GW_TUNNEL_NETMASK 16
+#define GW_TUNNEL_NETW_SWITCH "gw-tunnel-network"
+
 extern uint8_t routing_class;
 
 extern uint8_t gateway_class;

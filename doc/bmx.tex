@@ -1332,8 +1332,18 @@ This Section provides a brief summary how to setup a simple three-nodes mesh net
 %
 The tutorial describes all necessary (and some optionally) steps in an enumerated order. 
 %
-The following description is working towards a setup as illustrated in Figure \ref{fig:howto-setup}.
-Starting with two and working towards three nodes, each having one wireless lan and one optionally wired lan interface.
+The following description assumes a basic setup as illustrated in Figure \ref{fig:howto-setup}.
+Starting with two and working towards three nodes, each having one wireless lan and one wired lan interface. The interfaces and links between the nodes are discussed as needed.
+
+\begin{figure}[htbp]
+  \begin{center}
+    \includegraphics[width=10cm]{tutorial-setup-x01.jpg}
+    \caption{Default setup used for the tutorial. Grey lines indicate links that are enabled when needed.}
+    \label{fig:howto-setup}
+  \end{center}
+\end{figure}
+
+
 \begin{enumerate}
 
 \item The following libraries and kernel functionality must be available:
@@ -1622,9 +1632,10 @@ root@ng1e:~#
 \subsection{Setting up internet gateway and client nodes}
 \label{sec:howto-gw}
 
-This Section follows the track of the previous tutorial but focuses on how to enable internet connectivity for the nodes in the testbed. 
+This Section follows the track of the previous tutorial but focuses on how to enable internet connectivity for the nodes in the mesh. 
 Therefore, the involved nodes are separated into two categories. 
-The one category is referred as gateway (GW) nodes and are offering internet connectivity and the other category is referred as client nodes. Client nodes are looking for internet connectivity. 
+The category of nodes which are offering internet connectivity is referred as gateway (GW) nodes and the other category is referred as client nodes. 
+Client nodes are looking for internet connectivity. 
 Because of the few number of node we have, there will be only one GW node in this example, namely node A. 
 This GW node needs a real internet connection which can be used to forward traffic. 
 
@@ -1634,7 +1645,7 @@ The following steps describe step by step how to configure one GW and two client
 
 \item Starting with the GW node, we use the lan interface of node A for accessing a dhcp server, obtain an IP address and a default route.
 But first, the running batmand should be terminated and the \emph{eth0:bat} alias interface should be disabled.
-In the following capture, the program udhcpc is used to contact the dhcp server, any other dhcp client should be fine as well.
+In the following capture, the program udhcpc is used to contact the dhcp server, any other dhcp client programm should be fine as well.
 Afterwards, a ping to the famous open-mesh.net web site is used to verify that the internet connectivity from the GW node is up and running.
 
 \begin{small} \begin{verbatim}
@@ -1665,7 +1676,7 @@ root@ng1e:~#
 
 \item Next, node A must be configured to share its internet connection with other client nodes in the mesh. 
 Because all the nodes in the internet do not know anything about the IP addresses of the client nodes in our mesh there must be a network address translation (NAT) on the lan interface of node A. 
-On a linux system NAT is achieved with iptables (which is hopefully installed on your system) and the easiest way to activate NAT is to configure a MASQUERSING rule for the lan interface of node A.
+On a linux system, NAT is achieved with iptables (which is hopefully installed on your system) and the easiest way to activate NAT is to configure a MASQUERADE rule for the lan interface of node A.
 
 \begin{small} \begin{verbatim}
 root@ng1e:~# iptables -t nat -I POSTROUTING 1 -o eth0 -j MASQUERADE
@@ -1681,7 +1692,8 @@ Chain OUTPUT (policy ACCEPT 63 packets, 8014 bytes)
  pkts bytes target     prot opt in     out     source               destination
 \end{verbatim} \end{small}
 
-\item Relaunching batmand on node A with the \emph{-g bandwidth } switch causes the daemon to announce its GW services to other nodes in the mesh. The daemon will create a tunnel devices labelled as batX for each interface participating in the mesh. The tunnel devices are used for forwarding internet traffic between the GW node and the connected client nodes.
+\item Relaunching batmand on node A with the \emph{-g bandwidth } switch causes the daemon to announce its GW services to other nodes in the mesh. The daemon will create a tunnel devices labelled as batX for each interface participating in the mesh. The tunnel devices are used for forwarding internet traffic between the GW node and the connected client nodes. (In order to use the tunnel functionality of the linux kernel it is mandatory to have the tun module loaded. Check this for example with the command \emph{lsmod }. If the command does not list a line showing tun then load it with \emph{modprobe tun} or \emph{insmod tun} on a openWrt based system.)
+
 
 \begin{small} \begin{verbatim}
 root@ng1e:~# batmand --bmx-default -g 5000 ath0:bat
@@ -1731,26 +1743,142 @@ root@ng3e:~#
 
 The first packet often takes more time or even gets lost because the client node needs to obtain an IP address from the GW node to configure its tunnel correctly (Be aware that the first packet is usually the DNS request to resolve the requested domain name. Also ensure that /etc/resolv.conf contains a valid nameserver).
 Often, there are problems with the firewall configuration on the client as well as on the GW node resulting in packets to simply get dropped. 
-This can become quite tricky to debug, especially because the client node tries to observe the traffic send via the tunnel and disconnects from the currently selected GW if no packets do return via the tunnel.
-Simply flushing the firewall might be a good idea.
-There is also a \emph{--no-unresp-gw-check} switch which disables the GW monitoring.
+%
+This can become quite tricky to debug, especially because the client node tries to observe the traffic send via the tunnel and disconnects from the currently selected GW if no packets do return via the tunnel. This is feature is referred as unresponsive GW check and it can be quite annyoing when searching for the actual reasons for the broken connections. Therefore, there is also a \emph{--no-unresp-gw-check} switch to disable the GW monitoring and automatic disconnection.
+
+Simply flushing the firewall might be a good idea as well (using \emph{iptables -F; iptables -t nat -F}) but remember to reassign the MASQERADING rule afterwards.
 Additional tools to debug a broken internet connectivity are of course tcpdump and debug level 3.
 
 
+\item Probably the most common configuration is to enable the client nodes of a mesh for offering internet connectivity via dhcp to ordinary computers.
+%
+This way, any computer supporting the dhcp-client protocol can use the infrastructure of the mesh without knowing anything about the internals of the involved protocols.
+%
+Because of the limited number of nodes and interfaces assumed for this tutorial we once again have to reconfigure the intefaces of the client nodes.
+%
 
+The following examples shows this for client node C.
+%
+First, the running batman daemon must be terminated and the lan interface must be reconfigured with a static, side-local, and yet unused netmask and IP address
+(it is important to do this before restarting the batman daemon because otherwise batmand will falsley detect your interface configuration and catch all packets towards your side-local lan addresses).
+%
+If there is a dhcp client or server already running in the background it should be killed.
+Then, any kind of dhcp-server daemon must be installed, configured, and started to offer dhcp service on the new configured lan interface. I've choosen the busybox version of udhcpd because it was shipped with the openWrt distribution used for this tutorial (udhcpd also needs a configuration file as indicated):
+\begin{small} \begin{verbatim}
+root@ng3e:~# killall batmand
+root@ng3e:~# 
+root@ng3e:~# ifconfig eth0:bat down
+root@ng3e:~# killall udhcpc
+root@ng3e:~# ifconfig eth0 192.168.123.1
+root@ng3e:~# cat /etc/udhcpd.conf
+start           192.168.123.2
+end             192.168.123.12
+max_leases      10
+opt             router 192.168.123.1
+opt             subnet 255.255.255.0
+opt             lease 43200
+opt dns 141.1.1.1
+interface       eth0
+lease_file      /var/run/udhcpd.leases
+root@ng3e:~# killall udhcpd
+root@ng3e:~# udhcpd /etc/udhcpd.conf
+udhcpd (v1.4.2) started
+udhcpd: cannot open /var/run/udhcpd.leases for reading
+root@ng3e:~#  
+\end{verbatim} \end{small}
 
+For node C, the wireless interface must be configured for accessing the mesh network.
+%
+There need to be a second network address translation (NAT) on the tunnel interface of the client nodes because the GW node, at the other end of the tunnel, does not know anything about the IP addresses leased to the dhcp-clients (the ordinary computers) of node C. 
 
+Optionally you may do SNAT on the batman interfaces to allow the ordinary-dhcp clients to access the nodes in the mesh.\footnote{Then the -o, -s, -d, and --to arguments must be customized for each node and interface. If batmand is running on several interfaces you need one SNAT rule per interface.}.
+
+\begin{small} \begin{verbatim}
+root@ng3e:~# iwconfig ath0 essid batman-test channel 1
+root@ng3e:~# ifconfig ath0:bat 10.10.0.3 netmask 255.255.0.0 broadcast 10.10.255.255
+root@ng3e:~# 
+root@ng3e:~#  iptables -t nat -A POSTROUTING -o bat0 -j MASQUERADE
+root@ng3e:~# #iptables -t nat -A POSTROUTING -o ath0 \
+-s 192.168.123.0/24 -d 10.10.0.0/16 -j SNAT --to 10.10.0.3 #optional, needs customization
+root@ng3e:~# 
+root@ng3e:~# batmand --bmx-defaults -r 3 ath0:bat
+WARNING: You are using the experimental batman branch!
+Applying bmx-defaults !
+...
+root@ng3e:~# 
+
+\end{verbatim} \end{small}
+
+Thats it! Now it should be possible to connect the network interface of an ordinary computer system with the lan interface of node C and lease an IP address for accessing the internet. The following capture shows this procedure from my notebook. Using the \emph{-R} directive for ping it is possible to track the path taken by the packets.
+Unfortunaltey the \emph{-R} directive is not implemented in many embedded ping implementations. If you want to have a full working ping on your embedded device you may check \cite{useful-net-tools} for a precompiled binary that fits for your embedded devices.
+
+\begin{small} \begin{verbatim}
+smart ~ # killall dhcpcd
+smart ~ #
+smart ~ # dhcpcd eth0
+smart ~ # ifconfig eth0
+eth0      Link encap:Ethernet  HWaddr 00:90:F5:55:5B:EB
+          inet addr:192.168.123.2  Bcast:192.168.123.255  Mask:255.255.255.0
+          inet6 addr: fe80::290:f5ff:fe55:5beb/64 Scope:Link
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:269068 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:255602 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000
+          RX bytes:60394298 (57.5 Mb)  TX bytes:27671725 (26.3 Mb)
+          Interrupt:16
+
+smart ~ # ping -n -R open-mesh.net
+PING open-mesh.net (88.198.145.69) 56(124) bytes of data.
+64 bytes from 88.198.145.69: icmp_seq=1 ttl=49 time=77.6 ms
+RR:     192.168.123.2
+        169.254.0.1
+        192.168.2.3
+...
+
+64 bytes from 88.198.145.69: icmp_seq=2 ttl=49 time=60.5 ms     (same route)
+64 bytes from 88.198.145.69: icmp_seq=3 ttl=49 time=89.4 ms     (same route)
+
+--- open-mesh.net ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 1999ms
+rtt min/avg/max/mdev = 60.548/75.875/89.447/11.867 ms
+
+smart ~ # ping -R 10.10.0.1
+PING 10.10.0.1 (10.10.0.1) 56(124) bytes of data.
+64 bytes from 10.10.0.1: icmp_seq=1 ttl=63 time=2.81 ms
+RR:     192.168.123.2
+        10.10.0.3
+        10.10.0.1
+        10.10.0.1
+        192.168.123.1
+        192.168.123.2
+
+64 bytes from 10.10.0.1: icmp_seq=2 ttl=63 time=2.26 ms (same route)
+64 bytes from 10.10.0.1: icmp_seq=3 ttl=63 time=2.40 ms (same route)
+
+--- 10.10.0.1 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2000ms
+rtt min/avg/max/mdev = 2.264/2.494/2.811/0.238 ms
+\end{verbatim} \end{small}
 
 
 
 \end{enumerate}
 
-%\subsection{Setting up an internet-client node}
-\label{sec:howto-client}
 
-\subsection{Seamless in-the-field migration between different batman implementations}
+%\subsection{Seamless in-the-field migration between different batman implementations}
 
-to be continued...
+%The primary focus of this section is the migrating from one batman implementation to another without leaving any orphan nodes. 
+%
+%The secondary objective is to show how it is possible to run even two different batman implementations in parallel. 
+%
+%This can be done just temporary, like during the migration phase, or permanently to allow users to choose between routes that are optimized for different scenarios.
+%
+%For example one algorithm might be optimized for semi-static node locations like home users while the other algorithm is optimized for mobile devices that are exposed to a fast changing topology.
+%
+%Running the old and the new protocol implementations in parallel has also an advantage during the migration phase.  This allows extensive testing of the new version before any functinality of the old version must be disabled.
+
+
+
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1838,6 +1966,9 @@ Wesley Tsai (wesleyboy-at-gmail.com)
 
 \bibitem{smokeping} http://oss.oetiker.ch/smokeping/
 
+\bibitem{openwrt} http://openwrt.org/
+
+\bibitem{useful-net-tools} http://downloads.open-mesh.net/misc/handy-tools/
 
 \end{thebibliography}
 

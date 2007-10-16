@@ -27,6 +27,7 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <netinet/ip.h>
+#include <netinet/tcp.h>
 #include <netinet/udp.h>
 #if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__Darwin__)
 #include <sys/sockio.h>
@@ -55,6 +56,60 @@
 #define IP_LEASE_TIMEOUT          20 * ONE_MINUTE
 
 #define MAX_TUNNEL_IP_REQUESTS 12
+
+int chksum(void *data, int len)
+{
+	uint16_t *sdata = data;
+	uint32_t sum;
+
+
+	for (sum = 0; len > 1; len -= 2)
+		sum += *sdata++;
+
+	if (len)
+		sum += (unsigned short)(*(unsigned char *)sdata);
+
+	return sum;
+}
+
+uint16_t chksum_l3(uint16_t l3_buff[], uint16_t l3_buff_len)
+{
+	uint32_t sum, tmp_sum;
+
+	tmp_sum = chksum(l3_buff, l3_buff_len);
+
+	sum = (tmp_sum & 0xffff) + (tmp_sum >> 16);
+	sum += (sum >> 16);
+
+	return ~(sum & 0xffff);
+}
+
+uint16_t chksum_l4(uint16_t l4_buff[], uint16_t l4_buff_len, uint32_t src, uint32_t dest, uint8_t proto)
+{
+	uint32_t sum, tmp_sum;
+
+	tmp_sum = chksum(l4_buff, l4_buff_len);
+
+	sum = (tmp_sum & 0xffff) + (tmp_sum >> 16);
+	sum += (sum >> 16);
+
+	if (l4_buff_len % 2 != 0)
+		tmp_sum = (sum & 0xff << 8) | (sum & 0xff00 >> 8);
+	else
+		tmp_sum = sum;
+
+	tmp_sum += (src & 0xffff);
+	tmp_sum += ((src >> 16) & 0xffff);
+	tmp_sum += (dest & 0xffff);
+	tmp_sum += ((dest >> 16) & 0xffff);
+	tmp_sum += (uint32_t)htons((uint16_t)proto);
+	tmp_sum += (uint32_t)htons(l4_buff_len);
+
+	sum = (tmp_sum & 0xffff) + (tmp_sum >> 16);
+	sum += (sum >> 16);
+
+	return ~(sum & 0xffff);
+}
 
 
 /* ip_sum_calc from Richard Stevens Book */
@@ -168,10 +223,13 @@ void *client_to_gw_tun( void *arg ) {
 
 	struct curr_gw_data *curr_gw_data = (struct curr_gw_data *)arg;
 	struct sockaddr_in gw_addr, my_addr, sender_addr;
+	struct iphdr *iphdr;
+	struct udphdr *udphdr;
+	struct tcphdr *tcphdr;
 	struct timeval tv;
 	int32_t res, max_sock, buff_len, udp_sock, tun_fd, tun_ifi, sock_opts;
 	uint32_t addr_len, current_time, ip_lease_time = 0, gw_state_time = 0, got_new_ip = 0, my_tun_addr = 0;
-//	uint32_t last_invalidip_warning = 0;
+	uint32_t last_invalidip_warning = 0;
 	char tun_if[IFNAMSIZ], my_str[ADDR_STR_LEN], gw_str[ADDR_STR_LEN], gw_state = GW_STATE_UNKNOWN;
 	unsigned char buff[1501];
 	fd_set wait_sockets, tmp_wait_sockets;
@@ -349,8 +407,6 @@ void *client_to_gw_tun( void *arg ) {
 
 					/* fill in new ip - the packets in the buffer don't know it yet */
 					// some applications tend to set their own IP or an IP from another interface. This would trigger the GW to complain 
-//					if ( got_new_ip + 1000 > ip_lease_time )
-					
 					if ( memcmp( buff + 13, (unsigned char *)&my_tun_addr, 4 ) == 0 ) {
 						
 						if ( sendto( udp_sock, buff, buff_len + 1, 0, (struct sockaddr *)&gw_addr, sizeof (struct sockaddr_in) ) < 0 )
@@ -358,28 +414,38 @@ void *client_to_gw_tun( void *arg ) {
 					
 					} else /* if ( got_new_ip + 1000 > ip_lease_time ) */ {
 
-						((struct iphdr *)(buff + 1))->saddr = my_tun_addr;
-						((struct iphdr *)(buff + 1))->check = 0;
-						((struct iphdr *)(buff + 1))->check = ip_sum_calc(((struct iphdr *)(buff + 1))->ihl*4, (uint16_t *)(buff + 1));
-
-						/*
-						if (((struct iphdr *)(buff + 1))->protocol == IPPROTO_UDP ) {
-							((struct udphdr *) ((buff + 1) + sizeof(struct iphdr)))->check = 0;
-						}
-						*/
-						if ( sendto( udp_sock, buff, buff_len + 1, 0, (struct sockaddr *)&gw_addr, sizeof (struct sockaddr_in) ) < 0 )
-							debug_output( 0, "Error - can't send data to gateway: %s\n", strerror(errno) );
-
-					} 
-					/*
-					else if ( last_invalidip_warning == 0 || last_invalidip_warning + WARNING_PERIOD < current_time ) {
+						if ( ( got_new_ip + 1000 < ip_lease_time ) && ( last_invalidip_warning == 0 || last_invalidip_warning + WARNING_PERIOD < current_time ) ) {
 						
 						last_invalidip_warning = current_time;
 						
 						addr_to_string( my_tun_addr, my_str, sizeof(my_str) );
-						debug_output( 3, "Gateway client - Invalid outgoing src IP: %i.%i.%i.%i, should be %s \n", (uint8_t)buff[13], (uint8_t)buff[14], (uint8_t)buff[15], (uint8_t)buff[16],  my_str );
-					}
-					*/
+						debug_output( 3, "Gateway client - Invalid outgoing src IP: %i.%i.%i.%i, should be %s! Recalculating checksums! WARNING, this eats your CPU! \n", (uint8_t)buff[13], (uint8_t)buff[14], (uint8_t)buff[15], (uint8_t)buff[16],  my_str );
+						}
+
+						
+						iphdr = (struct iphdr *)(buff + 1);
+						iphdr->saddr = my_tun_addr;
+						iphdr->check = 0;
+						iphdr->check = chksum_l3((uint16_t *)(buff + 1), iphdr->ihl*4);
+						if (iphdr->protocol == IPPROTO_UDP) {
+
+							udphdr = (struct udphdr *)(buff + 1 + iphdr->ihl*4);
+							udphdr->check = 0;
+							udphdr->check = chksum_l4((uint16_t *)(buff + 1 + iphdr->ihl*4), ntohs(udphdr->len), iphdr->saddr, iphdr->daddr, IPPROTO_UDP);
+
+						} else if (iphdr->protocol == IPPROTO_TCP) {
+
+							tcphdr = (struct tcphdr *)(buff + 1 + iphdr->ihl*4);
+							tcphdr->check = 0;
+							tcphdr->check = chksum_l4((uint16_t *)(buff + 1 + iphdr->ihl*4), buff_len - iphdr->ihl*4, iphdr->saddr, iphdr->daddr, IPPROTO_TCP);
+
+						}
+						
+						if ( sendto( udp_sock, buff, buff_len + 1, 0, (struct sockaddr *)&gw_addr, sizeof (struct sockaddr_in) ) < 0 )
+							debug_output( 0, "Error - can't send data to gateway: %s\n", strerror(errno) );
+
+
+					} 
 				}
 
 				if ( errno != EWOULDBLOCK ) {
@@ -519,8 +585,8 @@ void *gw_listen( void *arg ) {
 	fd_set wait_sockets, tmp_wait_sockets;
 
 
-	my_tun_ip[0] = 169;
-	my_tun_ip[1] = 254;
+	my_tun_ip[0] = ((uint8_t*)&gw_tunnel_prefix)[0];
+	my_tun_ip[1] = ((uint8_t*)&gw_tunnel_prefix)[1];
 	my_tun_ip[2] = batman_if->if_num;
 	my_tun_ip[3] = 0;
 
@@ -574,7 +640,7 @@ void *gw_listen( void *arg ) {
 						if ( buff[0] == TUNNEL_DATA ) {
 
 							/* check whether client IP is known */
-							if ( ( buff[13] != 169 ) || ( buff[14] != 254 ) || ( buff[15] != batman_if->if_num ) || ( gw_client[(uint8_t)buff[16]] == NULL ) || ( gw_client[(uint8_t)buff[16]]->addr != addr.sin_addr.s_addr ) ) {
+							if ( ( buff[13] != ((uint8_t*)&gw_tunnel_prefix)[0] ) || ( buff[14] != ((uint8_t*)&gw_tunnel_prefix)[1] ) || ( buff[15] != batman_if->if_num ) || ( gw_client[(uint8_t)buff[16]] == NULL ) || ( gw_client[(uint8_t)buff[16]]->addr != addr.sin_addr.s_addr ) ) {
 
 								buff[0] = TUNNEL_IP_INVALID;
 								addr_to_string( addr.sin_addr.s_addr, str, sizeof(str) );

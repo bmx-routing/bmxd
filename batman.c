@@ -127,6 +127,8 @@ int32_t no_unresponsive_check = DEF_NO_UNRESP_CHECK;
 
 int32_t gw_change_hysteresis = DEF_GW_CHANGE_HYSTERESIS;
 
+uint32_t gw_tunnel_prefix  = DEF_GW_TUNNEL_PREFIX;
+uint8_t  gw_tunnel_netmask = DEF_GW_TUNNEL_NETMASK;
 
 
 struct gw_node *curr_gateway = NULL;

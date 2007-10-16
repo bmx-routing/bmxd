@@ -105,6 +105,67 @@ void set_init_arg( char* switch_name, char* switch_arg, int min, int max, int32_
 	return;
 }
 
+
+void set_gw_network ( char *optarg_str ) {
+	
+	struct in_addr tmp_ip_holder;
+	uint16_t netmask;
+	char *slash_ptr;
+	static char netmask_str[ADDR_STR_LEN];
+		
+	
+	if ( ( slash_ptr = strchr( optarg_str, '/' ) ) == NULL ) {
+
+		printf( "Invalid GW network (netmask is missing): %s\n", optarg_str );
+		exit(EXIT_FAILURE);
+
+	}
+
+	*slash_ptr = '\0';
+
+	if ( inet_pton( AF_INET, optarg_str, &tmp_ip_holder ) < 1 ) {
+
+		*slash_ptr = '/';
+		printf( "Invalid GW network (IP is invalid): %s\n", optarg_str );
+		exit(EXIT_FAILURE);
+
+	}
+
+	errno = 0;
+
+	netmask = strtol( slash_ptr + 1, NULL, 10 );
+
+	if ( ( errno == ERANGE ) || ( errno != 0 && netmask == 0 ) ) {
+
+		perror("strtol");
+		exit(EXIT_FAILURE);
+
+	}
+
+	if ( netmask != 16 || netmask < 1 || netmask > 32) {
+
+		*slash_ptr = '/';
+		printf( "Invalid GW network (netmask is invalid): %s ! Sorry, currently only /16 networks are supported!\n", optarg_str );
+		exit(EXIT_FAILURE);
+
+	}
+
+	gw_tunnel_prefix  = tmp_ip_holder.s_addr;
+	gw_tunnel_netmask = netmask;
+	
+	addr_to_string( gw_tunnel_prefix, netmask_str, ADDR_STR_LEN );
+	printf("Setting GW-tunnel-network to (%X) %s/%i  -- %i.%i.%i.%i\n",gw_tunnel_prefix, netmask_str, netmask, 
+		((uint8_t*)&gw_tunnel_prefix)[0],
+		((uint8_t*)&gw_tunnel_prefix)[1],
+		((uint8_t*)&gw_tunnel_prefix)[2],
+		((uint8_t*)&gw_tunnel_prefix)[3]
+	      );
+	
+	*slash_ptr = '/';
+	
+}
+
+
 void add_hna_opt ( char *optarg_str ) {
 	
 	struct hna_node *hna_node;
@@ -198,6 +259,7 @@ void apply_init_args( int argc, char *argv[] ) {
    {BIDIRECT_TIMEOUT_SWITCH,    1, 0, 0},
    {NBRFSIZE_SWITCH,            1, 0, 0},
    {GW_CHANGE_HYSTERESIS_SWITCH,1, 0, 0},
+   {GW_TUNNEL_NETW_SWITCH,      1, 0, 0},
    {TTL_SWITCH,                 1, 0, 0},
    {ASOCIAL_SWITCH,             0, 0, 0},
    {NO_UNREACHABLE_RULE_SWITCH, 0, 0, 0},
@@ -265,6 +327,13 @@ void apply_init_args( int argc, char *argv[] ) {
 
 						set_init_arg( GW_CHANGE_HYSTERESIS_SWITCH, optarg, MIN_GW_CHANGE_HYSTERESIS, MAX_GW_CHANGE_HYSTERESIS, &gw_change_hysteresis );
 						
+						found_args += 2;
+						break;
+
+					} else if ( strcmp( GW_TUNNEL_NETW_SWITCH, long_options[option_index].name ) == 0 ) {
+
+						set_gw_network( optarg );
+
 						found_args += 2;
 						break;
 
