@@ -230,7 +230,7 @@ void apply_init_args( int argc, char *argv[] ) {
 //	struct hna_node *hna_node;
 	struct debug_level_info *debug_level_info;
 	struct list_head *list_pos;
-	uint8_t found_args = 1, batch_mode = 0;
+	uint8_t found_args = 1, batch_mode = 0, apply_default_paras_and_break = NO;
 //	uint16_t netmask;
 	int8_t res;
 
@@ -254,6 +254,7 @@ void apply_init_args( int argc, char *argv[] ) {
 		static struct option long_options[] =
 		{
    {ADVANCED_SWITCH,            0, 0, 0},
+   {GENIII_DEFAULTS_SWITCH,     0, 0, 0},
    {BMX_DEFAULTS_SWITCH,        0, 0, 0},
    {GRAZ07_DEFAULTS_SWITCH,     0, 0, 0},
    {BIDIRECT_TIMEOUT_SWITCH,    1, 0, 0},
@@ -284,304 +285,339 @@ void apply_init_args( int argc, char *argv[] ) {
    {0, 0, 0, 0}
 		};
 
-		if ( ( optchar = getopt_long ( argc, argv, "a:bcmd:hHo:l:q:t:g:p:r:s:vV", long_options, &option_index ) ) == -1 )
-			break;
+		apply_default_paras_and_break = NO;
+		
+		if ( ( optchar = getopt_long ( argc, argv, "a:bcmd:hHo:l:q:t:g:p:r:s:vV", long_options, &option_index ) ) == -1 ) {
+			
+			if ( found_args == 1 ) {
+						
+				apply_default_paras_and_break = YES;
+		
+			} else {
+				break;
+			}
+		}
+		
+//		printf(" found_args: %i, optchar %c \n", found_args, optchar );
+		
+		if ( apply_default_paras_and_break || 
+				   ( found_args == 1 && optchar != 0 && optchar != 'c' && optchar != '?' && optchar != 'v' && optchar != 'h' && optchar != 'H') || 
+				   ( found_args == 1 && optchar == 0 &&  
+				     strcmp( ADVANCED_SWITCH, long_options[option_index].name ) != 0 &&
+				     strcmp( GRAZ07_DEFAULTS_SWITCH, long_options[option_index].name ) != 0 &&
+				     strcmp( GENIII_DEFAULTS_SWITCH, long_options[option_index].name ) != 0 ) || 
+				   ( optchar == 0 && strcmp( BMX_DEFAULTS_SWITCH, long_options[option_index].name ) == 0 ) ) {
+
+			
+			printf ("Applying %s ! \nThis parametrization expects the first given interface argument to be a wireless interface !\n", BMX_DEFAULTS_SWITCH );
+	
+			errno = 0;
+	
+			if ( found_args == 1 ) {
+				default_para_set = PARA_SET_BMX;
+					
+			} else {
+				printf( "Error - Parametrization set can only be specified once !\n" );
+				exit(EXIT_FAILURE);
+			}
+						
+	
+			originator_interval = 1500;
+			printf ("Short option: o with argument: %d \n", originator_interval );
+	
+					//set_init_arg( BASE_PORT_SWITCH, "4305", MIN_BASE_PORT, MAX_BASE_PORT, &base_port );
+					//sprintf( unix_path, "%s.%d", DEF_UNIX_PATH, base_port);
+	
+			set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "20", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
+	
+			set_init_arg( NBRFSIZE_SWITCH, "100", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &sequence_range );
+			num_words = ( sequence_range / WORD_BIT_SIZE ) + ( ( sequence_range % WORD_BIT_SIZE > 0)? 1 : 0 );
+	
+			set_init_arg( GW_CHANGE_HYSTERESIS_SWITCH, "2", MIN_GW_CHANGE_HYSTERESIS, MAX_GW_CHANGE_HYSTERESIS, &gw_change_hysteresis ); 
+	
+			set_init_arg( DUP_TTL_LIMIT_SWITCH, "2", MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT, &dup_ttl_limit );
+	
+			set_init_arg( DUP_RATE_SWITCH, "99", MIN_DUP_RATE, MAX_DUP_RATE, &dup_rate );
+	
+			set_init_arg( DUP_DEGRAD_SWITCH, "2", MIN_DUP_DEGRAD, MAX_DUP_DEGRAD, &dup_degrad );
+	
+			set_init_arg( SEND_CLONES_SWITCH, "200", MIN_SEND_CLONES, MAX_SEND_CLONES, &send_clones );
+					//compat_version = DEF_COMPAT_VERSION + 1;
+	
+			set_init_arg( ASYMMETRIC_WEIGHT_SWITCH, "100", MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT, &asymmetric_weight );
+	
+			set_init_arg( ASYMMETRIC_EXP_SWITCH, "1", MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP, &asymmetric_exp );
+	
+			set_init_arg( REBRC_DELAY_SWITCH, "35", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
+	
+			
+			if ( strcmp( BMX_DEFAULTS_SWITCH, long_options[option_index].name ) == 0 ) {
+				found_args += 1;
+				continue;
+			}
+			
+			if ( apply_default_paras_and_break ) {
+				break;
+			}
+			
+		}
 
 		switch ( optchar ) {
 
 			case 0: {
 				
-				/*
-				printf ("Long option: %s", long_options[option_index].name);
-				if (optarg)
-					printf (" with argument: %s", optarg);
-				printf ("\n");
-				*/
-				
 				if( strcmp( ADVANCED_SWITCH, long_options[option_index].name ) == 0 ) {
-
+	
 					errno = 0;
+					
+					verbose_usage();
+					print_advanced_opts( YES /*verbose*/ );
+					exit(EXIT_SUCCESS);
 
-					advanced_opts = 1;
+				} else if ( strcmp( GENIII_DEFAULTS_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					printf ("Applying %s ! \nThis parametrization causes the same behavior as implemented in batmand-0.2 !\n", long_options[option_index].name);
+	
+					errno = 0;
+	
+					if ( found_args == 1 /*default_para_set == DEF_BMX_PARA_SET || default_para_set == PARA_SET_GENIII */ ) {
+						default_para_set = PARA_SET_GENIII;
+	
+					} else {
+						printf( "Error - Parametrization set can only be specified once !\n" );
+						exit(EXIT_FAILURE);
+					}
+
 					found_args += 1;
 					break;
 
-				} else /* if ( advanced_opts ) */ {
+				} else if ( strcmp( GRAZ07_DEFAULTS_SWITCH, long_options[option_index].name ) == 0 ) {
 
-					if ( strcmp( BIDIRECT_TIMEOUT_SWITCH, long_options[option_index].name ) == 0 ) {
-
-						set_init_arg( BIDIRECT_TIMEOUT_SWITCH, optarg, MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
-						found_args += 2;
-						break;
-
-					} else if ( strcmp( NBRFSIZE_SWITCH, long_options[option_index].name ) == 0 ) {
-
-						set_init_arg( NBRFSIZE_SWITCH, optarg, MIN_SEQ_RANGE, MAX_SEQ_RANGE, &sequence_range );
-						
-						num_words = ( sequence_range / WORD_BIT_SIZE ) + ( ( sequence_range % WORD_BIT_SIZE > 0)? 1 : 0 );
-
-						found_args += 2;
-						break;
-
-					} else if ( strcmp( GW_CHANGE_HYSTERESIS_SWITCH, long_options[option_index].name ) == 0 ) {
-
-						set_init_arg( GW_CHANGE_HYSTERESIS_SWITCH, optarg, MIN_GW_CHANGE_HYSTERESIS, MAX_GW_CHANGE_HYSTERESIS, &gw_change_hysteresis );
-						
-						found_args += 2;
-						break;
-
-					} else if ( strcmp( GW_TUNNEL_NETW_SWITCH, long_options[option_index].name ) == 0 ) {
-
-						set_gw_network( optarg );
-
-						found_args += 2;
-						break;
-
-					} else if ( strcmp( TTL_SWITCH, long_options[option_index].name ) == 0 ) {
-
-						set_init_arg( TTL_SWITCH, optarg, MIN_TTL, MAX_TTL, &ttl );
-						found_args += 2;
-						break;
-
-					} else if ( strcmp( DUP_TTL_LIMIT_SWITCH, long_options[option_index].name ) == 0 ) {
-
-						set_init_arg( DUP_TTL_LIMIT_SWITCH, optarg, MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT, &dup_ttl_limit );
-						found_args += 2;
-						break;
-					
-					} else if ( strcmp( DUP_RATE_SWITCH, long_options[option_index].name ) == 0 ) {
-
-						set_init_arg( DUP_RATE_SWITCH, optarg, MIN_DUP_RATE, MAX_DUP_RATE, &dup_rate );
-						found_args += 2;
-						break;
-
-					} else if ( strcmp( DUP_DEGRAD_SWITCH, long_options[option_index].name ) == 0 ) {
-
-						set_init_arg( DUP_DEGRAD_SWITCH, optarg, MIN_DUP_DEGRAD, MAX_DUP_DEGRAD, &dup_degrad );
-						found_args += 2;
-						break;
-					
-					} else if ( strcmp( SEND_CLONES_SWITCH, long_options[option_index].name ) == 0 ) {
-
-						set_init_arg( SEND_CLONES_SWITCH, optarg, MIN_SEND_CLONES, MAX_SEND_CLONES, &send_clones );
-						
-//						if( send_clones > DEF_SEND_CLONES )
-//							compat_version = DEF_COMPAT_VERSION + 1;
-
-						found_args += 2;
-						break;
-
-					} else if ( strcmp( ASYMMETRIC_WEIGHT_SWITCH, long_options[option_index].name ) == 0 ) {
-
-						set_init_arg( ASYMMETRIC_WEIGHT_SWITCH, optarg, MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT, &asymmetric_weight );
-						found_args += 2;
-						break;
-
-					} else if ( strcmp( ASYMMETRIC_EXP_SWITCH, long_options[option_index].name ) == 0 ) {
-
-						set_init_arg( ASYMMETRIC_EXP_SWITCH, optarg, MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP, &asymmetric_exp );
-						found_args += 2;
-						break;
-						
-					} else if ( strcmp( REBRC_DELAY_SWITCH, long_options[option_index].name ) == 0 ) {
-
-						set_init_arg( REBRC_DELAY_SWITCH, optarg, MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
-						found_args += 2;
-						break;
-								
-					} else if ( strcmp( PENALTY_MIN_SWITCH, long_options[option_index].name ) == 0 ) {
-
-						set_init_arg( PENALTY_MIN_SWITCH, optarg, MIN_PENALTY_MIN, MAX_PENALTY_MIN, &penalty_min );
-						found_args += 2;
-						break;
-
-					} else if ( strcmp( PENALTY_EXCEED_SWITCH, long_options[option_index].name ) == 0 ) {
-
-						set_init_arg( PENALTY_EXCEED_SWITCH, optarg, MIN_PENALTY_EXCEED, MAX_PENALTY_EXCEED, &penalty_exceed );
-						found_args += 2;
-						break;
-
-					} else if ( strcmp( RT_PRIO_DEFAULT_SWITCH, long_options[option_index].name ) == 0 ) {
-
-						set_init_arg( RT_PRIO_DEFAULT_SWITCH, optarg, MIN_RT_PRIO_DEFAULT, MAX_RT_PRIO_DEFAULT, &rt_prio_default );
-						found_args += 2;
-						break;
-						
-					} else if ( strcmp( BASE_PORT_SWITCH, long_options[option_index].name ) == 0 ) {
-
-						set_init_arg( BASE_PORT_SWITCH, optarg, MIN_BASE_PORT, MAX_BASE_PORT, &base_port );
-						
-						sprintf( unix_path, "%s.%d", DEF_UNIX_PATH, base_port);
-
-						found_args += 2;
-						break;
-					
-					} else if ( strcmp( RT_TABLE_OFFSET_SWITCH, long_options[option_index].name ) == 0 ) {
-
-						set_init_arg( RT_TABLE_OFFSET_SWITCH, optarg, MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset );
-						
-						found_args += 2;
-						break;
-						
-/*	this is just a template:
-					} else if ( strcmp( _SWITCH, long_options[option_index].name ) == 0 ) {
-
-						set_init_arg( _SWITCH, optarg, MIN_, MAX_, & );
-						found_args += 2;
-						break;
-*/											
-					} else if ( strcmp( ASOCIAL_SWITCH, long_options[option_index].name ) == 0 ) {
-
-						printf ("Long option: %s \n", long_options[option_index].name);
-						errno = 0;
-						mobile_device = YES;
-						found_args += 1;
-						break;
-
-					} else if ( strcmp( NO_UNREACHABLE_RULE_SWITCH, long_options[option_index].name ) == 0 ) {
-
-						printf ("Long option: %s \n", long_options[option_index].name);
-						errno = 0;
-						no_unreachable_rule = YES;
-						found_args += 1;
-						break;
-					
-					} else if ( strcmp( NO_TUNPERSIST_SWITCH, long_options[option_index].name ) == 0 ) {
-
-						printf ("Long option: %s \n", long_options[option_index].name);
-						errno = 0;
-						no_tun_persist = YES;
-						found_args += 1;
-						break;
-					
-					} else if ( strcmp( NO_PRIO_RULES_SWITCH, long_options[option_index].name ) == 0 ) {
-
-						printf ("Long option: %s \n", long_options[option_index].name);
-						errno = 0;
-						no_prio_rules = YES;
-						found_args += 1;
-						break;
-
-					} else if ( strcmp( NO_THROW_RULES_SWITCH, long_options[option_index].name ) == 0 ) {
-
-						printf ("Long option: %s \n", long_options[option_index].name);
-						errno = 0;
-						no_throw_rules = YES;
-						found_args += 1;
-						break;
-
-					} else if ( strcmp( NO_UNRESP_CHECK_SWITCH, long_options[option_index].name ) == 0 ) {
-
-						printf ("Long option: %s \n", long_options[option_index].name);
-						errno = 0;
-						no_unresponsive_check = YES;
-						found_args += 1;
-						break;
-						
-					} else if ( strcmp( RESIST_BLOCKED_SEND_SWITCH, long_options[option_index].name ) == 0 ) {
-
-						printf ("Long option: %s \n", long_options[option_index].name);
-						errno = 0;
-						resist_blocked_send = YES;
-						found_args += 1;
-						break;
-								
-/* this is just a template:
-					} else if ( strcmp( _SWITCH, long_options[option_index].name ) == 0 ) {
-
-						errno = 0;
-						= YES;
-						found_args += 1;
-						break;
-*/					
-					
-					} else if ( strcmp( BMX_DEFAULTS_SWITCH, long_options[option_index].name ) == 0 ) {
-
-						printf ("Applying %s ! \nThis parametrization expects the first given interface argument to be a wireless interface !\n", long_options[option_index].name);
-						
-						errno = 0;
-						
-						if ( bmx_para_set == DEF_BMX_PARA_SET || bmx_para_set == PARA_SET_BMX )
-							bmx_para_set = PARA_SET_BMX;
-							//set_init_arg( BMX_DEFAULTS_SWITCH, "PARA_SET_BMX", MIN_BMX_PARA_SET, MAX_BMX_PARA_SET, &bmx_para_set );
-						else {
-							printf( "Error - Default parametrization set can only be specified once !\n" );
-							exit(EXIT_FAILURE);
-						}
-								
-						
-						originator_interval = 1500;
-						printf ("Short option: o with argument: %d \n", originator_interval );
-						
-//						set_init_arg( BASE_PORT_SWITCH, "4305", MIN_BASE_PORT, MAX_BASE_PORT, &base_port );
-//						sprintf( unix_path, "%s.%d", DEF_UNIX_PATH, base_port);
-						
-						set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "20", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
-						
-						set_init_arg( NBRFSIZE_SWITCH, "100", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &sequence_range );
-						num_words = ( sequence_range / WORD_BIT_SIZE ) + ( ( sequence_range % WORD_BIT_SIZE > 0)? 1 : 0 );
-						
-						set_init_arg( GW_CHANGE_HYSTERESIS_SWITCH, "2", MIN_GW_CHANGE_HYSTERESIS, MAX_GW_CHANGE_HYSTERESIS, &gw_change_hysteresis ); 
-						
-						set_init_arg( DUP_TTL_LIMIT_SWITCH, "2", MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT, &dup_ttl_limit );
-						
-						set_init_arg( DUP_RATE_SWITCH, "100", MIN_DUP_RATE, MAX_DUP_RATE, &dup_rate );
-						
-						set_init_arg( DUP_DEGRAD_SWITCH, "2", MIN_DUP_DEGRAD, MAX_DUP_DEGRAD, &dup_degrad );
-						
-						set_init_arg( SEND_CLONES_SWITCH, "200", MIN_SEND_CLONES, MAX_SEND_CLONES, &send_clones );
-//						compat_version = DEF_COMPAT_VERSION + 1;
-						
-						set_init_arg( ASYMMETRIC_WEIGHT_SWITCH, "100", MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT, &asymmetric_weight );
-						
-						set_init_arg( ASYMMETRIC_EXP_SWITCH, "1", MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP, &asymmetric_exp );
-						
-						set_init_arg( REBRC_DELAY_SWITCH, "35", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
-						
-						found_args += 1;
-						break;
-
-
-					} else if ( strcmp( GRAZ07_DEFAULTS_SWITCH, long_options[option_index].name ) == 0 ) {
-
-						printf ("Applying %s ! \nThis parametrization expects the first given interface argument to be a wireless interface !\n", long_options[option_index].name);
-						printf ("Parametrization based on experience gained from the Wireless Community Weekend in Graz 2007!\n");
-						errno = 0;
-						
-						if ( bmx_para_set == DEF_BMX_PARA_SET || bmx_para_set == PARA_SET_GRAZ07 )
-							bmx_para_set = PARA_SET_GRAZ07;
-						else {
-							printf( "Error - Default parametrization set can only be specified once !\n" );
-							exit(EXIT_FAILURE);
-						}
-						
-						originator_interval = 1500;
-						printf ("Short option: o with argument: %d \n", originator_interval );
-						
-						set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "20", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
-						
-						set_init_arg( NBRFSIZE_SWITCH, "100", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &sequence_range );
-						num_words = ( sequence_range / WORD_BIT_SIZE ) + ( ( sequence_range % WORD_BIT_SIZE > 0)? 1 : 0 );
-						
-						set_init_arg( DUP_TTL_LIMIT_SWITCH, "2", MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT, &dup_ttl_limit );
-						
-						set_init_arg( DUP_RATE_SWITCH, "100", MIN_DUP_RATE, MAX_DUP_RATE, &dup_rate );
-						
-						set_init_arg( DUP_DEGRAD_SWITCH, "2", MIN_DUP_DEGRAD, MAX_DUP_DEGRAD, &dup_degrad );
-						
-						set_init_arg( SEND_CLONES_SWITCH, "200", MIN_SEND_CLONES, MAX_SEND_CLONES, &send_clones );
-//						compat_version = DEF_COMPAT_VERSION + 1;
-						
-						set_init_arg( ASYMMETRIC_WEIGHT_SWITCH, "100", MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT, &asymmetric_weight );
-						
-						set_init_arg( ASYMMETRIC_EXP_SWITCH, "1", MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP, &asymmetric_exp );
-						
-						set_init_arg( REBRC_DELAY_SWITCH, "35", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
-						
-						found_args += 1;
-						break;
-					
+					printf ("Applying %s ! \nThis parametrization expects the first given interface argument to be a wireless interface !\n", long_options[option_index].name);
+					printf ("Parametrization based on experience gained from the Wireless Community Weekend in Graz 2007!\n");
+					errno = 0;
+	
+					if ( found_args == 1 /*default_para_set == DEF_BMX_PARA_SET || default_para_set == PARA_SET_GRAZ07*/ ) {
+						default_para_set = PARA_SET_GRAZ07;
+					} else {
+						printf( "Error - Parametrization set can only be specified once !\n" );
+						exit(EXIT_FAILURE);
 					}
+	
+					originator_interval = 1500;
+					printf ("Short option: o with argument: %d \n", originator_interval );
+	
+					set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "20", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
+	
+					set_init_arg( NBRFSIZE_SWITCH, "100", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &sequence_range );
+					num_words = ( sequence_range / WORD_BIT_SIZE ) + ( ( sequence_range % WORD_BIT_SIZE > 0)? 1 : 0 );
+	
+					set_init_arg( DUP_TTL_LIMIT_SWITCH, "2", MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT, &dup_ttl_limit );
+	
+					set_init_arg( DUP_RATE_SWITCH, "99", MIN_DUP_RATE, MAX_DUP_RATE, &dup_rate );
+	
+					set_init_arg( DUP_DEGRAD_SWITCH, "2", MIN_DUP_DEGRAD, MAX_DUP_DEGRAD, &dup_degrad );
+	
+					set_init_arg( SEND_CLONES_SWITCH, "200", MIN_SEND_CLONES, MAX_SEND_CLONES, &send_clones );
+					//compat_version = DEF_COMPAT_VERSION + 1;
+					
+					set_init_arg( ASYMMETRIC_WEIGHT_SWITCH, "100", MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT, &asymmetric_weight );
+	
+					set_init_arg( ASYMMETRIC_EXP_SWITCH, "1", MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP, &asymmetric_exp );
+	
+					set_init_arg( REBRC_DELAY_SWITCH, "35", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
+	
+					found_args += 1;
+					break;
+
+				} else if ( strcmp( BIDIRECT_TIMEOUT_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					set_init_arg( BIDIRECT_TIMEOUT_SWITCH, optarg, MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
+					found_args += 2;
+					break;
+
+				} else if ( strcmp( NBRFSIZE_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					set_init_arg( NBRFSIZE_SWITCH, optarg, MIN_SEQ_RANGE, MAX_SEQ_RANGE, &sequence_range );
+					
+					num_words = ( sequence_range / WORD_BIT_SIZE ) + ( ( sequence_range % WORD_BIT_SIZE > 0)? 1 : 0 );
+
+					found_args += 2;
+					break;
+
+				} else if ( strcmp( GW_CHANGE_HYSTERESIS_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					set_init_arg( GW_CHANGE_HYSTERESIS_SWITCH, optarg, MIN_GW_CHANGE_HYSTERESIS, MAX_GW_CHANGE_HYSTERESIS, &gw_change_hysteresis );
+					
+					found_args += 2;
+					break;
+
+				} else if ( strcmp( GW_TUNNEL_NETW_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					set_gw_network( optarg );
+
+					found_args += 2;
+					break;
+
+				} else if ( strcmp( TTL_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					set_init_arg( TTL_SWITCH, optarg, MIN_TTL, MAX_TTL, &ttl );
+					found_args += 2;
+					break;
+
+				} else if ( strcmp( DUP_TTL_LIMIT_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					set_init_arg( DUP_TTL_LIMIT_SWITCH, optarg, MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT, &dup_ttl_limit );
+					found_args += 2;
+					break;
+				
+				} else if ( strcmp( DUP_RATE_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					set_init_arg( DUP_RATE_SWITCH, optarg, MIN_DUP_RATE, MAX_DUP_RATE, &dup_rate );
+					found_args += 2;
+					break;
+
+				} else if ( strcmp( DUP_DEGRAD_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					set_init_arg( DUP_DEGRAD_SWITCH, optarg, MIN_DUP_DEGRAD, MAX_DUP_DEGRAD, &dup_degrad );
+					found_args += 2;
+					break;
+				
+				} else if ( strcmp( SEND_CLONES_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					set_init_arg( SEND_CLONES_SWITCH, optarg, MIN_SEND_CLONES, MAX_SEND_CLONES, &send_clones );
+					
+					//if( send_clones > DEF_SEND_CLONES )
+					//compat_version = DEF_COMPAT_VERSION + 1;
+
+					found_args += 2;
+					break;
+
+				} else if ( strcmp( ASYMMETRIC_WEIGHT_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					set_init_arg( ASYMMETRIC_WEIGHT_SWITCH, optarg, MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT, &asymmetric_weight );
+					found_args += 2;
+					break;
+
+				} else if ( strcmp( ASYMMETRIC_EXP_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					set_init_arg( ASYMMETRIC_EXP_SWITCH, optarg, MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP, &asymmetric_exp );
+					found_args += 2;
+					break;
+					
+				} else if ( strcmp( REBRC_DELAY_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					set_init_arg( REBRC_DELAY_SWITCH, optarg, MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
+					found_args += 2;
+					break;
+							
+				} else if ( strcmp( PENALTY_MIN_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					set_init_arg( PENALTY_MIN_SWITCH, optarg, MIN_PENALTY_MIN, MAX_PENALTY_MIN, &penalty_min );
+					found_args += 2;
+					break;
+
+				} else if ( strcmp( PENALTY_EXCEED_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					set_init_arg( PENALTY_EXCEED_SWITCH, optarg, MIN_PENALTY_EXCEED, MAX_PENALTY_EXCEED, &penalty_exceed );
+					found_args += 2;
+					break;
+
+				} else if ( strcmp( RT_PRIO_DEFAULT_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					set_init_arg( RT_PRIO_DEFAULT_SWITCH, optarg, MIN_RT_PRIO_DEFAULT, MAX_RT_PRIO_DEFAULT, &rt_prio_default );
+					found_args += 2;
+					break;
+					
+				} else if ( strcmp( BASE_PORT_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					set_init_arg( BASE_PORT_SWITCH, optarg, MIN_BASE_PORT, MAX_BASE_PORT, &base_port );
+					
+					sprintf( unix_path, "%s.%d", DEF_UNIX_PATH, base_port);
+
+					found_args += 2;
+					break;
+				
+				} else if ( strcmp( RT_TABLE_OFFSET_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					set_init_arg( RT_TABLE_OFFSET_SWITCH, optarg, MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset );
+					
+					found_args += 2;
+					break;
+					
+				/*	this is just a template:
+				} else if ( strcmp( _SWITCH, long_options[option_index].name ) == 0 ) {
+
+					set_init_arg( _SWITCH, optarg, MIN_, MAX_, & );
+					found_args += 2;
+					break;
+				*/											
+				} else if ( strcmp( ASOCIAL_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					printf ("Long option: %s \n", long_options[option_index].name);
+					errno = 0;
+					mobile_device = YES;
+					found_args += 1;
+					break;
+
+				} else if ( strcmp( NO_UNREACHABLE_RULE_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					printf ("Long option: %s \n", long_options[option_index].name);
+					errno = 0;
+					no_unreachable_rule = YES;
+					found_args += 1;
+					break;
+				
+				} else if ( strcmp( NO_TUNPERSIST_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					printf ("Long option: %s \n", long_options[option_index].name);
+					errno = 0;
+					no_tun_persist = YES;
+					found_args += 1;
+					break;
+				
+				} else if ( strcmp( NO_PRIO_RULES_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					printf ("Long option: %s \n", long_options[option_index].name);
+					errno = 0;
+					no_prio_rules = YES;
+					found_args += 1;
+					break;
+
+				} else if ( strcmp( NO_THROW_RULES_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					printf ("Long option: %s \n", long_options[option_index].name);
+					errno = 0;
+					no_throw_rules = YES;
+					found_args += 1;
+					break;
+
+				} else if ( strcmp( NO_UNRESP_CHECK_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					printf ("Long option: %s \n", long_options[option_index].name);
+					errno = 0;
+					no_unresponsive_check = YES;
+					found_args += 1;
+					break;
+					
+				} else if ( strcmp( RESIST_BLOCKED_SEND_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					printf ("Long option: %s \n", long_options[option_index].name);
+					errno = 0;
+					resist_blocked_send = YES;
+					found_args += 1;
+					break;
+							
+				/* this is just a template:
+				} else if ( strcmp( _SWITCH, long_options[option_index].name ) == 0 ) {
+
+					errno = 0;
+					= YES;
+					found_args += 1;
+					break;
+				*/	
+				
+//				}
 
 				}
 
@@ -600,10 +636,12 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			case 'b':
 				batch_mode++;
+				found_args += 1;
 				break;
 
 			case 'c':
 				unix_client++;
+				found_args += 1;
 				break;
 
 			case 'd':
@@ -743,14 +781,14 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			case 'v':
 
-				printf( "B.A.T.M.A.N. %s%s (compatibility version %i)\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
+				printf( "BatMan-eXperimental %s%s (compatibility version %i)\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
 				exit(EXIT_SUCCESS);
 
 			case 'V':
 
 				print_animation();
 
-				printf( "\x1B[0;0HB.A.T.M.A.N. %s%s (compatibility version %i)\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
+				printf( "\x1B[0;0HBatMan-eXperimental %s%s (compatibility version %i)\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
 				printf( "\x1B[9;0H \t May the bat guide your path ...\n\n\n" );
 
 				exit(EXIT_SUCCESS);
@@ -801,9 +839,9 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		if ( argc <= found_args ) {
 
-			fprintf( stderr, "Error - no interface specified\n" );
+			fprintf( stderr, "\nError - no interface specified !\n\n" );
 			usage();
-			restore_defaults();
+//			restore_defaults();
 			exit(EXIT_FAILURE);
 
 		}
@@ -875,7 +913,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			printf( "Using interface %s with address %s and broadcast address %s\n", batman_if->dev, str1, str2 );
 
-			if( bmx_para_set == PARA_SET_BMX ) {
+			if( default_para_set == PARA_SET_BMX ) {
 				
 				if ( batman_if->if_num > 0 ) {
 					
@@ -897,7 +935,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 				}
 					
-			} else if( bmx_para_set == PARA_SET_GRAZ07 ) {
+			} else if( default_para_set == PARA_SET_GRAZ07 ) {
 				
 				if ( batman_if->if_num > 0 ) {
 					
@@ -1069,7 +1107,7 @@ void apply_init_args( int argc, char *argv[] ) {
 			openlog( "batmand", LOG_PID, LOG_DAEMON );
 
 		} else {
-			printf( "B.A.T.M.A.N. %s%s (compatibility version %i)\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
+			printf( "BatMan-eXperimental %s%s (compatibility version %i)\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
 
 			debug_clients.clients_num[ debug_level - 1 ]++;
 			debug_level_info = debugMalloc( sizeof(struct debug_level_info), 205 );

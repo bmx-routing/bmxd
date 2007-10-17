@@ -790,7 +790,7 @@ void debug_orig() {
 
 		debug_output( 1, "BOD \n" );
 		
-		debug_output( 1, "B.A.T.M.A.N. %s%s, MainIF/IP: %s %s, WindSize: %i, BLT: %i, OGI: %i, UT: %id%2ih%2im \n",
+		debug_output( 1, "BatMan-eXperimental %s%s, IF: %s %s, WindSize: %i, BLT: %i, OGI: %i, UT: %id%2ih%2im \n",
 			SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), 
 			((struct batman_if *)if_list.next)->dev, orig_str, sequence_range, bidirect_link_to, originator_interval,
 			uptime_sec/86400, ((uptime_sec%86400)/3600), ((uptime_sec)%3600)/60  );

@@ -152,7 +152,9 @@ http://downloads.open-mesh.net/batman/development/ .
 
 %\item The port numbers used by batmand have recently changed. The new base-port is 4305. Port 4306 is used for GW-traffic and port 4307 is used for the visualization server. If you have a firewall you have to open these ports.
 
-\item Executing batmand-experimental with exactly the same parameters as used for batmand-0.2 causes exactly the same behavior. 
+\item Executing batmand-experimental with the same parameters as used for batmand-0.2 results (except for the path detection algorithm) in the same behavior. 
+%
+Starting it with the \emph{--generation-III} directive enables even the same path detection algorithm as implemented in batmand-0.2
 %
 %Using batmand-experimental with the \begin{small} \begin{verbatim} --force-compatibility-version 2 \end{verbatim} \end{small} switch does even enable interoperability between the different branches.
 %
@@ -187,7 +189,7 @@ Section \ref{sec:debug-levels} to \ref{system-adaption} then continues with the 
 And Section \ref{sec:proposed-parametrizations} summarizes some promising parametrization sets of batmand-experimental. You are welcome to commit your favorite parametrization set here.
 % The parametrizations assigned by these sets are based on positive experiments and observations and shall simplify the configuration.
 %
-There is a short tutorial in Section \ref{sec:howto} which briefly summarizes the necessary steps to setup a simple mesh network and to activate, parameterize, and observe the optionally concepts of batmand-experimental. 
+There ara a few tutorial in Section \ref{sec:howto} which briefly summarize the necessary steps to setup a simple mesh network and to activate, parameterize, and observe some of the optionally concepts of batmand-experimental. 
 %
 Finally, Section \ref{sec:acks} reveals the names of the people that are investigating so much of their time in the development of the B.A.T.M.A.N. routing protocol.
 
@@ -414,7 +416,7 @@ In batmand-experimental other mechanisms exist to identify and to counteract on 
 \end{verbatim}
 \end{small}
 
-\paragraph{Background:} Batman-0.2 selects the best neighbor towards a distant node by counting the number of "recent" OGMs received via each neighbor. The window-size parameter specifies the range of sequence numbers that fall into this "recent" category. As an example, if the window-size has been configured to 10 and the latest OGM received from a distant node has a sequence number of 100, then all previously received OGMs with a sequencenumber between 91 and 100 would be considered for the best-neighbor ranking.
+\paragraph{Background:} Batmand-0.2 selects the best neighbor towards a distant node by counting the number of "recent" OGMs received via each neighbor. The window-size parameter specifies the range of sequence numbers that fall into this "recent" category. As an example, if the window-size has been configured to 10 and the latest OGM received from a distant node has a sequence number of 100, then all previously received OGMs with a sequencenumber between 91 and 100 would be considered for the best-neighbor ranking.
 
 As a consequence, a mesh with each node configured with a window-size of 10 will converge very fast because all routing decisions made by the algorithm are based on only the latest 10 sequence numbers. The negative side effect is, that temporary variations in packet loss have a quite huge impact on the path detection. The more measurement samples are considered by a statistic, the more reliable it becomes (in mathematical terms this can be expressed with the confidence interval). Measurement showed that for semi static mesh networks a large window-size (e.g. 128) results in much better performance and much less needless route changes.
 
@@ -950,7 +952,9 @@ Therefore, the following system attributes should be decoupled.
 
  \item The routing-priority rules used for assigning dedicated routing tables to selected address ranges. A corresponding parameter is described below.
 
- \item Optionally, to simplify monitoring of cpu-load and memory-consumption, the binary name of the daemons should be different. Achievable by renaming the corresponding binary file to an new name before executing it.
+ \item The tunnel IP-address ranges used to tunnel internet traffic between the internet-GW and client nodes. A corresponding parameter is described below.
+
+ \item Optionally, to simplify monitoring of cpu-load and memory-consumption, the binary name of the daemons should be different. Achievable by copying the corresponding binary file to an new name before executing it.
 
 \end{itemize}
 %
@@ -980,12 +984,13 @@ Whenever applying the \emph{--base-port} parameter during the execution of the m
 root@ng1e:~# ln -s /usr/sbin/batmand /usr/sbin/bmxd
 root@ng1e:~# bmxd --base-port 24305 --rt-table-offset 77 --prio-rules-offset 26600 ath0:bmx
 WARNING: You are using the experimental batman branch!
+...
 Long option: base-port with argument: 24305
 Long option: rt-table-offset with argument: 77
 Long option: prio-rules-offset with argument: 26600
 Using interface ath0:bmx with address 103.130.30.201 and broadcast address 103.255.255.255
 root@ng1e:~#
-root@ng1e:~# bmxd --base-port 24305 -c -d 1 -b
+root@ng1e:~# bmxd -c --base-port 24305 -d 1 -b
 WARNING: You are using the experimental batman branch!
 Long option: base-port with argument: 24305
 B.A.T.M.A.N. 0.3-exp rv687, MainIF/IP: ath0:bmx 103.130.30.201, WindSize: 128, BLT: 2, OGI: 1000, UT: 0d 0h 2m
@@ -1007,6 +1012,18 @@ The following switches can be used to change the default routing tables and the 
        --prio-rules-offset <value> : set base ip-rules priority used by batmand.
           default: 6600, allowed values: 3 <= value <= 32765
 \end{verbatim} \end{small}
+
+
+\subsubsection{Customizing the tunnel IP-address ranges}
+
+The following switch can be used to change the default IP-address range used for establishing tunnels between internet-GW and client nodes. 
+
+\begin{small} \begin{verbatim}
+       --gw-tunnel-network <ip-address/netmask> : set tunnel IP-address range leased out by GW nodes.
+\end{verbatim} \end{small}
+
+
+
 
 \subsection{Reconfiguring network integration}
 
@@ -1032,8 +1049,7 @@ For example, a node with three interfaces may be configured to send OGMs with a 
 This way, the node is still reachable via the IP of it's first interface. 
 But it does not burden the nodes beyond its neighbor horizon with the efforts of maintaining and re-broadcasting OGMs from it's second and third interface.
 
-One side effect of the one-TTL OGMs is that traffic generated on these nodes may leave the node with the source address
-of such a secondary interface. 
+One side effect of the one-TTL OGMs is that packets generated on these nodes may leave the node with a source address of such a secondary interface. 
 %which is not known beyond the neighbor horizon of the node.
 %
 This has the consequence that non-neighboring nodes could not reply to this source address, simply because the OGMs for this source address have never been propagated that fare.
@@ -1058,9 +1074,9 @@ The following parameters can be used to reduce the TTL of OGMs representing spec
           reduces the TTL for OGMs representing this interface to 1 and
           broadcasts the OGMs representing this interface only via this interface
 \end{verbatim} \end{small}
-
-
-Especially for (back-bone) nodes, which are not supposed to generate pay-load traffic itself and which were only installed to improve the connectivity and coverage of the mesh by relaying other nodes traffic, the possibility of using a small TTL for all their OGMs comes with the following advantages.
+ 
+A small TTL for all self-initiated OGMs has some additional advantages for back-bone nodes. Nodes, which are not supposed to generate pay-load traffic itself and which were only installed to improve the connectivity and coverage of the mesh by relaying other nodes traffic.
+%
 Firstly, the topology and even the existence of the back-bone nodes could be completely hidden beyond their local neighbor horizon and secondly, the number of back-bone nodes (and resulting coverage) can be increased to any size with virtually no side affects to the overall traffic and processing cost.
 
 
@@ -1091,15 +1107,15 @@ Firstly, the topology and even the existence of the back-bone nodes could be com
 Batmand-experimental implements a number of proconfigured parametrization sets.
 These parametrization sets have been gained from (subjectively) successfull experiments and deployments.
 The parameters applied by a specific set can be overwitten by subsequent parameters.
-
 The parametrization applied by a specific set is always revealed during startup sequence.
+If none of the available parametrization sets is specified explicitly, the default behavior of the daemon will conform to the \emph{--bmx-defaults} switch. 
 
 \subsection{The --bmx-defaults switch}
 \label{sec:bmx-defaults}
 
-The \emph{--bmx-defaults} switch is supposed to always enable the latest and most promising mechanisms that
-are available in the current implementation. 
-Therefore, configured parameters and values will change with future code versions.
+The \emph{--bmx-defaults} switch is supposed to always enable the latest and most promising mechanisms that are available in the current implementation. 
+%
+Therefore, configured parameters and values may change with future code versions.
 
 When writing this document, this directive assigned the same parameters as described in Section \ref{sec:graz-2007-parameters}.
 
@@ -1121,7 +1137,6 @@ A short summary about the gained experience is given in Section \ref{sec:graz-20
 Some further informations about the experiment (including a topology snaphot and some smoke-ping based performance measurements) are available at \cite{graz-experience}.
 
 
-
 \subsubsection{Assigned parameters and arguments}
 \label{sec:graz-2007-parameters}
 
@@ -1129,7 +1144,7 @@ As described, related parametrizations can be obtained from the daemons initiali
 
 
 \begin{small} \begin{verbatim}
-root@ng2e:~# batmand --bmx-default ath0:bat eth0.0:bat
+root@ng2e:~# batmand --graz-2007 ath0:bat eth0.0:bat
 WARNING: You are using the experimental batman branch!
 Applying graz-2007 !
 This parametrization expects the first given interface argument to be a wireless interface !
@@ -1315,6 +1330,10 @@ batmand-exp --graz-2007	& 123.66 &  18.00 &  12.04 & 114.58 & 365.72 & 188.09 & 
 \end{center}
 \end{table}%[htb]
 
+\subsection{The --generation-III switch}
+\label{sec:generation-III}
+
+This switch configures the behavior known from B.A.T.M.A.N generation III as implemented in batmand-0.2. 
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1382,15 +1401,15 @@ root@ng1e:~#
 %
 \begin{tiny}  \begin{verbatim}
 root@ng1e:~# ipkg install kmod-tun libpthread freifunk-openwrt-compat
-root@ng1e:~# ipkg install http://downloads.open-mesh.net/batman/development/wrt-freifunk/batmand-exp_0.3-exp-current_mipsel-wr-elf-32-lsb-dynamic.ipk
+root@ng1e:~# ipkg install http://downloads.open-mesh.net/batman/development/wrt-freifunk/batmand-exp_*-current_mipsel-wr-elf-32-lsb-dynamic.ipk
 root@ng1e:~# modprobe kmod-tun
 \end{verbatim} \end{tiny} 
 
 \item For a i386-based system pre-compiled binaries can be downloaded and installed at /usr/sbin/batmand with:
 \begin{tiny}  \begin{verbatim}
-root@ng1e:~# wget http://downloads.open-mesh.net/batman/development/i386/batmand-exp_0.3-exp-current_i386-gc-elf-32-lsb-static.tgz
-root@ng1e:~# tar xvzf batmand-exp_0.3-exp-current_i386-gc-elf-32-lsb-static.tgz
-root@ng1e:~# mv batmand-exp_0.3-exp-*_i386-gc-elf-32-lsb-static /usr/sbin/batmand
+root@ng1e:~# wget http://downloads.open-mesh.net/batman/development/i386/batmand-exp_*-current_i386-gc-elf-32-lsb-static.tgz
+root@ng1e:~# tar xvzf batmand-exp_*-current_i386-gc-elf-32-lsb-static.tgz
+root@ng1e:~# mv batmand-exp_*_i386-gc-elf-32-lsb-static /usr/sbin/batmand
 \end{verbatim} \end{tiny} 
 
 \item If you have a firewall it must be opened respectively. The easiest way to do so is to accept all IP packets with the example netmask of 10.10.0.0/16:
@@ -1442,11 +1461,12 @@ round-trip min/avg/max = 2.2/3.6/5.1 ms
 root@ng1e:~# 
 \end{verbatim} \end{small}
 
-\item Now everything is ready to start batmand. Simply execute the daemon on both nodes with the name of the configured wlan interface as its only parameter. The output on node B will show somethink like:
+\item Now everything is ready to start batmand. Simply execute the daemon on both nodes with the \emph{--generation-III} directive and the name of the configured wlan interface as its only parameter. The output on node B will show somethink like:
 
 \begin{small} \begin{verbatim}
-root@ng2e:~# batmand ath0:bat
+root@ng2e:~# batmand --generation-III ath0:bat
 WARNING: You are using the experimental batman branch!
+...
 Using interface ath0:bat with address 10.10.0.2 and broadcast address 10.10.255.255
 root@ng2e:~#
 \end{verbatim} \end{small}
@@ -1521,8 +1541,9 @@ Be aware, that now node A and B have two batman interfaces (the lan and the wlan
 On node B the procedure will look like this:
 
 \begin{small} \begin{verbatim}
-root@ng2e:~# batmand ath0:bat eth0:bat
+root@ng2e:~# batmand --generation-III ath0:bat eth0:bat
 WARNING: You are using the experimental batman branch!
+...
 Using interface ath0:bat with address 10.10.0.2 and broadcast address 10.10.255.255
 Using interface eth0:bat with address 10.10.1.2 and broadcast address 10.10.255.255
 
@@ -1600,15 +1621,15 @@ root@ng1e:~#
 
 \end{verbatim} \end{small}
 
-The parametrization applied with the \emph{--bmx-defaults} switch is described in Secion \ref{sec:bmx-defaults}. 
+The parametrization applied with the \emph{--bmx-defaults} switch is described in Secion \ref{sec:bmx-defaults}. In newer versions, this switch can also be omitted because it is the default parametrization of batmand-experimental.
 One of the activated features is that all non-primary interfaces do not announce their existence beyond their local neighbor horizon. 
-Instead the IP address of secondary and further interfaces are announced by host-network announcement (HNA) messages. 
+Instead, the IP address of secondary and further interfaces are announced by host-network announcement (HNA) messages. 
 The HNA messages are conveyed with the OGMs of the primary interface. 
 This reduces the protocol-traffic overhead and the CPU load of the daemon.
 %
-Compared to the debug-level-one output before killing batmand, the output now does not show the originator IP of 10.10.1.2 anymore. This is because related OGMs are propagated beyond the direct-link neighborhood of node Bs secondary interface and Node A is not connected to that link. Nonetheless, node Bs secondary interface IP is still reachable because it has been announced using HNA messages. Thereby, node A has learned that all packets for 10.10.1.2 must be forwarded towards the IP of node Bs primary interface.
+Compared to the debug-level-one output before killing batmand, the output now does not show the originator IP of 10.10.1.2 anymore. This is because related OGMs are not propagated beyond the direct-link neighborhood of node Bs secondary interface and Node A is not connected to that link. Nonetheless, node Bs secondary interface IP is still reachable because it has been announced using HNA messages. Thereby, node A has learned that all packets for 10.10.1.2 must be forwarded towards the IP of node Bs primary interface.
 %
-Therefore batman uses the routing table 65 (which has been unused in previous examples)
+Therefore, batman uses the routing table 65 (which has been unused in previous examples).
 
 \begin{small} \begin{verbatim}
 root@ng1e:~# ip route list table 65
@@ -1789,7 +1810,7 @@ root@ng3e:~#
 
 For node C, the wireless interface must be configured for accessing the mesh network.
 %
-There need to be a second network address translation (NAT) on the tunnel interface of the client nodes because the GW node, at the other end of the tunnel, does not know anything about the IP addresses leased to the dhcp-clients (the ordinary computers) of node C. 
+There need to be a second network address translation (NAT) on the tunnel interface of the client nodes because the GW node, at the other end of the tunnel, does not know anything about the IP addresses leased out to the dhcp-clients (the ordinary computers) of node C. 
 
 Optionally you may do SNAT on the batman interfaces to allow the ordinary-dhcp clients to access the nodes in the mesh.\footnote{Then the -o, -s, -d, and --to arguments must be customized for each node and interface. If batmand is running on several interfaces you need one SNAT rule per interface.}.
 
@@ -1926,7 +1947,7 @@ Wesley Tsai (wesleyboy-at-gmail.com)
 \bibitem{wesley-batmand-manpage} 
 {Wesley Tsai},
 {\it BATMAND manpage},\\
-{http://downloads.open-mesh.net/batman/development/sources/batmand\_0.3-beta-current\_sources/man/batmand.8.html}
+{http://downloads.open-mesh.net/batman/development/sources/batmand\_*-current\_sources/man/batmand.8.html}
 
 \bibitem{svn-batmand-install} 
 {batmand subversion repository},\\
@@ -1934,7 +1955,7 @@ Wesley Tsai (wesleyboy-at-gmail.com)
 
 \bibitem{bmx-source-url}
 {batmand-experimental download URL},\\
-{http://downloads.open-mesh.net/batman/development/sources/batmand-exp\_0.3-exp-current\_sources.tgz}
+{http://downloads.open-mesh.net/batman/development/sources/batmand-exp\_*-current\_sources.tgz}
 
 
 \bibitem{batman-status-report} 

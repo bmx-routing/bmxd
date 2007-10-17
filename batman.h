@@ -37,7 +37,7 @@
 
 
 
-#define SOURCE_VERSION "0.3-exp" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
+#define SOURCE_VERSION "0.3-alpha" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
 
 #define COMPAT_VERSION 5
 
@@ -193,9 +193,9 @@ extern int32_t penalty_exceed;
 #define MAX_PENALTY_EXCEED 10
 #define PENALTY_EXCEED_SWITCH    "penalty-exceed"
 
-extern int8_t advanced_opts;
+//extern int8_t advanced_opts;
 #define ADVANCED_SWITCH          "dangerous"
-#define DEF_ADVANCED_SWITCH NO;
+//#define DEF_ADVANCED_SWITCH NO;
 
 extern int8_t resist_blocked_send;
 #define RESIST_BLOCKED_SEND_SWITCH "resist-blocked-send"
@@ -208,13 +208,13 @@ extern int8_t resist_blocked_send;
 #define GRAZ07_DEFAULTS_SWITCH   "graz-2007"
 
 //#define MIN_BMX_PARA_SET   0
-#define PARA_SET_BATIII    1
+#define PARA_SET_GENIII    1
 #define PARA_SET_BMX       2
 #define PARA_SET_GRAZ07    3
 //#define MAX_BMX_PARA_SET   3
 
-extern int32_t bmx_para_set;
-#define DEF_BMX_PARA_SET PARA_SET_BATIII
+extern int32_t default_para_set;
+#define DEF_BMX_PARA_SET PARA_SET_BMX
 
 #define OGM_ONLY_VIA_OWNING_IF_SWITCH 'i'
 #define MAKE_IP_HNA_IF_SWITCH 'a'
@@ -479,6 +479,7 @@ struct curr_gw_data {
 int8_t batman( void );
 void usage( void );
 void verbose_usage( void );
+void print_advanced_opts ( int verbose );
 int is_batman_if( char *dev, struct batman_if **batman_if );
 void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, unsigned char *hna_recv_buff, int16_t hna_buff_len );
 void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags );

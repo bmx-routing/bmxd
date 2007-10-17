@@ -74,7 +74,7 @@ uint8_t routing_class = 0;
 
 int16_t originator_interval = DEFAULT_ORIGINATOR_INTERVAL;   /* orginator message interval in miliseconds */
 
-int8_t advanced_opts = DEF_ADVANCED_SWITCH;
+//int8_t advanced_opts = DEF_ADVANCED_SWITCH;
 
 int8_t resist_blocked_send = DEF_RESIST_BLOCKED_SEND;
 
@@ -103,8 +103,7 @@ int32_t asymmetric_exp = DEF_ASYMMETRIC_EXP;
 
 int32_t rebrc_delay = DEF_REBRC_DELAY;
 
-//int8_t bmx_defaults = DEF_BMX_DEFAULTS;
-int32_t bmx_para_set =  DEF_BMX_PARA_SET;
+int32_t default_para_set =  DEF_BMX_PARA_SET;
 
 
 int32_t penalty_min = DEF_PENALTY_MIN;
@@ -163,7 +162,8 @@ uint16_t vis_packet_size = 0;
 
 void print_advanced_opts ( int verbose ) {
 	
-	fprintf( stderr, "\n\n advanced and dangerous options (better do not touch):\n" );
+	fprintf( stderr, "\n\n Advanced and dangerous options (better do not touch):\n" );
+	fprintf( stderr, "\n For more background informations see: http://open-mesh.net/batman/doc/BMX/\n" );
 	
 	fprintf( stderr, "\n       --%s : does not set the unreachable rule for host routes.\n", NO_UNREACHABLE_RULE_SWITCH );
 	
@@ -193,6 +193,10 @@ void print_advanced_opts ( int verbose ) {
 	fprintf( stderr, "\n       --%s <value> : set base ip-rules priority used by batmand.\n", RT_PRIO_DEFAULT_SWITCH );
 	if ( verbose )
 		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_RT_PRIO_DEFAULT, MIN_RT_PRIO_DEFAULT, MAX_RT_PRIO_DEFAULT  );
+	
+	
+	fprintf( stderr, "\n       --%s <ip-address/netmask> : set tunnel IP-address range leased out by GW nodes.\n", GW_TUNNEL_NETW_SWITCH );
+	
 	
 	fprintf( stderr, "\n       --%s <value> : change default TTL of originator packets.\n", TTL_SWITCH );
 	fprintf( stderr, "        /%c <value> : attached after an interface name\n", TTL_IF_SWITCH );
@@ -287,14 +291,12 @@ void usage( void ) {
 	fprintf( stderr, "       -s visualization server\n" );
 	fprintf( stderr, "       -v print version\n\n" );
 	
-	fprintf( stderr, "       --%s : parametrize the routing-algorithm to the best of bmx knowledge!\n", BMX_DEFAULTS_SWITCH );
-	fprintf( stderr, "       --%s : parametrize the routing-algorithm according to the WCW Graz 2007 experiments!\n\n", GRAZ07_DEFAULTS_SWITCH );
+	fprintf( stderr, "       --%s : parametrize the routing algorithm to the best of BMX knowledge! DEFAULT !\n", BMX_DEFAULTS_SWITCH );
+	fprintf( stderr, "       --%s : parametrize the routing algorithm according to the WCW Graz 2007 experiments!\n", GRAZ07_DEFAULTS_SWITCH );
+	fprintf( stderr, "       --%s : parametrize the routing algorithm according to B.A.T.M.A.N generation III (as implemented in batmand-0.2)!\n\n", GENIII_DEFAULTS_SWITCH );
 	
-	fprintf( stderr, "       --dangerous -h : show additional but dangerous options \n" );
-	fprintf( stderr, "       --dangerous -H : show additional but dangerous verbose options \n" );
+	fprintf( stderr, "       --dangerous : show advanced and dangerous options \n" );
 
-	if( advanced_opts )
-		print_advanced_opts ( NO );
 
 }
 
@@ -339,16 +341,15 @@ void verbose_usage( void ) {
 	fprintf( stderr, "                           2 -> use stable internet connection (packet count)\n" );
 	fprintf( stderr, "                           3 -> use fast-switch internet connection (packet count but change as soon as a better gateway appears)\n\n" );
 	fprintf( stderr, "       -s visualization server\n" );
-	fprintf( stderr, "          default: none, allowed values: IP\n\n" );
-	fprintf( stderr, "       --%s : parametrize the routing-algorithm to the best of bmx knowledge!\n", BMX_DEFAULTS_SWITCH );
-	fprintf( stderr, "       --%s : parametrize the routing-algorithm according to the WCW Graz 2007 experiments!\n\n", GRAZ07_DEFAULTS_SWITCH );
-	fprintf( stderr, "       -v print version\n" );
-	fprintf( stderr, "\n       --dangerous -H : show addinional but dangerous options \n" );
-
-	if( advanced_opts )
-		print_advanced_opts ( YES );
-
+	fprintf( stderr, "          default: none, allowed values: IP\n" );
+	fprintf( stderr, "       -v print version\n\n" );
 	
+	fprintf( stderr, "       --%s : parametrize the routing algorithm to the best of BMX knowledge! DEFAULT !\n", BMX_DEFAULTS_SWITCH );
+	fprintf( stderr, "       --%s : parametrize the routing algorithm according to the WCW Graz 2007 experiments!\n", GRAZ07_DEFAULTS_SWITCH );
+	fprintf( stderr, "       --%s : parametrize the routing algorithm according to B.A.T.M.A.N generation III (as implemented in batmand-0.2)!\n\n", GENIII_DEFAULTS_SWITCH );
+	
+	fprintf( stderr, "\n       --dangerous : show advanced and dangerous options \n" );
+
 }
 
 
