@@ -94,7 +94,7 @@ int8_t add_dev_tun( struct batman_if *batman_if, uint32_t tun_addr, char *tun_de
 	
 	if ( ( *fd = open( "/dev/net/tun", O_RDWR ) ) < 0 ) {
 
-		debug_output( 0, "Error - can't create tun device (/dev/net/tun): %s\n", strerror(errno) );
+		debug_output( 0, "Error - can't open tun device (/dev/net/tun): %s\n", strerror(errno) );
 		return -1;
 
 	}
@@ -112,8 +112,8 @@ int8_t add_dev_tun( struct batman_if *batman_if, uint32_t tun_addr, char *tun_de
 		
 		if ( ( ioctl( *fd, TUNSETIFF, (void *) &ifr_tun ) ) < 0 ) {
 	
-			debug_output( 0, "Error - can't create tun device (TUNSETIFF): %s\n", strerror(errno) );
-			
+			debug_output( 0, "busy!\n" );
+	
 		} else {
 			
 			name_tun_success = YES;
@@ -123,6 +123,8 @@ int8_t add_dev_tun( struct batman_if *batman_if, uint32_t tun_addr, char *tun_de
 	}
 	
 	if ( !name_tun_success ) {
+		
+		debug_output( 0, "Error - can't create tun device (TUNSETIFF): %s\n", strerror(errno) );
 		
 		debug_output( 0, "Error - Giving up !\n" );
 		close(*fd);

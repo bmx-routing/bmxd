@@ -50,10 +50,10 @@
 
 #define ONE_MINUTE                60000
 
-#define GW_STATE_UNKNOWN_TIMEOUT  1  * ONE_MINUTE
-#define GW_STATE_VERIFIED_TIMEOUT 5  * ONE_MINUTE
+#define GW_STATE_UNKNOWN_TIMEOUT  (1  * ONE_MINUTE)
+#define GW_STATE_VERIFIED_TIMEOUT (5  * ONE_MINUTE)
 
-#define IP_LEASE_TIMEOUT          20 * ONE_MINUTE
+#define IP_LEASE_TIMEOUT          (20 * ONE_MINUTE)
 
 #define MAX_TUNNEL_IP_REQUESTS 12
 
@@ -242,12 +242,13 @@ void *client_to_gw_tun( void *arg ) {
 	struct udphdr *udphdr;
 	struct tcphdr *tcphdr;
 	struct timeval tv;
-	int32_t res, max_sock, buff_len, udp_sock, tun_fd, tun_ifi, sock_opts, i;
-	uint32_t addr_len, current_time, ip_lease_time = 0, gw_state_time = 0, got_new_ip = 0, my_tun_addr = 0, ignore_packet;
+	int32_t res, max_sock, buff_len, udp_sock, tun_fd, tun_ifi, sock_opts;
+	uint32_t addr_len, current_time, ip_lease_time = 0, gw_state_time = 0, got_new_ip = 0, my_tun_addr = 0;
 	uint32_t last_invalidip_warning = 0;
-	char tun_if[IFNAMSIZ], my_str[ADDR_STR_LEN], gw_str[ADDR_STR_LEN], gw_state = GW_STATE_UNKNOWN;
+	char tun_if[IFNAMSIZ], my_str[ADDR_STR_LEN], gw_str[ADDR_STR_LEN], gw_state = GW_STATE_UNKNOWN, prev_gw_state = GW_STATE_UNKNOWN;
 	unsigned char buff[1501];
 	fd_set wait_sockets, tmp_wait_sockets;
+	uint16_t dns_port = htons( 53 );
 
 
 	addr_len = sizeof (struct sockaddr_in);
@@ -339,9 +340,29 @@ void *client_to_gw_tun( void *arg ) {
 							if ( write( tun_fd, buff + 1, buff_len - 1 ) < 0 )
 								debug_output( 0, "Error - can't write packet: %s\n", strerror(errno) );
 
-							gw_state = GW_STATE_VERIFIED;
-							gw_state_time = current_time;
+							// deactivate unresponsive GW check only based on non-icmp data
+							//14:08:11.528658 IP 169.254.0.1.32770 > 141.1.1.1.53:  4+ A? open-mesh.net. (25)
+							//14:08:14.533070 IP 192.168.2.3 > 169.254.0.1: ICMP host 141.1.1.1 unreachable, length
+							if ( !no_unresponsive_check ) {
+								
+								if( ((struct iphdr *)(buff + 1))->protocol != IPPROTO_ICMP  ) {
+						
+									gw_state = GW_STATE_VERIFIED;
+									gw_state_time = current_time;
+									if( prev_gw_state != gw_state ) 
+										debug_output( 3, "changed GW state: %d, incoming IP protocol: %d\n", prev_gw_state = gw_state, ((struct iphdr *)(buff + 1))->protocol );
+									
+								}
 
+							} else {
+							
+								gw_state = GW_STATE_VERIFIED;
+								gw_state_time = current_time;
+								if( prev_gw_state != gw_state ) 
+									debug_output( 3, "changed GW state: %d\n", prev_gw_state = gw_state );
+
+							}
+							
 						/* gateway told us that we have no valid ip */
 						} else if ( buff[0] == TUNNEL_IP_INVALID ) {
 
@@ -460,7 +481,7 @@ void *client_to_gw_tun( void *arg ) {
 							debug_output( 0, "Error - can't send data to gateway: %s\n", strerror(errno) );
 
 
-					} 
+					}
 				}
 
 				if ( errno != EWOULDBLOCK ) {
@@ -470,27 +491,18 @@ void *client_to_gw_tun( void *arg ) {
 
 				}
 
-				if ( ( gw_state == GW_STATE_UNKNOWN ) && ( gw_state_time == 0 ) ) {
-
-					ignore_packet = 0;
-
-					if (((struct iphdr *)(buff + 1))->protocol == IPPROTO_UDP) {
-
-						for (i = 0; i < sizeof(bh_udp_ports)/sizeof(short); i++) {
-
-							if (((struct udphdr *)(buff + 1 + ((struct iphdr *)(buff + 1))->ihl*4))->dest == bh_udp_ports[i]) {
-
-								ignore_packet = 1;
-								break;
-
-							}
-
-						}
-
-					}
-
-					if (!ignore_packet)
+				// activate unresponsive GW check only based on TCP and DNS data
+				if ( ( !no_unresponsive_check && gw_state == GW_STATE_UNKNOWN ) && ( gw_state_time == 0 ) ) {
+					if( ( (((struct iphdr *)(buff + 1))->protocol == IPPROTO_TCP )  || 
+						( (((struct iphdr *)(buff + 1))->protocol == IPPROTO_UDP)  && 
+							(((struct udphdr *)(buff + 1 + ((struct iphdr *)(buff + 1))->ihl*4))->dest == dns_port)  )
+					    ) ) {
+						
 						gw_state_time = current_time;
+						if( prev_gw_state != gw_state ) 
+							debug_output( 3, "changed GW state: %d\n", prev_gw_state = gw_state );
+					
+					}
 
 				}
 			
@@ -538,6 +550,8 @@ void *client_to_gw_tun( void *arg ) {
 
 			gw_state = GW_STATE_UNKNOWN;
 			gw_state_time = 0; // the timer is not started before the next packet is send to the GW
+			if( prev_gw_state != gw_state ) 
+				debug_output( 3, "changed GW state: %d\n", prev_gw_state = gw_state );
 
 		}
 
@@ -689,22 +703,6 @@ void *gw_listen( void *arg ) {
 								continue;
 
 							}
-
-							/* fill in the destination address or the kernel will route us towards the loopback interface */
-							// TBFixed? are long-int assignements from unaligned memory addresse ok? known problems with arm
-							/*
-							memset( &pack_dest, 0, sizeof(struct sockaddr_in) );
-							pack_dest.sin_family = AF_INET;
-							pack_dest.sin_port = 0;
-							pack_dest.sin_addr.s_addr = ((struct iphdr *)(buff + 1))->daddr;
-
-							addr_to_string( addr.sin_addr.s_addr, str, sizeof(str) );
-							addr_to_string( pack_dest.sin_addr.s_addr, str2, sizeof(str2) );
-							debug_output( 0, "forward packet from client: %s (virtual ip %i.%i.%i.%i) dst: %s \n", str, (uint8_t)buff[13], (uint8_t)buff[14], (uint8_t)buff[15], (uint8_t)buff[16], str2 );
-
-							if ( sendto( raw_fd, buff + 1, buff_len - 1, 0, (struct sockaddr *)&pack_dest, sizeof(struct sockaddr_in) ) < 0 )
-								debug_output( 0, "Error - can't send packet: %s\n", strerror(errno) );
-							*/
 														
 							if ( write( tun_fd, buff + 1, buff_len - 1 ) < 0 )  
 					                        debug_output( 0, "Error - can't write packet: %s\n", strerror(errno) );  

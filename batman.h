@@ -94,7 +94,7 @@ char unix_path[sizeof(DEF_UNIX_PATH)+10];
 #define WARNING_PERIOD 20000
 
 #define BATMAN_TUN_PREFIX "bat"
-#define MAX_BATMAN_TUN_INDEX 15 
+#define MAX_BATMAN_TUN_INDEX 20 
 
 #define TEST_SWITCH              "test"
 
