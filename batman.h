@@ -300,6 +300,20 @@ extern uint8_t routing_class;
 
 extern uint8_t gateway_class;
 
+
+
+/***
+ *
+ * ports which are to ignored by the blackhole check
+ *
+ ***/
+
+#define BH_UDP_PORTS {4307, 162} /* vis, SNMP-TRAP */
+
+
+
+
+
 extern char *prog_name;
 extern uint8_t debug_level;
 extern uint8_t debug_level_max;

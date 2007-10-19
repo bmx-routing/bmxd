@@ -45,7 +45,7 @@ int add_del_interface_rules( int8_t del );
 int flush_routes_rules( int8_t rt_table );
 
 /* tun.c */
-int8_t probe_tun();
+int8_t probe_tun(uint8_t print_to_stderr);
 int8_t del_dev_tun( int32_t fd );
 int8_t add_dev_tun( struct batman_if *batman_if, uint32_t dest_addr, char *tun_dev, size_t tun_dev_size, int32_t *fd, int32_t *ifi );
 int8_t set_tun_addr( int32_t fd, uint32_t tun_addr, char *tun_dev );
@@ -76,6 +76,7 @@ void restore_defaults();
 void cleanup();
 
 /* tunnel.c */
+void init_bh_ports();
 void *gw_listen( void *arg );
 void *client_to_gw_tun( void *arg );
 

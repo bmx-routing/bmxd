@@ -581,6 +581,7 @@ int main( int argc, char *argv[] ) {
 
 	apply_init_args( argc, argv );
 
+	init_bh_ports();
 
 	srand( getpid() );
 
