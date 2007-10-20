@@ -186,7 +186,8 @@ void print_advanced_opts ( int verbose ) {
 		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_BASE_PORT, MIN_BASE_PORT, MAX_BASE_PORT  );
 	
 	fprintf( stderr, "\n       --%s <value> : set base routing table used by batmand.\n", RT_TABLE_OFFSET_SWITCH );
-	fprintf( stderr, "          <value> for HNA routes, <value+1> for host routes, <value+2> for GW routes.\n");
+	fprintf( stderr, "          Configures table <value> to be used for HNA routes, <value+1> for host routes, \n");
+	fprintf( stderr, "          <value+2> for unreachable routes, and <value+3> for the default tunnel route.\n");
 	if ( verbose )
 		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_RT_TABLE_OFFSET, MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET  );
 	

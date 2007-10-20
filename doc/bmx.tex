@@ -1006,7 +1006,8 @@ The following switches can be used to change the default routing tables and the 
 
 \begin{small} \begin{verbatim}
        --rt-table-offset <value> : set base routing table used by batmand.
-          <value> for HNA routes, <value+1> for host routes, <value+2> for GW routes.
+          Configures table <value> to be used for HNA routes, <value+1> for host routes,
+          <value+2> for unreachable routes, and <value+3> for the default tunnel route.
           default: 65, allowed values: 2 <= value <= 250
 
        --prio-rules-offset <value> : set base ip-rules priority used by batmand.
@@ -1516,10 +1517,14 @@ root@ng2e:~#
 
 Comparing to the first time we started the \emph{ip rule} command (when we checked if the iproute2 tool is properly working), the output of this command shows three new lines. 
 These new lines are priority rules. 
-They are telling the networking stack to look out for routes towards the 10.10.0.0/16 address space in dedicated ruting tables -- namely table 66 and 67. 
+They are telling the networking stack to look out for routes from and towards certain IP ranges in dedicated ruting tables -- namely table 65, 66, 67, and 68. 
+%
+Table 65 is used for HNA routes, 66 for host routes, 67 for unreachable routes.
+Later on in the tutorial, also routing table 68 will be used for the default-tunnel route to forward internet traffic between client and GW nodes.
+%
 Using the command \emph{ip route list table 66} the content of table 66 can be further investigated. 
 
-The \emph{ip rule} command also revealed that the ip stack will look out for all kinds of target-ip addresses in table 65. This table is used for network announcements as we will see soon.
+For example the \emph{ip rule} command reveals that the ip stack will look out for all kinds of target-ip addresses in table 65. This table is used for network announcements as we will see soon. 
 
 \item The batman daemons can be killed with \emph{killall batmand}. Afterwards all configurations made to the networking stack should be cleaned up again.
 
