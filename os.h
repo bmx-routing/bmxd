@@ -79,6 +79,21 @@ void cleanup();
 void init_bh_ports();
 void *gw_listen( void *arg );
 void *client_to_gw_tun( void *arg );
+#define MAX_MTU 1500
+
+struct tunnel_buff_align {
+	uint8_t reserved1;
+	uint8_t reserved2;
+	uint8_t reserved3;
+	uint8_t type;
+} __attribute__((packed));
+	
+
+struct tunnel_buff {
+	struct tunnel_buff_align align;
+	unsigned char ip_packet[MAX_MTU];
+} __attribute__((packed));
+
 
 /* unix_sokcet.c */
 void *unix_listen( void *arg );

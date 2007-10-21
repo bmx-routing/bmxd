@@ -57,7 +57,8 @@
 
 #define MAX_TUNNEL_IP_REQUESTS 12
 
-
+static int changed_packet_headers = 0;
+static int stored_packet_headers = 0;
 
 unsigned short bh_udp_ports[] = BH_UDP_PORTS;
 
@@ -151,6 +152,29 @@ uint16_t ip_sum_calc(uint16_t ip_header_len, uint16_t ip_header_buff[])
 
 }
 
+void calculate_chcksum(struct iphdr *iphdr, int32_t buff_len)
+{
+	struct udphdr *udphdr;
+	struct tcphdr *tcphdr;
+
+	iphdr->check = 0;
+	iphdr->check = chksum_l3((uint16_t *)(iphdr), iphdr->ihl*4);
+
+	if (iphdr->protocol == IPPROTO_UDP) {
+
+		udphdr = (struct udphdr *)((unsigned char*)iphdr + iphdr->ihl*4);
+		udphdr->check = 0;
+		udphdr->check = chksum_l4((uint16_t *)udphdr, ntohs(udphdr->len), iphdr->saddr, iphdr->daddr, IPPROTO_UDP);
+
+	} else if (iphdr->protocol == IPPROTO_TCP) {
+
+		tcphdr = (struct tcphdr *)((unsigned char*)iphdr + iphdr->ihl*4);
+		tcphdr->check = 0;
+		tcphdr->check = chksum_l4((uint16_t *)tcphdr, buff_len - iphdr->ihl*4, iphdr->saddr, iphdr->daddr, IPPROTO_TCP);
+
+	}
+}
+
 
 
 int8_t get_tun_ip( struct sockaddr_in *gw_addr, int32_t udp_sock, uint32_t *tun_addr ) {
@@ -232,6 +256,96 @@ int8_t get_tun_ip( struct sockaddr_in *gw_addr, int32_t udp_sock, uint32_t *tun_
 
 }
 
+void search_packet_list( struct list_head_first *packet_list, struct iphdr *iphdr, int32_t packet_len ) {
+	struct list_head *list_pos, *list_pos_tmp, *prev_list_head;
+	struct data_packet *data_packet;
+	struct iphdr *iphdr_packet;
+//	uint16_t dst_udp_port = 0, dst_tcp_port = 0;
+	
+	prev_list_head = (struct list_head *)packet_list;
+
+	list_for_each_safe(list_pos, list_pos_tmp, packet_list) {
+
+		data_packet = list_entry(list_pos, struct data_packet, list);
+
+		iphdr_packet = (struct iphdr *)data_packet->header_buff;
+
+		if (iphdr->saddr != iphdr_packet->daddr) {
+			prev_list_head = &data_packet->list;
+			continue;
+		}
+
+		if (iphdr->protocol != iphdr_packet->protocol) {
+			prev_list_head = &data_packet->list;
+			continue;
+		}
+									
+		if (iphdr->protocol == IPPROTO_UDP) {
+//			dst_udp_port = ntohs( ((struct udphdr *)((unsigned char*)iphdr + iphdr->ihl*4))->dest );
+			if( ((struct udphdr *)((unsigned char*)iphdr + iphdr->ihl*4))->dest != ((struct udphdr *)((unsigned char*)iphdr_packet + iphdr_packet->ihl*4))->source   ) {
+				prev_list_head = &data_packet->list;
+				continue;
+			}
+		}
+									
+		if (iphdr->protocol == IPPROTO_TCP ) { 
+//			dst_tcp_port = ntohs( ((struct tcphdr *)((unsigned char*)iphdr + iphdr->ihl*4))->dest );
+			if ( ((struct tcphdr *)((unsigned char*)iphdr + iphdr->ihl*4))->dest != ((struct tcphdr *)((unsigned char*)iphdr_packet + iphdr_packet->ihl*4))->source   ) {
+				prev_list_head = &data_packet->list;
+				continue;
+			}
+		}
+
+		/* probably our packet */
+		iphdr->daddr = iphdr_packet->saddr;
+		calculate_chcksum(iphdr, packet_len);
+
+		list_del(prev_list_head, list_pos, packet_list);
+		debugFree(data_packet, 1218);
+		stored_packet_headers--;
+//		debug_output( 3, "found and removed dst_udp_port: %d, dst_tcp_port: %d (%d left in stack) ...\n", dst_udp_port, dst_tcp_port, stored_packet_headers);
+		break;
+
+	}
+
+}
+
+void store_header( struct list_head_first *packet_list, struct iphdr *iphdr, int32_t packet_len ) {
+	struct data_packet *data_packet;
+		
+	data_packet = debugMalloc( sizeof(struct data_packet), 210 );
+
+	memcpy(data_packet->header_buff, (unsigned char*)iphdr, (packet_len > sizeof(data_packet->header_buff) ? sizeof(data_packet->header_buff) : packet_len));
+
+	INIT_LIST_HEAD(&data_packet->list);
+	list_add_tail(&data_packet->list, packet_list);
+	
+	changed_packet_headers++;
+	stored_packet_headers++;
+	//debug_output( 3, "adding %d packet header, (%d in stack)...\n", changed_packet_headers, stored_packet_headers );
+	
+}
+
+void purge_packet_list( struct list_head_first *packet_list ) {
+	struct list_head *list_pos, *list_pos_tmp;
+	struct data_packet *data_packet;
+
+	if (!list_empty(packet_list)) {
+		list_for_each_safe(list_pos, list_pos_tmp, packet_list) {
+		
+			data_packet = list_entry(list_pos, struct data_packet, list);
+		
+			list_del((struct list_head *)packet_list, list_pos, packet_list);
+		
+			debugFree(data_packet, 1219);
+		
+		}
+	} 
+		
+	changed_packet_headers = 0;
+	stored_packet_headers = 0;
+
+}
 
 
 void *client_to_gw_tun( void *arg ) {
@@ -239,19 +353,21 @@ void *client_to_gw_tun( void *arg ) {
 	struct curr_gw_data *curr_gw_data = (struct curr_gw_data *)arg;
 	struct sockaddr_in gw_addr, my_addr, sender_addr;
 	struct iphdr *iphdr;
-	struct udphdr *udphdr;
-	struct tcphdr *tcphdr;
 	struct timeval tv;
-	int32_t res, max_sock, buff_len, udp_sock, tun_fd, tun_ifi, sock_opts;
-	uint32_t addr_len, current_time, ip_lease_time = 0, gw_state_time = 0, got_new_ip = 0, my_tun_addr = 0;
+	struct list_head_first packet_list;
+	int32_t res, max_sock, udp_sock, tun_fd, tun_ifi, sock_opts;
+	uint32_t addr_len, current_time, ip_lease_time = 0, gw_state_time = 0, prev_ip_time = 0, new_ip_time = 0, my_tun_addr = 0;
 	uint32_t last_invalidip_warning = 0;
-	char tun_if[IFNAMSIZ], my_str[ADDR_STR_LEN], gw_str[ADDR_STR_LEN], gw_state = GW_STATE_UNKNOWN, prev_gw_state = GW_STATE_UNKNOWN;
-	unsigned char buff[1501];
+	char tun_if[IFNAMSIZ], my_str[ADDR_STR_LEN], is_str[ADDR_STR_LEN], gw_str[ADDR_STR_LEN], gw_state = GW_STATE_UNKNOWN, prev_gw_state = GW_STATE_UNKNOWN;
+	int32_t tunnel_ip_packet_len, tunnel_packet_len;
+	struct tunnel_buff tunnel_buff;
 	fd_set wait_sockets, tmp_wait_sockets;
 	uint16_t dns_port = htons( 53 );
 
 
 	addr_len = sizeof (struct sockaddr_in);
+
+	INIT_LIST_HEAD_FIRST(packet_list);
 
 	memset( &gw_addr, 0, sizeof(struct sockaddr_in) );
 	memset( &my_addr, 0, sizeof(struct sockaddr_in) );
@@ -330,41 +446,59 @@ void *client_to_gw_tun( void *arg ) {
 			/* udp message (tunnel data) from gateway */
 			if ( FD_ISSET( udp_sock, &tmp_wait_sockets ) ) {
 
-				while ( ( buff_len = recvfrom( udp_sock, buff, sizeof(buff) - 1, 0, (struct sockaddr *)&sender_addr, &addr_len ) ) > 0 ) {
+				while ( ( tunnel_packet_len = recvfrom( udp_sock, (unsigned char*)&tunnel_buff.align.type, sizeof(tunnel_buff.align.type) + sizeof(tunnel_buff.ip_packet), 0, (struct sockaddr *)&sender_addr, &addr_len ) ) > 0 ) {
 
-					if ( ( buff_len > 1 ) && ( sender_addr.sin_addr.s_addr == gw_addr.sin_addr.s_addr ) ) {
+					tunnel_ip_packet_len = tunnel_packet_len - sizeof(tunnel_buff.align.type);
+					
+					if ( ( tunnel_ip_packet_len > 0 ) && ( sender_addr.sin_addr.s_addr == gw_addr.sin_addr.s_addr ) ) {
 
 						/* got data from gateway */
-						if ( buff[0] == TUNNEL_DATA ) {
+						if ( tunnel_buff.align.type == TUNNEL_DATA ) {
 
-							if ( write( tun_fd, buff + 1, buff_len - 1 ) < 0 )
-								debug_output( 0, "Error - can't write packet: %s\n", strerror(errno) );
-
-							// deactivate unresponsive GW check only based on non-icmp data
-							//14:08:11.528658 IP 169.254.0.1.32770 > 141.1.1.1.53:  4+ A? open-mesh.net. (25)
-							//14:08:14.533070 IP 192.168.2.3 > 169.254.0.1: ICMP host 141.1.1.1 unreachable, length
-							if ( !no_unresponsive_check ) {
+							if ( tunnel_ip_packet_len >= sizeof(struct iphdr) && ((struct iphdr *)(tunnel_buff.ip_packet))->version == 4 ) {
+							
+								/* if the source address of the original packet was wrong set it back know */
+								if (!list_empty(&packet_list)) {
+	
+									search_packet_list( &packet_list, (struct iphdr *)(tunnel_buff.ip_packet), tunnel_ip_packet_len );
+	
+								}
+	
+								if ( write( tun_fd, tunnel_buff.ip_packet, tunnel_ip_packet_len ) < 0 )
+									debug_output( 0, "Error - can't write packet: %s\n", strerror(errno) );
+	
+								// deactivate unresponsive GW check only based on non-icmp data
+								//14:08:11.528658 IP 169.254.0.1.32770 > 141.1.1.1.53:  4+ A? open-mesh.net. (25)
+								//14:08:14.533070 IP 192.168.2.3 > 169.254.0.1: ICMP host 141.1.1.1 unreachable, length
+								if ( !no_unresponsive_check ) {
+									
+									if( ((struct iphdr *)(tunnel_buff.ip_packet))->protocol != IPPROTO_ICMP  ) {
+							
+										gw_state = GW_STATE_VERIFIED;
+										gw_state_time = current_time;
+										if( prev_gw_state != gw_state ) 
+										debug_output( 3, "changed GW state: %d, incoming IP protocol: %d\n", prev_gw_state = gw_state, ((struct iphdr *)(tunnel_buff.ip_packet))->protocol );
+										
+									}
+	
+								} else {
 								
-								if( ((struct iphdr *)(buff + 1))->protocol != IPPROTO_ICMP  ) {
-						
 									gw_state = GW_STATE_VERIFIED;
 									gw_state_time = current_time;
 									if( prev_gw_state != gw_state ) 
-										debug_output( 3, "changed GW state: %d, incoming IP protocol: %d\n", prev_gw_state = gw_state, ((struct iphdr *)(buff + 1))->protocol );
-									
+										debug_output( 3, "changed GW state: %d\n", prev_gw_state = gw_state );
+	
 								}
-
+							
 							} else {
-							
-								gw_state = GW_STATE_VERIFIED;
-								gw_state_time = current_time;
-								if( prev_gw_state != gw_state ) 
-									debug_output( 3, "changed GW state: %d\n", prev_gw_state = gw_state );
-
+								
+								debug_output( 3, "only IPv4 packets supported so fare !!!\n");
+								
 							}
-							
+								
 						/* gateway told us that we have no valid ip */
-						} else if ( buff[0] == TUNNEL_IP_INVALID ) {
+							
+						} else if ( tunnel_buff.align.type == TUNNEL_IP_INVALID ) {
 
 							addr_to_string( my_tun_addr, my_str, sizeof(my_str) );
 							debug_output( 3, "Gateway client - gateway (%s) says: IP (%s) is expired \n", gw_str, my_str );
@@ -393,7 +527,7 @@ void *client_to_gw_tun( void *arg ) {
 					} else {
 
 						addr_to_string( sender_addr.sin_addr.s_addr, my_str, sizeof(my_str) );
-						debug_output( 0, "Error - ignoring gateway packet from %s: packet too small (%i)\n", my_str, buff_len );
+						debug_output( 0, "Error - ignoring gateway packet from %s: packet too small (%i)\n", my_str, tunnel_packet_len );
 
 					}
 
@@ -411,8 +545,9 @@ void *client_to_gw_tun( void *arg ) {
 			/* Got data to be send to gateway */
 			} else if ( FD_ISSET( tun_fd, &tmp_wait_sockets ) ) {
 
-				while ( ( buff_len = read( tun_fd, buff + 1, sizeof(buff) - 2 ) ) > 0 ) {
-
+				while ( ( tunnel_ip_packet_len = read( tun_fd, tunnel_buff.ip_packet, sizeof(tunnel_buff.ip_packet) /*TBD: why -2 here? */ ) ) > 0 ) {
+					tunnel_packet_len = tunnel_ip_packet_len + sizeof(tunnel_buff.align.type);
+					
 					if ( my_tun_addr == 0 ) {
 
 						if ( get_tun_ip( &gw_addr, udp_sock, &my_tun_addr ) < 0 ) {
@@ -435,52 +570,49 @@ void *client_to_gw_tun( void *arg ) {
 							break;
 
 						ip_lease_time = current_time;
-						got_new_ip = current_time;
+						prev_ip_time = new_ip_time;
+						new_ip_time = current_time;
 
 					}
 
-					buff[0] = TUNNEL_DATA;
+					tunnel_buff.align.type = TUNNEL_DATA;
 
 					/* fill in new ip - the packets in the buffer don't know it yet */
 					// some applications tend to set their own IP or an IP from another interface. This would trigger the GW to complain 
-					if ( memcmp( buff + 13, (unsigned char *)&my_tun_addr, 4 ) == 0 ) {
+					iphdr = (struct iphdr *)(tunnel_buff.ip_packet);
+
+					if (iphdr->saddr == my_tun_addr) {
 						
-						if ( sendto( udp_sock, buff, buff_len + 1, 0, (struct sockaddr *)&gw_addr, sizeof (struct sockaddr_in) ) < 0 )
+						if ( sendto( udp_sock, (unsigned char*) &tunnel_buff.align.type, tunnel_packet_len, 0, (struct sockaddr *)&gw_addr, sizeof (struct sockaddr_in) ) < 0 )
 							debug_output( 0, "Error - can't send data to gateway: %s\n", strerror(errno) );
 					
-					} else /* if ( got_new_ip + 1000 > ip_lease_time ) */ {
+					} else if ( new_ip_time + 10000 > current_time && changed_packet_headers <= 10 
+							&& (((iphdr->protocol == IPPROTO_UDP) && (((struct udphdr *)((unsigned char*)iphdr + iphdr->ihl*4))->dest == dns_port)))
+						  ) {
 
-						if ( ( got_new_ip + 1000 < ip_lease_time ) && ( last_invalidip_warning == 0 || last_invalidip_warning + WARNING_PERIOD < current_time ) ) {
+							if( prev_ip_time != new_ip_time ) {
+								prev_ip_time = new_ip_time;
+								purge_packet_list( &packet_list );
+							}
 						
-						last_invalidip_warning = current_time;
-						
-						addr_to_string( my_tun_addr, my_str, sizeof(my_str) );
-						debug_output( 3, "Gateway client - Invalid outgoing src IP: %i.%i.%i.%i, should be %s! Recalculating checksums! WARNING, this eats your CPU! \n", (uint8_t)buff[13], (uint8_t)buff[14], (uint8_t)buff[15], (uint8_t)buff[16],  my_str );
-						}
-
-						
-						iphdr = (struct iphdr *)(buff + 1);
-						iphdr->saddr = my_tun_addr;
-						iphdr->check = 0;
-						iphdr->check = chksum_l3((uint16_t *)(buff + 1), iphdr->ihl*4);
-						if (iphdr->protocol == IPPROTO_UDP) {
-
-							udphdr = (struct udphdr *)(buff + 1 + iphdr->ihl*4);
-							udphdr->check = 0;
-							udphdr->check = chksum_l4((uint16_t *)(buff + 1 + iphdr->ihl*4), ntohs(udphdr->len), iphdr->saddr, iphdr->daddr, IPPROTO_UDP);
-
-						} else if (iphdr->protocol == IPPROTO_TCP) {
-
-							tcphdr = (struct tcphdr *)(buff + 1 + iphdr->ihl*4);
-							tcphdr->check = 0;
-							tcphdr->check = chksum_l4((uint16_t *)(buff + 1 + iphdr->ihl*4), buff_len - iphdr->ihl*4, iphdr->saddr, iphdr->daddr, IPPROTO_TCP);
-
-						}
-						
-						if ( sendto( udp_sock, buff, buff_len + 1, 0, (struct sockaddr *)&gw_addr, sizeof (struct sockaddr_in) ) < 0 )
+							/* save packet headers for later */
+							
+							store_header( &packet_list, iphdr, tunnel_ip_packet_len );
+							iphdr->saddr = my_tun_addr;
+							calculate_chcksum( iphdr, tunnel_ip_packet_len );
+							
+							if ( sendto( udp_sock, (unsigned char*)&tunnel_buff.align.type, tunnel_packet_len, 0, (struct sockaddr *)&gw_addr, sizeof (struct sockaddr_in) ) < 0 )
 							debug_output( 0, "Error - can't send data to gateway: %s\n", strerror(errno) );
 
 
+					} else if ( ( last_invalidip_warning == 0 || last_invalidip_warning + WARNING_PERIOD < current_time ) ) {
+						
+						last_invalidip_warning = current_time;
+							
+						addr_to_string( my_tun_addr,  my_str, sizeof(my_str) );
+						addr_to_string( iphdr->saddr, is_str, sizeof(is_str) );
+						debug_output( 3, "Gateway client - IP age: %d, modified headers: %d, Still Invalid outgoing src IP: %s, should be %s! Dropping packet\n", (current_time - new_ip_time), changed_packet_headers, is_str,  my_str );
+						
 					}
 				}
 
@@ -493,9 +625,9 @@ void *client_to_gw_tun( void *arg ) {
 
 				// activate unresponsive GW check only based on TCP and DNS data
 				if ( ( !no_unresponsive_check && gw_state == GW_STATE_UNKNOWN ) && ( gw_state_time == 0 ) ) {
-					if( ( (((struct iphdr *)(buff + 1))->protocol == IPPROTO_TCP )  || 
-						( (((struct iphdr *)(buff + 1))->protocol == IPPROTO_UDP)  && 
-							(((struct udphdr *)(buff + 1 + ((struct iphdr *)(buff + 1))->ihl*4))->dest == dns_port)  )
+					if( ( (((struct iphdr *)(tunnel_buff.ip_packet))->protocol == IPPROTO_TCP )  || 
+						( (((struct iphdr *)(tunnel_buff.ip_packet))->protocol == IPPROTO_UDP)  && 
+					(((struct udphdr *)(tunnel_buff.ip_packet + ((struct iphdr *)(tunnel_buff.ip_packet))->ihl*4))->dest == dns_port)  )
 					    ) ) {
 						
 						gw_state_time = current_time;
@@ -533,7 +665,6 @@ void *client_to_gw_tun( void *arg ) {
 		}
 
 		/* drop connection to gateway if the gateway does not respond */
-		
 		if ( !no_unresponsive_check && ( gw_state == GW_STATE_UNKNOWN ) && ( gw_state_time != 0 ) && ( ( gw_state_time + GW_STATE_UNKNOWN_TIMEOUT ) < current_time ) ) {
 			
 			debug_output( 3, "Gateway client - disconnecting from unresponsive gateway: %s \n", gw_str );
@@ -555,11 +686,16 @@ void *client_to_gw_tun( void *arg ) {
 
 		}
 
+		if ((!list_empty(&packet_list)) && (new_ip_time + ( GW_STATE_UNKNOWN_TIMEOUT / 2 ) < current_time))
+			purge_packet_list( &packet_list );
+
 	}
 
 	debug_output( 3, "terminating client_to_gw_tun thread: is_aborted(): %s, curr_gateway: %ld, deleted: %d \n", (is_aborted()? "YES":"NO"), curr_gateway, curr_gw_data->gw_node->deleted );
 	
 	/* cleanup */
+	purge_packet_list( &packet_list );
+	
 	add_del_route( 0, 0, 0, 0, tun_ifi, tun_if, BATMAN_RT_TABLE_TUNNEL, 0, 1 );
 
 	close( udp_sock );
