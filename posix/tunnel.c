@@ -523,6 +523,14 @@ void *client_to_gw_tun( void *arg ) {
 
 							if ( set_tun_addr( udp_sock, my_tun_addr, tun_if ) < 0 )
 								break;
+							
+							ip_lease_time = current_time;
+							prev_ip_time = new_ip_time;
+							new_ip_time = current_time;
+							
+							/* kernel deletes routes after resetting the interface ip */
+							add_del_route( 0, 0, 0, 0, tun_ifi, tun_if, BATMAN_RT_TABLE_TUNNEL, 0, 0 );
+
 
 						}
 
