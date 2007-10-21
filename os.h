@@ -79,7 +79,9 @@ void cleanup();
 void init_bh_ports();
 void *gw_listen( void *arg );
 void *client_to_gw_tun( void *arg );
+
 #define MAX_MTU 1500
+#define MAX_IP_FIX_TIME 5000
 
 struct tunnel_buff_align {
 	uint8_t reserved1;

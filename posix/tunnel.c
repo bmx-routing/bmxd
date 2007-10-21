@@ -260,7 +260,7 @@ void search_packet_list( struct list_head_first *packet_list, struct iphdr *iphd
 	struct list_head *list_pos, *list_pos_tmp, *prev_list_head;
 	struct data_packet *data_packet;
 	struct iphdr *iphdr_packet;
-//	uint16_t dst_udp_port = 0, dst_tcp_port = 0;
+	uint16_t dst_udp_port = 0, dst_tcp_port = 0;
 	
 	prev_list_head = (struct list_head *)packet_list;
 
@@ -281,7 +281,7 @@ void search_packet_list( struct list_head_first *packet_list, struct iphdr *iphd
 		}
 									
 		if (iphdr->protocol == IPPROTO_UDP) {
-//			dst_udp_port = ntohs( ((struct udphdr *)((unsigned char*)iphdr + iphdr->ihl*4))->dest );
+			dst_udp_port = ntohs( ((struct udphdr *)((unsigned char*)iphdr + iphdr->ihl*4))->dest );
 			if( ((struct udphdr *)((unsigned char*)iphdr + iphdr->ihl*4))->dest != ((struct udphdr *)((unsigned char*)iphdr_packet + iphdr_packet->ihl*4))->source   ) {
 				prev_list_head = &data_packet->list;
 				continue;
@@ -289,7 +289,7 @@ void search_packet_list( struct list_head_first *packet_list, struct iphdr *iphd
 		}
 									
 		if (iphdr->protocol == IPPROTO_TCP ) { 
-//			dst_tcp_port = ntohs( ((struct tcphdr *)((unsigned char*)iphdr + iphdr->ihl*4))->dest );
+			dst_tcp_port = ntohs( ((struct tcphdr *)((unsigned char*)iphdr + iphdr->ihl*4))->dest );
 			if ( ((struct tcphdr *)((unsigned char*)iphdr + iphdr->ihl*4))->dest != ((struct tcphdr *)((unsigned char*)iphdr_packet + iphdr_packet->ihl*4))->source   ) {
 				prev_list_head = &data_packet->list;
 				continue;
@@ -303,7 +303,7 @@ void search_packet_list( struct list_head_first *packet_list, struct iphdr *iphd
 		list_del(prev_list_head, list_pos, packet_list);
 		debugFree(data_packet, 1218);
 		stored_packet_headers--;
-//		debug_output( 3, "found and removed dst_udp_port: %d, dst_tcp_port: %d (%d left in stack) ...\n", dst_udp_port, dst_tcp_port, stored_packet_headers);
+		debug_output( 3, "found and removed dst_udp_port: %d, dst_tcp_port: %d (%d left in stack) ...\n", dst_udp_port, dst_tcp_port, stored_packet_headers);
 		break;
 
 	}
@@ -322,7 +322,7 @@ void store_header( struct list_head_first *packet_list, struct iphdr *iphdr, int
 	
 	changed_packet_headers++;
 	stored_packet_headers++;
-	//debug_output( 3, "adding %d packet header, (%d in stack)...\n", changed_packet_headers, stored_packet_headers );
+	debug_output( 3, "adding %d packet header, (%d in stack)...\n", changed_packet_headers, stored_packet_headers );
 	
 }
 
@@ -338,6 +338,8 @@ void purge_packet_list( struct list_head_first *packet_list ) {
 			list_del((struct list_head *)packet_list, list_pos, packet_list);
 		
 			debugFree(data_packet, 1219);
+			stored_packet_headers--;
+			debug_output( 3, "purging packet header, (%d left in stack)...\n", stored_packet_headers );
 		
 		}
 	} 
@@ -586,7 +588,7 @@ void *client_to_gw_tun( void *arg ) {
 						if ( sendto( udp_sock, (unsigned char*) &tunnel_buff.align.type, tunnel_packet_len, 0, (struct sockaddr *)&gw_addr, sizeof (struct sockaddr_in) ) < 0 )
 							debug_output( 0, "Error - can't send data to gateway: %s\n", strerror(errno) );
 					
-					} else if ( new_ip_time + 10000 > current_time && changed_packet_headers <= 10 
+					} else if ( new_ip_time + MAX_IP_FIX_TIME > current_time && changed_packet_headers <= 10 
 							&& (((iphdr->protocol == IPPROTO_UDP) && (((struct udphdr *)((unsigned char*)iphdr + iphdr->ihl*4))->dest == dns_port)))
 						  ) {
 
@@ -686,7 +688,7 @@ void *client_to_gw_tun( void *arg ) {
 
 		}
 
-		if ((!list_empty(&packet_list)) && (new_ip_time + ( GW_STATE_UNKNOWN_TIMEOUT / 2 ) < current_time))
+		if ((!list_empty(&packet_list)) && (new_ip_time + MAX_IP_FIX_TIME < current_time))
 			purge_packet_list( &packet_list );
 
 	}
