@@ -89,10 +89,10 @@ void set_init_arg( char* switch_name, char* switch_arg, int min, int max, int32_
 	errno = 0;
 	int16_t tmp = strtol (switch_arg, NULL , 10);
 
-	printf ("Long option: %s", switch_name );
+	printf ("--%s", switch_name );
 	if (switch_arg)
-		printf (" with argument: %d", tmp );
-	printf ("\n");
+		printf (" %d", tmp );
+	printf (" \\ \n");
 	
 	if ( tmp < min || tmp > max ) {
 
@@ -166,13 +166,15 @@ void set_gw_network ( char *optarg_str ) {
 }
 
 
-void add_hna_opt ( char *optarg_str ) {
+void add_del_hna_opt ( char *optarg_str, int8_t del ) {
 	
 	struct hna_node *hna_node;
 	struct in_addr tmp_ip_holder;
 	uint16_t netmask;
 //	char str1[17];
 	char *slash_ptr;
+	struct list_head *hna_list_pos, *prev_hna_list_head, *hna_pos_tmp;
+	char str[16];
 			
 	if ( ( slash_ptr = strchr( optarg_str, '/' ) ) == NULL ) {
 
@@ -210,15 +212,43 @@ void add_hna_opt ( char *optarg_str ) {
 
 	}
 
-	hna_node = debugMalloc( sizeof(struct hna_node), 203 );
-	memset( hna_node, 0, sizeof(struct hna_node) );
-	INIT_LIST_HEAD( &hna_node->list );
+	if ( del ) {
+		
+		prev_hna_list_head = (struct list_head *)&hna_list;
+		
+		list_for_each_safe( hna_list_pos, hna_pos_tmp, &hna_list ) {
 
-	hna_node->addr = tmp_ip_holder.s_addr;
-	hna_node->netmask = netmask;
+			hna_node = list_entry( hna_list_pos, struct hna_node, list );
 
-	list_add_tail( &hna_node->list, &hna_list );
+			if ( hna_node->addr == tmp_ip_holder.s_addr && hna_node->netmask == netmask ) {
+				
+				addr_to_string( hna_node->addr, str, sizeof (str) );
+				printf( "removing HNA %s/%i", str, hna_node->netmask );
+				
+				list_del( prev_hna_list_head, hna_list_pos, &hna_list );
+				debugFree( hna_node, 1103 );	
+			
+			} else {
+				
+				prev_hna_list_head = &hna_node->list;
+				
+			}
 
+		}
+
+		
+	} else {
+		
+		hna_node = debugMalloc( sizeof(struct hna_node), 203 );
+		memset( hna_node, 0, sizeof(struct hna_node) );
+		INIT_LIST_HEAD( &hna_node->list );
+	
+		hna_node->addr = tmp_ip_holder.s_addr;
+		hna_node->netmask = netmask;
+	
+		list_add_tail( &hna_node->list, &hna_list );
+
+	}
 	*slash_ptr = '/';
 	
 }
@@ -323,7 +353,7 @@ void apply_init_args( int argc, char *argv[] ) {
 						
 	
 			originator_interval = 1500;
-			printf ("Short option: o with argument: %d \n", originator_interval );
+			printf ("-o %d \\ \n", originator_interval );
 	
 					//set_init_arg( BASE_PORT_SWITCH, "4305", MIN_BASE_PORT, MAX_BASE_PORT, &base_port );
 					//sprintf( unix_path, "%s.%d", DEF_UNIX_PATH, base_port);
@@ -405,7 +435,7 @@ void apply_init_args( int argc, char *argv[] ) {
 					}
 	
 					originator_interval = 1500;
-					printf ("Short option: o with argument: %d \n", originator_interval );
+					printf ("-o %d \\ \n", originator_interval );
 	
 					set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "20", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
 	
@@ -554,7 +584,7 @@ void apply_init_args( int argc, char *argv[] ) {
 				*/											
 				} else if ( strcmp( ASOCIAL_SWITCH, long_options[option_index].name ) == 0 ) {
 
-					printf ("Long option: %s \n", long_options[option_index].name);
+					printf ("--%s \\ \n", long_options[option_index].name);
 					errno = 0;
 					mobile_device = YES;
 					found_args += 1;
@@ -562,7 +592,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 				} else if ( strcmp( NO_UNREACHABLE_RULE_SWITCH, long_options[option_index].name ) == 0 ) {
 
-					printf ("Long option: %s \n", long_options[option_index].name);
+					printf ("--%s \\ \n", long_options[option_index].name);
 					errno = 0;
 					no_unreachable_rule = YES;
 					found_args += 1;
@@ -570,7 +600,7 @@ void apply_init_args( int argc, char *argv[] ) {
 				
 				} else if ( strcmp( NO_TUNPERSIST_SWITCH, long_options[option_index].name ) == 0 ) {
 
-					printf ("Long option: %s \n", long_options[option_index].name);
+					printf ("--%s \\ \n", long_options[option_index].name);
 					errno = 0;
 					no_tun_persist = YES;
 					found_args += 1;
@@ -578,7 +608,7 @@ void apply_init_args( int argc, char *argv[] ) {
 				
 				} else if ( strcmp( NO_PRIO_RULES_SWITCH, long_options[option_index].name ) == 0 ) {
 
-					printf ("Long option: %s \n", long_options[option_index].name);
+					printf ("--%s \\ \n", long_options[option_index].name);
 					errno = 0;
 					no_prio_rules = YES;
 					found_args += 1;
@@ -586,7 +616,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 				} else if ( strcmp( NO_THROW_RULES_SWITCH, long_options[option_index].name ) == 0 ) {
 
-					printf ("Long option: %s \n", long_options[option_index].name);
+					printf ("--%s \\ \n", long_options[option_index].name);
 					errno = 0;
 					no_throw_rules = YES;
 					found_args += 1;
@@ -594,7 +624,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 				} else if ( strcmp( NO_UNRESP_CHECK_SWITCH, long_options[option_index].name ) == 0 ) {
 
-					printf ("Long option: %s \n", long_options[option_index].name);
+					printf ("--%s \\ \n", long_options[option_index].name);
 					errno = 0;
 					no_unresponsive_check = YES;
 					found_args += 1;
@@ -602,7 +632,7 @@ void apply_init_args( int argc, char *argv[] ) {
 					
 				} else if ( strcmp( RESIST_BLOCKED_SEND_SWITCH, long_options[option_index].name ) == 0 ) {
 
-					printf ("Long option: %s \n", long_options[option_index].name);
+					printf ("--%s \\ \n", long_options[option_index].name);
 					errno = 0;
 					resist_blocked_send = YES;
 					found_args += 1;
@@ -629,7 +659,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			case 'a':
 
-				add_hna_opt( optarg );
+				add_del_hna_opt( optarg, NO );
 				
 				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
 				break;
@@ -922,7 +952,7 @@ void apply_init_args( int argc, char *argv[] ) {
 						
 					addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
 					sprintf( fake_arg, "%s/32", ifaddr_str);
-					add_hna_opt( fake_arg );
+					add_del_hna_opt( fake_arg, NO );
 					printf ("Interface %s specific option: /%c \n", batman_if->dev, MAKE_IP_HNA_IF_SWITCH );
 						
 					batman_if->send_ogm_only_via_owning_if = YES;
@@ -944,7 +974,7 @@ void apply_init_args( int argc, char *argv[] ) {
 						
 					addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
 					sprintf( fake_arg, "%s/32", ifaddr_str);
-					add_hna_opt( fake_arg );
+					add_del_hna_opt( fake_arg, NO );
 					printf ("Interface %s specific option: /%c \n", batman_if->dev, MAKE_IP_HNA_IF_SWITCH );
 						
 					batman_if->send_ogm_only_via_owning_if = YES;
@@ -1044,7 +1074,7 @@ void apply_init_args( int argc, char *argv[] ) {
 						
 						addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
 						sprintf( fake_arg, "%s/32", ifaddr_str);
-						add_hna_opt( fake_arg );
+						add_del_hna_opt( fake_arg, NO );
 						
 						batman_if->send_ogm_only_via_owning_if = YES;
 						batman_if->if_ttl = 1;
@@ -1056,6 +1086,20 @@ void apply_init_args( int argc, char *argv[] ) {
 	
 					}
 					
+					found_args += 1;
+
+							
+				} else if ( (argv[found_args])[1] == UNDO_IP_HNA_IF_SWITCH && argc > (found_args) ) {
+
+					printf ("Interface %s specific option: /%c  \n", batman_if->dev, ((argv[found_args])[1]) );
+					
+					char fake_arg[ADDR_STR_LEN + 4], ifaddr_str[ADDR_STR_LEN];
+					errno = 0;
+					
+					addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
+					sprintf( fake_arg, "%s/32", ifaddr_str);
+					add_del_hna_opt( fake_arg, YES );
+						
 					found_args += 1;
 
 							

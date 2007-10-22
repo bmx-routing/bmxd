@@ -124,7 +124,7 @@ void *unix_listen( void *arg ) {
 
 	struct unix_client *unix_client;
 	struct debug_level_info *debug_level_info;
-	struct list_head *list_pos, *unix_pos_tmp, *debug_pos, *debug_pos_tmp, *prev_list_head, *prev_list_head_unix;
+	struct list_head *client_list_pos, *i_list_pos, *unix_pos_tmp, *debug_pos, *debug_pos_tmp, *prev_list_head, *prev_list_head_unix;
 	struct hna_node *hna_node;
 	struct batman_if *batman_if;
 	struct timeval tv;
@@ -186,9 +186,9 @@ void *unix_listen( void *arg ) {
 
 				prev_list_head_unix = (struct list_head *)&unix_if.client_list;
 
-				list_for_each_safe( list_pos, unix_pos_tmp, &unix_if.client_list ) {
+				list_for_each_safe( client_list_pos, unix_pos_tmp, &unix_if.client_list ) {
 
-					unix_client = list_entry( list_pos, struct unix_client, list );
+					unix_client = list_entry( client_list_pos, struct unix_client, list );
 
 					if ( FD_ISSET( unix_client->sock, &tmp_wait_sockets ) ) {
 
@@ -283,9 +283,9 @@ void *unix_listen( void *arg ) {
 
 								}
 
-								list_for_each( list_pos, &hna_list ) {
+								list_for_each( i_list_pos, &hna_list ) {
 
-									hna_node = list_entry( list_pos, struct hna_node, list );
+									hna_node = list_entry( i_list_pos, struct hna_node, list );
 
 									addr_to_string( hna_node->addr, str, sizeof (str) );
 
@@ -293,9 +293,9 @@ void *unix_listen( void *arg ) {
 
 								}
 
-								list_for_each( list_pos, &if_list ) {
+								list_for_each( i_list_pos, &if_list ) {
 
-									batman_if = list_entry( list_pos, struct batman_if, list );
+									batman_if = list_entry( i_list_pos, struct batman_if, list );
 
 									dprintf( unix_client->sock, " %s", batman_if->dev );
 
@@ -313,9 +313,9 @@ void *unix_listen( void *arg ) {
 
 										gateway_class = buff[2];
 
-										list_for_each( list_pos, &if_list ) {
+										list_for_each( i_list_pos, &if_list ) {
 
-											batman_if = list_entry( list_pos, struct batman_if, list );
+											batman_if = list_entry( i_list_pos, struct batman_if, list );
 
 											batman_if->out.gwflags = gateway_class;
 
@@ -358,9 +358,9 @@ void *unix_listen( void *arg ) {
 
 												gateway_class = 0;
 
-												list_for_each( list_pos, &if_list ) {
+												list_for_each( i_list_pos, &if_list ) {
 
-													batman_if = list_entry( list_pos, struct batman_if, list );
+													batman_if = list_entry( i_list_pos, struct batman_if, list );
 
 													batman_if->out.gwflags = gateway_class;
 
@@ -440,8 +440,8 @@ void *unix_listen( void *arg ) {
 							FD_CLR(unix_client->sock, &wait_sockets);
 							close( unix_client->sock );
 
-							list_del( prev_list_head_unix, list_pos, &unix_if.client_list );
-							debugFree( list_pos, 1203 );
+							list_del( prev_list_head_unix, client_list_pos, &unix_if.client_list );
+							debugFree( client_list_pos, 1203 );
 
 						}
 
@@ -467,9 +467,9 @@ void *unix_listen( void *arg ) {
 
 	}
 
-	list_for_each_safe( list_pos, unix_pos_tmp, &unix_if.client_list ) {
+	list_for_each_safe( client_list_pos, unix_pos_tmp, &unix_if.client_list ) {
 
-		unix_client = list_entry( list_pos, struct unix_client, list );
+		unix_client = list_entry( client_list_pos, struct unix_client, list );
 
 		if ( unix_client->debug_level != 0 ) {
 
@@ -492,8 +492,8 @@ void *unix_listen( void *arg ) {
 
 		}
 
-		list_del( (struct list_head *)&unix_if.client_list, list_pos, &unix_if.client_list );
-		debugFree( list_pos, 1205 );
+		list_del( (struct list_head *)&unix_if.client_list, client_list_pos, &unix_if.client_list );
+		debugFree( client_list_pos, 1205 );
 
 	}
 

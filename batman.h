@@ -218,6 +218,7 @@ extern int32_t default_para_set;
 
 #define OGM_ONLY_VIA_OWNING_IF_SWITCH 'i'
 #define MAKE_IP_HNA_IF_SWITCH 'a'
+#define UNDO_IP_HNA_IF_SWITCH 'A'
 
 extern int32_t base_port;
 #define BASE_PORT_SWITCH "base-port"

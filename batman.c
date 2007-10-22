@@ -214,6 +214,9 @@ void print_advanced_opts ( int verbose ) {
 	fprintf( stderr, "          reduces the TTL for OGMs representing this interface to 1 and\n");
 	fprintf( stderr, "          broadcasts the OGMs representing this interface only via this interface\n");
 
+	fprintf( stderr, "\n        /%c : attached after an interface name\n", UNDO_IP_HNA_IF_SWITCH );
+	fprintf( stderr, "          to remove the IP address of this interface from the HNA list.\n");
+	
 	fprintf( stderr, "\n       --%s <value> : set bidirectional timeout value\n", BIDIRECT_TIMEOUT_SWITCH );
 	fprintf( stderr, "        /%c <value> : attached after an interface name\n", BIDIRECT_TIMEOUT_IF_SWITCH );
 	fprintf( stderr, "          to set individual bidirectionl-timeout value this interface.\n");
