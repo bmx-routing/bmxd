@@ -742,6 +742,9 @@ void debug_orig() {
 	static char str[ADDR_STR_LEN], str2[ADDR_STR_LEN], orig_str[ADDR_STR_LEN];
 	int dbg_ogm_out = 0, lq, nlq, l2q;
 	static char dbg_ogm_str[MAX_DBG_STR_SIZE + 1]; // TBD: must be checked for overflow when using with sprintf
+	uint8_t debug_neighbor = NO;
+	uint16_t hna_buff_count = 0;
+	uint32_t hna, netmask;
 
 
 	if ( debug_clients.clients_num[1] > 0 ) {
@@ -795,10 +798,6 @@ void debug_orig() {
 			((struct batman_if *)if_list.next)->dev, orig_str, sequence_range, bidirect_link_to, originator_interval,
 			uptime_sec/86400, ((uptime_sec%86400)/3600), ((uptime_sec)%3600)/60  );
 		
-		debug_output( 1, "%-12s         viaIF    %11s (brc rcvd lseq lvld) [    viaIF RTQ  RQ  TQ].. alternatives...\n", "Originator", "Router");
-		
-		
-		
 		if ( debug_clients.clients_num[3] > 0 ) {
 
 			debug_output( 4, "------------------ DEBUG ------------------ \n" );
@@ -814,24 +813,36 @@ void debug_orig() {
 			//debug_output( 4, "  %-12s %14s (%s/%3i %9s): %20s\n", "Originator", "Router", "#", sequence_range, "lastvalid", "Alternative routers" );
 
 		}
+		
+		debug_output( 1, "Neighbor        outgoingIF        bestLink (brc rcvd lseq lvld) [     viaIF RTQ  RQ  TQ]..\n");
 
+		
 		while ( NULL != ( hashit = hash_iterate( orig_hash, hashit ) ) ) {
 
 			orig_node = hashit->bucket->data;
 
 			if ( orig_node->router == NULL )
 				continue;
+			
+			debug_neighbor = NO;
+			list_for_each( neigh_pos, &orig_node->neigh_list ) {
+				neigh_node = list_entry( neigh_pos, struct neigh_node, list );
 
-			batman_count++;
-
+				if( neigh_node->addr == orig_node->orig ) {
+					debug_neighbor = YES;
+				}
+			}
+			if ( !debug_neighbor )
+				continue;
+			
+			
 			addr_to_string( orig_node->orig, str, sizeof (str) );
 			addr_to_string( orig_node->router->addr, str2, sizeof (str2) );
-			dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s %9s %15s (%3i %3i %5i %4i)", 
+			dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s %10s %15s (%3i %3i %5i %4i)",
 					str, orig_node->router->if_incoming->dev, str2,
 					orig_node->router->packet_count /* accepted */,
-//					bit_packet_count( orig_node->send_old_seq_bits, sequence_range ) /* old  */,
 					get_dbg_rcvd_all_bits( orig_node, orig_node->router->if_incoming, sequence_range ), /* all */
-					orig_node->last_seqno,
+			    		orig_node->last_seqno,
 					( get_time() - orig_node->last_valid )/1000 ); 
 					
 			list_for_each( neigh_pos, &orig_node->neigh_list ) {
@@ -846,35 +857,84 @@ void debug_orig() {
 					l2q = update_bi_link_bits( orig_node, neigh_node_if, NO, sequence_range );
 			
 					dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), 
-							" [%9s %3i %3i %3i] ",
-       /*(( neigh_node->addr == orig_node->router->addr && neigh_node->if_incoming == orig_node->router->if_incoming ) ? "=>" : "  "),*/
-							neigh_node->if_incoming->dev, /*acceptance_rate( nlq, lq ),*/ l2q, lq, nlq );
+							" [%10s %3i %3i %3i] ",
+					neigh_node->if_incoming->dev, /*acceptance_rate( nlq, lq ),*/ l2q, lq, nlq );
 
 				}
-			}
 			
-//			dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), ": ");
+			}
+			debug_output( 1, "%s \n", dbg_ogm_str );
+		}
+		
+		debug_output( 1, "\nOriginator      outgoingIF     bestNextHop (brc rcvd lseq lvld) alternative next hops...\n");
+		
+		while ( NULL != ( hashit = hash_iterate( orig_hash, hashit ) ) ) {
 
+			orig_node = hashit->bucket->data;
+
+			if ( orig_node->router == NULL )
+				continue;
+
+			batman_count++;
+
+			addr_to_string( orig_node->orig, str, sizeof (str) );
+			addr_to_string( orig_node->router->addr, str2, sizeof (str2) );
+			dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s %10s %15s (%3i %3i %5i %4i)", 
+					str, orig_node->router->if_incoming->dev, str2,
+					orig_node->router->packet_count /* accepted */,
+					get_dbg_rcvd_all_bits( orig_node, orig_node->router->if_incoming, sequence_range ), /* all */
+					orig_node->last_seqno,
+					( get_time() - orig_node->last_valid )/1000 ); 
+					
 
 			list_for_each( neigh_pos, &orig_node->neigh_list ) {
 				neigh_node = list_entry( neigh_pos, struct neigh_node, list );
 
 				if( neigh_node->addr != orig_node->router->addr ) {
 					
-//					orig_neig_node = get_orig_node( neigh_node->addr );
-					
 					addr_to_string( neigh_node->addr, str, sizeof (str) );
 
-					dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), " %18s (%3i)", str, neigh_node->packet_count );
-				
+					dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), " %15s (%3i)", str, neigh_node->packet_count );
 				
 				}
 			}
 
 			debug_output( 1, "%s \n", dbg_ogm_str );
 			//debug_output( 4, "%s \n", dbg_ogm_str );
-
+			
 		}
+		
+		debug_output( 1, "\nOriginator      HNAs...\n");
+		
+		while ( NULL != ( hashit = hash_iterate( orig_hash, hashit ) ) ) {
+
+			orig_node = hashit->bucket->data;
+
+			if ( orig_node->router == NULL || orig_node->hna_buff_len == 0)
+				continue;
+
+			addr_to_string( orig_node->orig, str, sizeof (str) );
+			dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s", str ); 
+				
+			hna_buff_count = 0;
+			
+			while ( ( hna_buff_count + 1 ) * 5 <= orig_node->hna_buff_len ) {
+
+				memcpy( &hna, ( uint32_t *)&orig_node->hna_buff[ hna_buff_count * 5 ], 4 );
+				netmask = ( uint32_t )orig_node->hna_buff[ ( hna_buff_count * 5 ) + 4 ];
+				
+				addr_to_string( hna, str, sizeof (str) );
+
+				dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), " %15s/%2d ", str, netmask );
+
+				hna_buff_count++;
+
+			}
+
+			debug_output( 1, "%s \n", dbg_ogm_str );
+
+		}			
+			
 
 		if ( batman_count == 0 ) {
 
