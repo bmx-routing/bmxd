@@ -223,7 +223,7 @@ void add_del_hna_opt ( char *optarg_str, int8_t del ) {
 			if ( hna_node->addr == tmp_ip_holder.s_addr && hna_node->netmask == netmask ) {
 				
 				addr_to_string( hna_node->addr, str, sizeof (str) );
-				printf( "removing HNA %s/%i", str, hna_node->netmask );
+				printf( "removing HNA %s/%i \n", str, hna_node->netmask );
 				
 				list_del( prev_hna_list_head, hna_list_pos, &hna_list );
 				debugFree( hna_node, 1103 );	

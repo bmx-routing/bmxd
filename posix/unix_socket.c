@@ -37,16 +37,51 @@
 #include "../batman.h"
 
 
-
-void debug_output( int8_t debug_prio, char *format, ... ) {
+void debug_output( int8_t debug_prio_arg, char *format, ... ) {
 
 	struct list_head *debug_pos;
 	struct debug_level_info *debug_level_info;
 	int8_t debug_prio_intern;
 	va_list args;
 	char tmp_string[MAX_DBG_STR_SIZE + 1]; // TBD: must be checked for overflow when using with sprintf
+	
+	int8_t debug_prio;
+	int8_t debug_request[4] = {-1,-1,-1,-1};
+	int i = 0;
+	
+	if ( debug_prio_arg == 0 ) {
+		
+		debug_request[i++] = 0;
+		if ( debug_clients.clients_num[2] > 0 ) debug_request[i++] = 3;
+		if ( debug_clients.clients_num[3] > 0 ) debug_request[i++] = 4;
+		
+	} else if ( debug_prio_arg == 1 ) {
+		
+		if ( debug_clients.clients_num[0] > 0 ) debug_request[i++] = 1;
+		if ( debug_clients.clients_num[3] > 0 ) debug_request[i++] = 4;
 
+	} else if ( debug_prio_arg == 2 ) {
+		
+		if ( debug_clients.clients_num[1] > 0 ) debug_request[i++] = 2;
+		if ( debug_clients.clients_num[3] > 0 ) debug_request[i++] = 4;
 
+	} else if ( debug_prio_arg == 3 ) {
+	
+		if ( debug_clients.clients_num[2] > 0 ) debug_request[i++] = 3;
+		if ( debug_clients.clients_num[3] > 0 ) debug_request[i++] = 4;
+
+	} else if ( debug_prio_arg == 4 ) {
+	
+		if ( debug_clients.clients_num[3] > 0 ) debug_request[i++] = 4;
+	
+	}
+	i = 0;
+	
+while( debug_request[i] >= 0 ) {	
+	
+	debug_prio = debug_request[i];
+	i++;
+	
 	if ( debug_prio == 0 ) {
 
 		if ( debug_level == 0 ) {
@@ -55,7 +90,10 @@ void debug_output( int8_t debug_prio, char *format, ... ) {
 			vsyslog( LOG_ERR, format, args );
 			va_end( args );
 
-		} else if ( ( debug_level == 3 ) || ( debug_level == 4 ) ) {
+		}
+		 
+		/*		
+		else if ( ( debug_level == 3 ) || ( debug_level == 4 ) ) {
 
 			if ( debug_level == 4 )
 				printf( "[%10u] ", get_time() );
@@ -67,7 +105,10 @@ void debug_output( int8_t debug_prio, char *format, ... ) {
 		}
 
 		debug_prio_intern = 3;
-
+		*/
+		
+		return;
+		
 	} else {
 
 		debug_prio_intern = debug_prio - 1;
@@ -115,9 +156,10 @@ void debug_output( int8_t debug_prio, char *format, ... ) {
 		}
 
 	}
-
 }
 
+}
+	
 
 
 void *unix_listen( void *arg ) {

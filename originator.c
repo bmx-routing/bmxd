@@ -810,8 +810,8 @@ void debug_orig() {
 				debug_output( 4, "    %s at %u \n", str, forw_node->send_time );
 			}
 
-			debug_output( 4, "Originator list \n" );
-			debug_output( 4, "  %-12s %14s (%s/%3i %9s): %20s\n", "Originator", "Router", "#", sequence_range, "lastvalid", "Alternative routers" );
+			//debug_output( 4, "Originator list \n" );
+			//debug_output( 4, "  %-12s %14s (%s/%3i %9s): %20s\n", "Originator", "Router", "#", sequence_range, "lastvalid", "Alternative routers" );
 
 		}
 
@@ -872,14 +872,14 @@ void debug_orig() {
 			}
 
 			debug_output( 1, "%s \n", dbg_ogm_str );
-			debug_output( 4, "%s \n", dbg_ogm_str );
+			//debug_output( 4, "%s \n", dbg_ogm_str );
 
 		}
 
 		if ( batman_count == 0 ) {
 
 			debug_output( 1, "No batman nodes in range ... \n" );
-			debug_output( 4, "No batman nodes in range ... \n" );
+			//debug_output( 4, "No batman nodes in range ... \n" );
 
 		}
 
