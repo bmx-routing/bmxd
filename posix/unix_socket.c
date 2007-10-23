@@ -90,10 +90,8 @@ while( debug_request[i] >= 0 ) {
 			vsyslog( LOG_ERR, format, args );
 			va_end( args );
 
-		}
-		 
-		/*		
-		else if ( ( debug_level == 3 ) || ( debug_level == 4 ) ) {
+		} 
+/*		else if ( ( debug_level == 3 ) || ( debug_level == 4 ) ) {
 
 			if ( debug_level == 4 )
 				printf( "[%10u] ", get_time() );
@@ -102,13 +100,12 @@ while( debug_request[i] >= 0 ) {
 			vprintf( format, args );
 			va_end( args );
 
-		}
-
 		debug_prio_intern = 3;
-		*/
-		
-		return;
-		
+
+		}
+*/
+		continue;		
+	
 	} else {
 
 		debug_prio_intern = debug_prio - 1;
