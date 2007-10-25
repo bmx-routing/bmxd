@@ -211,6 +211,9 @@ void add_del_hna_opt ( char *optarg_str, int8_t del ) {
 		exit(EXIT_FAILURE);
 
 	}
+	
+	tmp_ip_holder.s_addr = ( tmp_ip_holder.s_addr & htonl(0xFFFFFFFF<<(32-netmask)) );
+		
 
 	if ( del ) {
 		
@@ -245,6 +248,9 @@ void add_del_hna_opt ( char *optarg_str, int8_t del ) {
 	
 		hna_node->addr = tmp_ip_holder.s_addr;
 		hna_node->netmask = netmask;
+		
+		addr_to_string( hna_node->addr, str, sizeof (str) );
+		printf( "adding HNA %s/%i \n", str, hna_node->netmask );
 	
 		list_add_tail( &hna_node->list, &hna_list );
 
@@ -273,7 +279,8 @@ void apply_init_args( int argc, char *argv[] ) {
 	memset( &tmp_ip_holder, 0, sizeof (struct in_addr) );
 	stop = 0;
 	prog_name = argv[0];
-	sprintf( unix_path, "%s", DEF_UNIX_PATH );
+	sprintf( unix_path, "%s.%d", DEF_UNIX_PATH, base_port);
+
 
 
 	printf( "WARNING: You are using the experimental batman branch!\n" );
