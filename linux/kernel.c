@@ -251,6 +251,7 @@ int8_t use_gateway_module() {
 
 	int32_t fd;
 
+	return -1;
 
 	if ( ( fd = open( "/dev/batgat", O_WRONLY ) ) < 0 ) {
 
