@@ -511,14 +511,19 @@ void *unix_listen( void *arg ) {
 		unix_client = list_entry( client_list_pos, struct unix_client, list );
 
 		if ( unix_client->debug_level != 0 ) {
-
+			
+			prev_list_head = (struct list_head *)debug_clients.fd_list[unix_client->debug_level - 1];
+			
+			if ( pthread_mutex_lock( (pthread_mutex_t *)debug_clients.mutex[unix_client->debug_level - 1] ) != 0 )
+				debug_output( 0, "Error - could not lock mutex (unix_listen => 4): %s \n", strerror( errno ) );
+				
 			list_for_each_safe( debug_pos, debug_pos_tmp, (struct list_head *)debug_clients.fd_list[unix_client->debug_level - 1] ) {
 
 				debug_level_info = list_entry(debug_pos, struct debug_level_info, list);
 
 				if ( debug_level_info->fd == unix_client->sock ) {
 
-					list_del( (struct list_head *)debug_clients.fd_list[unix_client->debug_level - 1], debug_pos, debug_clients.fd_list[unix_client->debug_level - 1] );
+					list_del( prev_list_head, debug_pos, debug_clients.fd_list[unix_client->debug_level - 1] );
 					debug_clients.clients_num[unix_client->debug_level - 1]--;
 
 					debugFree( debug_pos, 1204 );
@@ -526,9 +531,14 @@ void *unix_listen( void *arg ) {
 					break;
 
 				}
+				
+				prev_list_head = &debug_level_info->list;
 
 			}
-
+			
+			if ( pthread_mutex_unlock( (pthread_mutex_t *)debug_clients.mutex[unix_client->debug_level - 1] ) != 0 )
+				debug_output( 0, "Error - could not unlock mutex (unix_listen => 4): %s \n", strerror( errno ) );
+			
 		}
 
 		list_del( (struct list_head *)&unix_if.client_list, client_list_pos, &unix_if.client_list );
