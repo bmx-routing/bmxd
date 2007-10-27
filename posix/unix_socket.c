@@ -174,6 +174,7 @@ void *unix_listen( void *arg ) {
 	char buff[100], str[16], was_gateway, tmp_unix_value;
 	fd_set wait_sockets, tmp_wait_sockets;
 	socklen_t sun_size = sizeof(struct sockaddr_un);
+	uint8_t unix_client_deleted = NO;
 
 
 	INIT_LIST_HEAD_FIRST(unix_if.client_list);
@@ -244,8 +245,11 @@ void *unix_listen( void *arg ) {
 
 								if ( ( status > 2 ) && ( ( buff[2] > 0 ) && ( buff[2] <= debug_level_max ) ) ) {
 
+									// TODO: ??? What is this about ???
 									if ( unix_client->debug_level != 0 ) {
 
+										debug_output( 3, "unix_client->debug_level != 0 \n");
+										
 										prev_list_head = (struct list_head *)debug_clients.fd_list[unix_client->debug_level - 1];
 
 										if ( pthread_mutex_lock( (pthread_mutex_t *)debug_clients.mutex[unix_client->debug_level - 1] ) != 0 )
@@ -481,6 +485,7 @@ void *unix_listen( void *arg ) {
 
 							list_del( prev_list_head_unix, client_list_pos, &unix_if.client_list );
 							debugFree( client_list_pos, 1203 );
+							unix_client_deleted = YES;
 
 						}
 
@@ -490,8 +495,11 @@ void *unix_listen( void *arg ) {
 							max_sock = unix_client->sock;
 
 					}
-
-					prev_list_head_unix = &unix_client->list;
+					
+					if (!unix_client_deleted)
+						prev_list_head_unix = &unix_client->list;
+					
+					unix_client_deleted = NO;
 
 				}
 
