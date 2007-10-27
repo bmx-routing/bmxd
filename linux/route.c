@@ -67,13 +67,13 @@ void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t so
 		if ( dest == 0 ) {
 
 			debug_output( 3, "%s default route via %s %s (table %i)\n", del ? "Deleting" : "Adding", dev, str3, rt_table );
-			debug_output( 4, "%s default route via %s (table %i)\n", del ? "Deleting" : "Adding", dev, rt_table );
+//			debug_output( 4, "%s default route via %s (table %i)\n", del ? "Deleting" : "Adding", dev, rt_table );
 			my_router = router;
 
 		} else {
 
 			debug_output( 3, "%s route to %s via 0.0.0.0 (table %i - %s %s )\n", del ? "Deleting" : "Adding", str1, rt_table, dev, str3 );
-			debug_output( 4, "%s route to %s via 0.0.0.0 (table %i - %s)\n", del ? "Deleting" : "Adding", str1, rt_table, dev );
+//			debug_output( 4, "%s route to %s via 0.0.0.0 (table %i - %s)\n", del ? "Deleting" : "Adding", str1, rt_table, dev );
 			my_router = 0;
 
 		}
@@ -81,7 +81,7 @@ void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t so
 	} else {
 
 		debug_output( 3, "%s %s to %s/%i via %s (table %i - %s %s )\n", del ? "Deleting" : "Adding", ( route_type == 1 ? "throw route" : ( route_type == 2 ? "unreachable route" : "route" ) ), str1, netmask, str2, rt_table, dev, str3 );
-		debug_output( 4, "%s %s to %s/%i via %s (table %i - %s)\n", del ? "Deleting" : "Adding", ( route_type == 1 ? "throw route" : ( route_type == 2 ? "unreachable route" : "route" ) ), str1, netmask, str2, rt_table, dev );
+//		debug_output( 4, "%s %s to %s/%i via %s (table %i - %s)\n", del ? "Deleting" : "Adding", ( route_type == 1 ? "throw route" : ( route_type == 2 ? "unreachable route" : "route" ) ), str1, netmask, str2, rt_table, dev );
 		my_router = router;
 
 	}
@@ -204,7 +204,7 @@ void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t so
  *
  ***/
 
-void add_del_rule( uint32_t network, uint8_t netmask, int8_t rt_table, uint32_t prio, char *iif, int8_t rule_type, int8_t del ) {
+void add_del_rule( uint32_t network, uint8_t netmask, uint8_t rt_table, uint32_t prio, char *iif, int8_t rule_type, int8_t del ) {
 
 	int netlink_sock, len;
 	char buf[4096], str1[16];
@@ -236,7 +236,16 @@ void add_del_rule( uint32_t network, uint8_t netmask, int8_t rt_table, uint32_t 
 	req.rtm.rtm_family = AF_INET;
 	req.rtm.rtm_table = rt_table;
 
+	inet_ntop( AF_INET, &network, str1, sizeof (str1) );
+	debug_output( 3, "%s ip rule pref %d %s %s/%d  lookup table %d \n", 
+		      (del ? "Deleting" : "Adding"), 
+		       prio, 
+		       (rule_type == 0 ? "from" : (rule_type == 1 ? "to" : "dev" ) ), 
+			((rule_type == 0 || rule_type == 1) ? str1: ( rule_type == 2 ? iif : "??" )), 
+			netmask, 
+    			rt_table );
 
+	
 	if ( del ) {
 
 		req.nlh.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
