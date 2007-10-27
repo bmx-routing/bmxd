@@ -437,22 +437,23 @@ void restore_defaults() {
 
 void restore_and_exit( uint8_t is_sigsegv ) {
 
-	struct list_head *if_pos;
-	struct batman_if *batman_if;
+//	struct list_head *if_pos;
+//	struct batman_if *batman_if;
 	struct orig_node *orig_node;
 	struct hash_it_t *hashit = NULL;
-	unsigned short tmp_cmd[2];
-	unsigned int cmd;
+//	unsigned short tmp_cmd[2];
+//	unsigned int cmd;
 
 	if ( !unix_client ) {
 
 		/* remove tun interface first */
 		stop = 1;
 
+		/*
 		list_for_each( if_pos, &if_list ) {
 
 			batman_if = list_entry( if_pos, struct batman_if, list );
-			/* TODO: unregister from kernel module per ioctl */
+			// TODO: unregister from kernel module per ioctl
 			if (batman_if->udp_tunnel_sock > 0) {
 				if(batman_if->listen_thread_id != 0)
 					pthread_join( batman_if->listen_thread_id, NULL );
@@ -460,7 +461,7 @@ void restore_and_exit( uint8_t is_sigsegv ) {
 
 					tmp_cmd[0] = (unsigned short)IOCREMDEV;
 					tmp_cmd[1] = (unsigned short)strlen(batman_if->dev);
-					/* TODO: test if we can assign tmp_cmd direct */
+					// TODO: test if we can assign tmp_cmd direct 
 					memcpy(&cmd, tmp_cmd, sizeof(int));
 					if(ioctl(batman_if->udp_tunnel_sock,cmd, batman_if->dev) < 0) {
 						debug_output( 0, "Error - can't remove device %s from kernel module : %s\n", batman_if->dev,strerror(errno) );
@@ -475,6 +476,9 @@ void restore_and_exit( uint8_t is_sigsegv ) {
 
 		if ( ( routing_class != 0 ) && ( curr_gateway != NULL ) )
 			del_default_route();
+		*/
+		
+		restore_defaults();
 
 		/* all rules and routes were purged in segmentation_fault() */
 		if ( !is_sigsegv ) {
@@ -489,7 +493,7 @@ void restore_and_exit( uint8_t is_sigsegv ) {
 
 		}
 
-		restore_defaults();
+		//restore_defaults();
 
 	}
 
