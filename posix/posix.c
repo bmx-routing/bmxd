@@ -221,9 +221,10 @@ void del_default_route() {
 
 	curr_gateway = NULL;
 
-	if ( curr_gateway_thread_id != 0 )
+	if ( curr_gateway_thread_id != 0 ) {
 		pthread_join( curr_gateway_thread_id, NULL );
-
+		curr_gateway_thread_id = 0;
+	}
 }
 
 
@@ -231,7 +232,6 @@ void del_default_route() {
 int8_t add_default_route() {
 
 	struct curr_gw_data *curr_gw_data;
-
 
 	curr_gw_data = debugMalloc( sizeof(struct curr_gw_data), 207 );
 	curr_gw_data->orig = curr_gateway->orig_node->orig;
@@ -373,9 +373,10 @@ void restore_defaults() {
 
 	if (batman_if->udp_tunnel_sock > 0) {
 
-		if ( batman_if->listen_thread_id != 0 )
+		if ( batman_if->listen_thread_id != 0 ) {
 			pthread_join( batman_if->listen_thread_id, NULL );
-		else {
+			batman_if->listen_thread_id = 0;
+		} else {
 			tmp_cmd[0] = (unsigned short)IOCREMDEV;
 			tmp_cmd[1] = (unsigned short)strlen(batman_if->dev);
 			/* TODO: test if we can assign tmp_cmd direct */
@@ -428,9 +429,11 @@ void restore_defaults() {
 	if ( unix_if.unix_sock )
 		close( unix_if.unix_sock );
 
-	if ( unix_if.listen_thread_id != 0 )
+	if ( unix_if.listen_thread_id != 0 ) {
 		pthread_join( unix_if.listen_thread_id, NULL );
-
+		unix_if.listen_thread_id = 0;
+	}
+	
 	if ( debug_level == 0 )
 		closelog();
 
