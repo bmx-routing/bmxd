@@ -356,16 +356,12 @@ void *unix_listen( void *arg ) {
 
 										gateway_class = buff[2];
 
-										list_for_each( i_list_pos, &if_list ) {
+										batman_if = list_entry( (&if_list)->next, struct batman_if, list );
 
-											batman_if = list_entry( i_list_pos, struct batman_if, list );
+										batman_if->out.gwflags = gateway_class;
 
-											batman_if->out.gwflags = gateway_class;
-
-											if ( ( !was_gateway ) && ( gateway_class > 0 ) )
-												init_interface_gw( batman_if );
-
-										}
+										if ( ( !was_gateway ) && ( gateway_class > 0 ) )
+											init_interface_gw( batman_if );
 
 										if ( ( gateway_class > 0 ) && ( routing_class > 0 ) ) {
 

@@ -236,8 +236,8 @@ int8_t add_default_route() {
 	curr_gw_data = debugMalloc( sizeof(struct curr_gw_data), 207 );
 	curr_gw_data->orig = curr_gateway->orig_node->orig;
 	curr_gw_data->gw_node = curr_gateway;
-	curr_gw_data->batman_if = curr_gateway->orig_node->batman_if;
-
+//	curr_gw_data->batman_if = curr_gateway->orig_node->batman_if;
+	curr_gw_data->batman_if = list_entry( (&if_list)->next , struct batman_if, list );
 
 	if ( pthread_create( &curr_gateway_thread_id, NULL, &client_to_gw_tun, curr_gw_data ) != 0 ) {
 
@@ -366,28 +366,31 @@ void restore_defaults() {
 	if ( routing_class > 0 )
 		add_del_interface_rules( 1 );
 
-	list_for_each_safe( if_pos, if_pos_tmp, &if_list ) {
 
-		batman_if = list_entry( if_pos, struct batman_if, list );
+	batman_if = list_entry( (&if_list)->next, struct batman_if, list );
 
-		/* TODO: unregister from kernel module per ioctl */
+	/* TODO: unregister from kernel module per ioctl */
 
-		if (batman_if->udp_tunnel_sock > 0) {
+	if (batman_if->udp_tunnel_sock > 0) {
 
-			if ( batman_if->listen_thread_id != 0 )
-				pthread_join( batman_if->listen_thread_id, NULL );
-			else {
-				tmp_cmd[0] = (unsigned short)IOCREMDEV;
-				tmp_cmd[1] = (unsigned short)strlen(batman_if->dev);
-				/* TODO: test if we can assign tmp_cmd direct */
-				memcpy(&cmd, tmp_cmd, sizeof(int));
-				if(ioctl(batman_if->udp_tunnel_sock,cmd, batman_if->dev) < 0) {
-					debug_output( 0, "Error - can't remove device %s from kernel module : %s\n", batman_if->dev,strerror(errno) );
-				}
+		if ( batman_if->listen_thread_id != 0 )
+			pthread_join( batman_if->listen_thread_id, NULL );
+		else {
+			tmp_cmd[0] = (unsigned short)IOCREMDEV;
+			tmp_cmd[1] = (unsigned short)strlen(batman_if->dev);
+			/* TODO: test if we can assign tmp_cmd direct */
+			memcpy(&cmd, tmp_cmd, sizeof(int));
+			if(ioctl(batman_if->udp_tunnel_sock,cmd, batman_if->dev) < 0) {
+				debug_output( 0, "Error - can't remove device %s from kernel module : %s\n", batman_if->dev,strerror(errno) );
 			}
-
 		}
 
+	}
+
+	list_for_each_safe( if_pos, if_pos_tmp, &if_list ) {
+		
+		batman_if = list_entry( if_pos, struct batman_if, list );
+	
 		close( batman_if->udp_recv_sock );
 		close( batman_if->udp_send_sock );
 

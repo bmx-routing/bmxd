@@ -1027,7 +1027,7 @@ int8_t batman() {
 		batman_if->out.flags = 0x00;
 		batman_if->out.ttl = batman_if->if_ttl;
 		batman_if->out.seqno = 1;
-		batman_if->out.gwflags = gateway_class;
+		batman_if->out.gwflags = ( batman_if->if_num == 0 ? gateway_class : 0 );
 		batman_if->out.version = COMPAT_VERSION;
 
 		batman_if->if_rp_filter_old = get_rp_filter( batman_if->dev );

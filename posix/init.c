@@ -1204,13 +1204,9 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		if ( gateway_class != 0 ) {
 
-			list_for_each( list_pos, &if_list ) {
+			batman_if = list_entry( (&if_list)->next, struct batman_if, list );
 
-				batman_if = list_entry( list_pos, struct batman_if, list );
-
-				init_interface_gw( batman_if );
-
-			}
+			init_interface_gw( batman_if );
 
 		}
 
