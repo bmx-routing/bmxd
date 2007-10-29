@@ -55,7 +55,7 @@
 #define GW_STATE_UNKNOWN_TIMEOUT  (1  * ONE_MINUTE)
 #define GW_STATE_VERIFIED_TIMEOUT (5  * ONE_MINUTE)
 
-#define IP_LEASE_TIMEOUT          (20 * ONE_MINUTE)
+#define IP_LEASE_TIMEOUT          (1 * ONE_MINUTE)
 
 #define MAX_TUNNEL_IP_REQUESTS 20 /*12*/
 #define TUNNEL_IP_REQUEST_TIMEOUT 250000 /* usec */
@@ -321,6 +321,11 @@ int8_t refresh_ip_lease(struct sockaddr_in *gw_addr, int32_t udp_sock)
 
 				}
 
+			} else if ( res == 0 ) {
+				
+				debug_output( 3, "expected keep alive reply timed out! trying again...\n" );
+
+				
 			} else if ( ( res < 0 ) && ( errno != EINTR ) ) {
 
 				debug_output( 0, "Error - can't select: %s \n", strerror(errno) );
@@ -768,6 +773,10 @@ void *client_to_gw_tun( void *arg ) {
 			if (refresh_ip_lease(&gw_addr, udp_sock) < 0) {
 
 				debug_output(3, "Gateway client - disconnecting from unresponsive gateway (%s): could not refresh IP lease \n", gw_str);
+				
+				curr_gw_data->gw_node->last_failure = current_time;
+				curr_gw_data->gw_node->unavail_factor++;
+				
 				break;
 
 			} else {
