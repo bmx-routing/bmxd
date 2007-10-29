@@ -662,10 +662,11 @@ void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags ) {
 			} else {
 
 				gw_node->deleted = 0;
-				gw_node->orig_node->gwflags = new_gwflags;
 
 			}
 
+			gw_node->orig_node->gwflags = new_gwflags;
+			
 			prof_stop( PROF_update_gw_list );
 			choose_gw();
 			return;
