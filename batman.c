@@ -659,19 +659,21 @@ void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags ) {
 			if ( new_gwflags == 0 ) {
 
 				gw_node->deleted = get_time();
-
+				gw_node->orig_node->gwflags = new_gwflags;
+				
 				debug_output( 3, "Gateway %s removed from gateway list\n", orig_str );
+
+				if( gw_node == curr_gateway )
+					choose_gw();
 
 			} else {
 
 				gw_node->deleted = 0;
+				gw_node->orig_node->gwflags = new_gwflags;
 
 			}
 
-			gw_node->orig_node->gwflags = new_gwflags;
-			
 			prof_stop( PROF_update_gw_list );
-			choose_gw();
 			return;
 
 		}
@@ -696,8 +698,6 @@ void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags ) {
 	list_add_tail( &gw_node->list, &gw_list );
 
 	prof_stop( PROF_update_gw_list );
-
-	choose_gw();
 
 }
 
