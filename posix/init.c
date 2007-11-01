@@ -1173,7 +1173,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		/* add rule for hna networks */
 		if( !no_prio_rules )
-			add_del_rule( 0, 0, BATMAN_RT_TABLE_NETWORKS, BATMAN_RT_PRIO_UNREACH - 1, 0, 1, 0 );
+			add_del_rule( 0, 0, BATMAN_RT_TABLE_NETWORKS, BATMAN_RT_PRIO_DEFAULT - 1, 0, 1, 0 );
 
 		/* add unreachable routing table entry */
 		if( !no_unreachable_rule )

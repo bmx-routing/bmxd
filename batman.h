@@ -271,7 +271,7 @@ extern int32_t rt_prio_default;
 
 #define BATMAN_RT_PRIO_DEFAULT rt_prio_default
 #define BATMAN_RT_PRIO_UNREACH BATMAN_RT_PRIO_DEFAULT + 100
-#define BATMAN_RT_PRIO_TUNNEL BATMAN_RT_PRIO_UNREACH + 100
+#define BATMAN_RT_PRIO_TUNNEL  BATMAN_RT_PRIO_UNREACH + 100
 
 extern int32_t no_prio_rules;
 #define NO_PRIO_RULES_SWITCH "no-prio-rules"
