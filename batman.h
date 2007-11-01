@@ -46,7 +46,7 @@
 #define DIRECTLINK_FLAG     0x40 /* set when re-broadcasting a received OGM with identical OG IP and NB IP on the interface link as received */
 #define CLONED_FLAG         0x20 /* set when (re-)broadcasting a OGM not-for-the-first time or re-broadcasting a OGM with this flag */
 
-#define ADDR_STR_LEN 16
+#define ADDR_STR_LEN 17
 
 #define DEF_UNIX_PATH "/var/run/batmand.socket"
 char unix_path[sizeof(DEF_UNIX_PATH)+10];
@@ -294,8 +294,15 @@ extern int32_t gw_change_hysteresis;
 extern uint32_t gw_tunnel_prefix;
 extern uint8_t  gw_tunnel_netmask;
 #define DEF_GW_TUNNEL_PREFIX  0x0000FEA9 /* 169.254.0.0 */
-#define DEF_GW_TUNNEL_NETMASK 16
+#define MIN_GW_TUNNEL_NETMASK 22
+#define MAX_GW_TUNNEL_NETMASK 30
+#define DEF_GW_TUNNEL_NETMASK 24
 #define GW_TUNNEL_NETW_SWITCH "gw-tunnel-network"
+
+extern uint32_t tunnel_ip_lease_time;
+#define MIN_TUNNEL_IP_LEASE_TIME 60 /*seconds*/
+#define MAX_TUNNEL_IP_LEASE_TIME 60000
+#define DEF_TUNNEL_IP_LEASE_TIME 60
 
 extern uint8_t routing_class;
 
@@ -327,6 +334,8 @@ extern uint32_t pref_gateway;
 extern int8_t stop;
 
 extern unsigned char *hna_buff;
+
+extern struct gw_listen_arg gw_listen_arg;
 
 extern struct gw_node *curr_gateway;
 extern pthread_t curr_gateway_thread_id;
@@ -448,6 +457,13 @@ struct batman_if
 	uint8_t send_ogm_only_via_owning_if;
 	int16_t if_send_clones;
 };
+
+struct gw_listen_arg
+{
+	struct batman_if *batman_if;
+	struct gw_client **gw_client_list; 
+};
+	
 
 struct gw_client
 {

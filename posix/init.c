@@ -142,15 +142,16 @@ void set_gw_network ( char *optarg_str ) {
 
 	}
 
-	if ( netmask != 16 || netmask < 1 || netmask > 32) {
+	if ( netmask < MIN_GW_TUNNEL_NETMASK || netmask > MAX_GW_TUNNEL_NETMASK ) {
 
 		*slash_ptr = '/';
-		printf( "Invalid GW network (netmask is invalid): %s ! Sorry, currently only /16 networks are supported!\n", optarg_str );
+		printf( "Invalid GW network (netmask is invalid): %s !\n", optarg_str );
 		exit(EXIT_FAILURE);
 
 	}
 
 	gw_tunnel_prefix  = tmp_ip_holder.s_addr;
+	gw_tunnel_prefix  = gw_tunnel_prefix & htonl( 0xFFFFFFFF<<(32-netmask) );
 	gw_tunnel_netmask = netmask;
 	
 	addr_to_string( gw_tunnel_prefix, netmask_str, ADDR_STR_LEN );
@@ -265,7 +266,7 @@ void apply_init_args( int argc, char *argv[] ) {
 	struct batman_if *batman_if;
 //	struct hna_node *hna_node;
 	struct debug_level_info *debug_level_info;
-	struct list_head *list_pos;
+//	struct list_head *list_pos;
 	uint8_t found_args = 1, batch_mode = 0, apply_default_paras_and_break = NO;
 //	uint16_t netmask;
 	int8_t res;
@@ -1512,12 +1513,29 @@ void init_interface ( struct batman_if *batman_if ) {
 
 void init_interface_gw ( struct batman_if *batman_if ) {
 
-	int32_t sock_opts;
+	int32_t sock_opts, i;
 	unsigned short tmp_cmd[2];
 	unsigned int cmd;
 
 	if ( ( batman_if->udp_tunnel_sock = use_gateway_module( batman_if->dev ) ) < 0 ) {
 
+		gw_listen_arg.batman_if = batman_if;
+		
+		if( (gw_listen_arg.gw_client_list = debugMalloc( (0xFFFFFFFF>>gw_tunnel_netmask) * sizeof( struct gw_client ), 210 ) ) == NULL ) {
+		
+			debug_output( 0, "Error - init_interface_gw(): could not allocate memory for gw_client_list \n");
+			restore_defaults();
+			exit(EXIT_FAILURE);
+		}
+		
+		for( i=0; i<(0xFFFFFFFF>>gw_tunnel_netmask); i++) {
+			//debug_output( 3, "resetting %d at %ld\n", i, gw_listen_arg.gw_client_list[i]);
+			gw_listen_arg.gw_client_list[i] = NULL;
+		}
+
+		//memset( gw_client_list, 0, (32-gw_tunnel_netmask) * sizeof( struct gw_client ) );
+
+		
 		batman_if->addr.sin_port = htons(PORT + 1);
 
 		batman_if->udp_tunnel_sock = socket( PF_INET, SOCK_DGRAM, 0 );
@@ -1544,7 +1562,7 @@ void init_interface_gw ( struct batman_if *batman_if ) {
 
 		batman_if->addr.sin_port = htons(PORT);
 
-		pthread_create( &batman_if->listen_thread_id, NULL, &gw_listen, batman_if );
+		pthread_create( &batman_if->listen_thread_id, NULL, &gw_listen, &gw_listen_arg );
 
 	} else {
 

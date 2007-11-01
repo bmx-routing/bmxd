@@ -129,6 +129,9 @@ int32_t gw_change_hysteresis = DEF_GW_CHANGE_HYSTERESIS;
 uint32_t gw_tunnel_prefix  = DEF_GW_TUNNEL_PREFIX;
 uint8_t  gw_tunnel_netmask = DEF_GW_TUNNEL_NETMASK;
 
+uint32_t tunnel_ip_lease_time = DEF_TUNNEL_IP_LEASE_TIME;
+
+struct gw_listen_arg gw_listen_arg;
 
 struct gw_node *curr_gateway = NULL;
 pthread_t curr_gateway_thread_id = 0;

@@ -24,6 +24,8 @@
 
 uint32_t get_time( void );
 uint32_t get_time_sec( void );
+
+// returns an
 int32_t rand_num( uint32_t limit );
 void addr_to_string( uint32_t addr, char *str, int32_t len );
 
@@ -81,20 +83,57 @@ void *gw_listen( void *arg );
 void *client_to_gw_tun( void *arg );
 
 #define MAX_MTU 1500
-#define MAX_IP_FIX_TIME 5000
 
-struct tunnel_buff_align {
-	uint8_t reserved1;
-	uint8_t reserved2;
-	uint8_t reserved3;
-	uint8_t type;
-} __attribute__((packed));
+
+#define TUNNEL_DATA 0x01
+#define TUNNEL_IP_REQUEST 0x02
+#define TUNNEL_IP_INVALID 0x03
+#define TUNNEL_KEEPALIVE_REQUEST 0x04
+#define TUNNEL_KEEPALIVE_REPLY 0x05
+#define TUNNEL_IP_REPLY 0x06
+
+#define GW_STATE_UNKNOWN  0x01
+#define GW_STATE_VERIFIED 0x02
+
+#define ONE_MINUTE                60000
+
+#define GW_STATE_UNKNOWN_TIMEOUT  (1  * ONE_MINUTE)
+#define GW_STATE_VERIFIED_TIMEOUT (5  * ONE_MINUTE)
+
+#define IP_LEASE_TIMEOUT          (1 * ONE_MINUTE)
+
+#define MAX_TUNNEL_IP_REQUESTS 60 /*12*/
+#define TUNNEL_IP_REQUEST_TIMEOUT 1000 /* msec */
+
 	
+struct tun_request_type {
+	uint32_t lease_ip;
+	uint16_t lease_lt;
+} __attribute__((packed));
 
-struct tunnel_buff {
-	struct tunnel_buff_align align;
+struct tun_data_type {
 	unsigned char ip_packet[MAX_MTU];
 } __attribute__((packed));
+
+struct tun_packet
+{
+	uint8_t  reserved1;
+	uint8_t  reserved2;
+	uint8_t  reserved3;
+	uint8_t  type;
+	union
+	{
+		struct tun_request_type trt;
+		struct tun_data_type tdt;
+	}tt;
+#define lease_ip  tt.trt.lease_ip
+#define lease_lt  tt.trt.lease_lt
+#define ip_packet tt.tdt.ip_packet
+} __attribute__((packed));
+
+
+#define tx_rp_size (sizeof(uint8_t) + sizeof(struct tun_request_type))
+#define tx_dp_size (sizeof(uint8_t) + sizeof(struct tun_data_type))
 
 
 /* unix_sokcet.c */
