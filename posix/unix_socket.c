@@ -46,7 +46,7 @@ void debug_output( int8_t debug_prio_arg, char *format, ... ) {
 	char tmp_string[MAX_DBG_STR_SIZE + 1]; // TBD: must be checked for overflow when using with sprintf
 	
 	int8_t debug_prio;
-	int8_t debug_request[4] = {-1,-1,-1,-1};
+	int8_t debug_request[5] = {-1,-1,-1,-1,-1};
 	int i = 0;
 	
 	if ( debug_prio_arg == 0 ) {
@@ -73,6 +73,10 @@ void debug_output( int8_t debug_prio_arg, char *format, ... ) {
 	} else if ( debug_prio_arg == 4 ) {
 	
 		if ( debug_clients.clients_num[3] > 0 ) debug_request[i++] = 4;
+	
+	} else if ( debug_prio_arg == 5 ) {
+	
+		if ( debug_clients.clients_num[4] > 0 ) debug_request[i++] = 5;
 	
 	}
 	i = 0;

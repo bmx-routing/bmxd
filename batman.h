@@ -39,14 +39,14 @@
 
 #define SOURCE_VERSION "0.3-alpha" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
 
-#define COMPAT_VERSION 5
+#define COMPAT_VERSION 6
 
 
 #define UNIDIRECTIONAL_FLAG 0x80 /* set when re-broadcasting a received OGM via a curretnly not bi-directional link and only together with IDF */
 #define DIRECTLINK_FLAG     0x40 /* set when re-broadcasting a received OGM with identical OG IP and NB IP on the interface link as received */
 #define CLONED_FLAG         0x20 /* set when (re-)broadcasting a OGM not-for-the-first time or re-broadcasting a OGM with this flag */
 
-#define ADDR_STR_LEN 17
+#define ADDR_STR_LEN 16
 
 #define DEF_UNIX_PATH "/var/run/batmand.socket"
 char unix_path[sizeof(DEF_UNIX_PATH)+10];
