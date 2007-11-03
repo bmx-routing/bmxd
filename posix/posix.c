@@ -45,18 +45,10 @@ extern struct vis_if vis_if;
 
 static clock_t start_time;
 static float system_tick;
-static uint32_t system_tick_f;
 
 static uint32_t last_blocked_send_warning = 0;
 
 uint32_t get_time( void ) {
-	static struct tms tp;
-	
-	return (uint32_t)( ( ( times(&tp) - start_time ) * 1000 ) / system_tick_f );
-}
-
-
-uint32_t get_time_INVALID( void ) {
 	struct tms tp;
 	
 	return (uint32_t)( ( (float)( times(&tp) - start_time ) * 1000 ) / system_tick );
@@ -594,7 +586,6 @@ int main( int argc, char *argv[] ) {
 
 	start_time = times(&tp);
 	system_tick = (float)sysconf(_SC_CLK_TCK);
-	system_tick_f = sysconf(_SC_CLK_TCK);
 
 	apply_init_args( argc, argv );
 
