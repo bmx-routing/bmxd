@@ -53,6 +53,8 @@ uint8_t debug_level_max = 4;
 
 char *prog_name;
 
+char unix_path[sizeof(DEF_UNIX_PATH)+10]; //initialized in init.c: apply_init_args()
+
 
 /*
  * "-g" is the command line switch for the gateway class,
@@ -130,10 +132,11 @@ int32_t two_way_tunnel = DEF_TWO_WAY_TUNNEL;
 
 int32_t gw_change_hysteresis = DEF_GW_CHANGE_HYSTERESIS;
 
-uint32_t gw_tunnel_prefix  = DEF_GW_TUNNEL_PREFIX;
+uint32_t gw_tunnel_prefix; //= DEF_GW_TUNNEL_PREFIX; //initialized in init.c: apply_init_args()
+
 uint8_t  gw_tunnel_netmask = DEF_GW_TUNNEL_NETMASK;
 
-uint32_t tunnel_ip_lease_time = DEF_TUNNEL_IP_LEASE_TIME;
+int32_t tunnel_ip_lease_time = DEF_TUNNEL_IP_LEASE_TIME;
 
 struct gw_listen_arg gw_listen_arg;
 
@@ -203,7 +206,27 @@ void print_advanced_opts ( int verbose ) {
 		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_RT_PRIO_DEFAULT, MIN_RT_PRIO_DEFAULT, MAX_RT_PRIO_DEFAULT  );
 	
 	
+	fprintf( stderr, "\n       --%s <value> : set preference for %s mode.\n", ONE_WAY_TUNNEL_SWITCH, ONE_WAY_TUNNEL_SWITCH );
+	fprintf( stderr, "         For GW-nodes:  0 disables this tunnel mode, a larger value enables this tunnel mode.\n" );
+	fprintf( stderr, "         For GW-cliets: 0 disables this tunnel mode, a larger value sets the preference for this mode.\n" );
+	if ( verbose )
+		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_ONE_WAY_TUNNEL, MIN_ONE_WAY_TUNNEL, MAX_ONE_WAY_TUNNEL  );
+
+	fprintf( stderr, "\n       --%s <value> : set preference for %s mode.\n", TWO_WAY_TUNNEL_SWITCH, TWO_WAY_TUNNEL_SWITCH );
+	fprintf( stderr, "         For GW-nodes:  0 disables this tunnel mode, a larger value enables this tunnel mode.\n" );
+	fprintf( stderr, "         For GW-cliets: 0 disables this tunnel mode, a larger value sets the preference for this mode.\n" );
+	if ( verbose )
+		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_TWO_WAY_TUNNEL, MIN_TWO_WAY_TUNNEL, MAX_TWO_WAY_TUNNEL  );
+	
 	fprintf( stderr, "\n       --%s <ip-address/netmask> : set tunnel IP-address range leased out by GW nodes.\n", GW_TUNNEL_NETW_SWITCH );
+	fprintf( stderr, "         Only relevant for GW-nodes in %s mode\n", TWO_WAY_TUNNEL_SWITCH );
+	if ( verbose )
+		fprintf( stderr, "          default: %s/%d, allowed netmask values: %d <= value <= %d \n", DEF_GW_TUNNEL_PREFIX_STR, DEF_GW_TUNNEL_NETMASK, MIN_GW_TUNNEL_NETMASK, MAX_GW_TUNNEL_NETMASK );
+	
+	fprintf( stderr, "\n       --%s <value> : set lease time in seconds of virtual two-way tunnel IPs.\n", TUNNEL_IP_LEASE_TIME_SWITCH );
+	fprintf( stderr, "         Only relevant for GW-nodes in %s mode\n", TWO_WAY_TUNNEL_SWITCH );
+	if ( verbose )
+		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_TUNNEL_IP_LEASE_TIME, MIN_TUNNEL_IP_LEASE_TIME, MAX_TUNNEL_IP_LEASE_TIME  );
 	
 	
 	fprintf( stderr, "\n       --%s <value> : change default TTL of originator packets.\n", TTL_SWITCH );

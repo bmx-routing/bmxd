@@ -284,6 +284,7 @@ void apply_init_args( int argc, char *argv[] ) {
 	stop = 0;
 	prog_name = argv[0];
 	sprintf( unix_path, "%s.%d", DEF_UNIX_PATH, base_port);
+	inet_pton( AF_INET, DEF_GW_TUNNEL_PREFIX_STR, &gw_tunnel_prefix );
 
 
 
@@ -302,6 +303,7 @@ void apply_init_args( int argc, char *argv[] ) {
    {NBRFSIZE_SWITCH,            1, 0, 0},
    {GW_CHANGE_HYSTERESIS_SWITCH,1, 0, 0},
    {GW_TUNNEL_NETW_SWITCH,      1, 0, 0},
+   {TUNNEL_IP_LEASE_TIME_SWITCH,1, 0, 0},
    {TWO_WAY_TUNNEL_SWITCH,      1, 0, 0},
    {ONE_WAY_TUNNEL_SWITCH,      1, 0, 0},
    {TTL_SWITCH,                 1, 0, 0},
@@ -502,7 +504,14 @@ void apply_init_args( int argc, char *argv[] ) {
 
 					found_args += 2;
 					break;
+					
+					
+				} else if ( strcmp( TUNNEL_IP_LEASE_TIME_SWITCH, long_options[option_index].name ) == 0 ) {
 
+					set_init_arg( TUNNEL_IP_LEASE_TIME_SWITCH, optarg, MIN_TUNNEL_IP_LEASE_TIME, MAX_TUNNEL_IP_LEASE_TIME, &tunnel_ip_lease_time );
+					found_args += 2;
+					break;
+							
 				} else if ( strcmp( TWO_WAY_TUNNEL_SWITCH, long_options[option_index].name ) == 0 ) {
 
 					set_init_arg( TWO_WAY_TUNNEL_SWITCH, optarg, MIN_TWO_WAY_TUNNEL, MAX_TWO_WAY_TUNNEL, &two_way_tunnel );

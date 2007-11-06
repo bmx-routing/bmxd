@@ -45,7 +45,7 @@
 #define ADDR_STR_LEN 16
 
 #define DEF_UNIX_PATH "/var/run/batmand.socket"
-char unix_path[sizeof(DEF_UNIX_PATH)+10];
+extern char unix_path[]; 
 
 #define VIS_COMPAT_VERSION 20
 
@@ -301,16 +301,17 @@ extern int32_t gw_change_hysteresis;
 
 extern uint32_t gw_tunnel_prefix;
 extern uint8_t  gw_tunnel_netmask;
-#define DEF_GW_TUNNEL_PREFIX  0x0000FEA9 /* 169.254.0.0 */
-#define MIN_GW_TUNNEL_NETMASK 22
+#define DEF_GW_TUNNEL_PREFIX_STR  "169.254.0.0" /* 0x0000FEA9 */
+#define MIN_GW_TUNNEL_NETMASK 20
 #define MAX_GW_TUNNEL_NETMASK 30
-#define DEF_GW_TUNNEL_NETMASK 24
+#define DEF_GW_TUNNEL_NETMASK 22
 #define GW_TUNNEL_NETW_SWITCH "gw-tunnel-network"
 
-extern uint32_t tunnel_ip_lease_time;
+extern int32_t tunnel_ip_lease_time;
 #define MIN_TUNNEL_IP_LEASE_TIME 60 /*seconds*/
 #define MAX_TUNNEL_IP_LEASE_TIME 60000
 #define DEF_TUNNEL_IP_LEASE_TIME 60
+#define TUNNEL_IP_LEASE_TIME_SWITCH "tunnel-lease-time"
 
 #define PARALLEL_BAT_NET1_SWITCH "pbn1"
 
