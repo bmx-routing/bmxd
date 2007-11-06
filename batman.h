@@ -39,12 +39,8 @@
 
 #define SOURCE_VERSION "0.3-alpha" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
 
-#define COMPAT_VERSION 6
+#define COMPAT_VERSION 7
 
-
-#define UNIDIRECTIONAL_FLAG 0x80 /* set when re-broadcasting a received OGM via a curretnly not bi-directional link and only together with IDF */
-#define DIRECTLINK_FLAG     0x40 /* set when re-broadcasting a received OGM with identical OG IP and NB IP on the interface link as received */
-#define CLONED_FLAG         0x20 /* set when (re-)broadcasting a OGM not-for-the-first time or re-broadcasting a OGM with this flag */
 
 #define ADDR_STR_LEN 16
 
@@ -285,6 +281,18 @@ extern int32_t no_unresponsive_check;
 #define NO_UNRESP_CHECK_SWITCH "no-unresp-gw-check"
 #define DEF_NO_UNRESP_CHECK NO
 
+extern int32_t two_way_tunnel;
+#define TWO_WAY_TUNNEL_SWITCH "two-way-tunnel"
+#define DEF_TWO_WAY_TUNNEL 2
+#define MIN_TWO_WAY_TUNNEL 0
+#define MAX_TWO_WAY_TUNNEL 4
+
+extern int32_t one_way_tunnel;
+#define ONE_WAY_TUNNEL_SWITCH "one-way-tunnel"
+#define DEF_ONE_WAY_TUNNEL 0
+#define MIN_ONE_WAY_TUNNEL 0
+#define MAX_ONE_WAY_TUNNEL 4
+
 extern int32_t gw_change_hysteresis;
 #define GW_CHANGE_HYSTERESIS_SWITCH "gw-change-hysteresis"
 #define DEF_GW_CHANGE_HYSTERESIS 1
@@ -303,6 +311,8 @@ extern uint32_t tunnel_ip_lease_time;
 #define MIN_TUNNEL_IP_LEASE_TIME 60 /*seconds*/
 #define MAX_TUNNEL_IP_LEASE_TIME 60000
 #define DEF_TUNNEL_IP_LEASE_TIME 60
+
+#define PARALLEL_BAT_NET1_SWITCH "pbn1"
 
 extern uint8_t routing_class;
 
@@ -356,15 +366,46 @@ extern struct vis_if vis_if;
 extern struct unix_if unix_if;
 extern struct debug_clients debug_clients;
 
+/* the bat_packet flags: */
+#define UNIDIRECTIONAL_FLAG 0x08 /* set when re-broadcasting a received OGM via a curretnly not bi-directional link and only together with IDF */
+#define DIRECTLINK_FLAG     0x04 /* set when re-broadcasting a received OGM with identical OG IP and NB IP on the interface link as received */
+#define CLONED_FLAG         0x02 /* set when (re-)broadcasting a OGM not-for-the-first time or re-broadcasting a OGM with this flag */
+
+#define EXTENSION_MSG       0x00 /* unset for OGM, set for OGM related extensions like HNA,... */
+
+/* the flags for bat_packet gwtypes: */
+#define TWO_WAY_TUNNEL_FLAG   0x01
+#define ONE_WAY_TUNNEL_FLAG   0x02
+
 
 struct bat_packet
 {
-	uint32_t orig;
-	uint8_t  flags;    /* 0x80: UNIDIRECTIONAL link, 0x40: DIRECTLINK flag, ... */
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+	unsigned int flags:4;    /* 0x08: UNIDIRECTIONAL link, 0x04: DIRECTLINK flag, ... */
+	unsigned int version:4;  /* should be the first field in the packet in network byte order */
+#elif __BYTE_ORDER == __BIG_ENDIAN
+	unsigned int version:4;
+	unsigned int flags:4;
+#else
+# error "Please fix <bits/endian.h>"
+#endif
+			
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+	unsigned int gwtypes:4;  /* to let a gw announce its offered gateway types */
+	unsigned int reserved:4;
+#elif __BYTE_ORDER == __BIG_ENDIAN
+	unsigned int reserved:4;
+	unsigned int gwtypes:4;
+#else
+# error "Please fix <bits/endian.h>"
+#endif
+			
+	uint8_t  gwflags;     /* flags related to gateway functions: gateway class */
+//	uint8_t  flags;       /* 0x80: UNIDIRECTIONAL link, 0x40: DIRECTLINK flag, ... */
 	uint8_t  ttl;
+	uint32_t orig;
 	uint16_t seqno;
-	uint8_t  gwflags;  /* flags related to gateway functions: gateway class */
-	uint8_t  version;  /* batman version field */
+//	uint8_t  version;     /* batman compatibility version field */
 } __attribute__((packed));
 
 struct orig_node                 /* structure for orig_list maintaining nodes of mesh */
@@ -375,6 +416,7 @@ struct orig_node                 /* structure for orig_list maintaining nodes of
 	uint16_t *bidirect_link;    /* if node is a bidrectional neighbour, when my originator packet was broadcasted (replied) by this node and received by me */
 	uint32_t last_valid;              /* when last packet from this node was received */
 	uint8_t  gwflags;                 /* flags related to gateway functions: gateway class */
+	uint8_t  gwtypes;                 /* flags related to offered gateway tunnel types */
 	unsigned char *hna_buff;
 	int16_t  hna_buff_len;
 	uint16_t last_seqno;              /* last and best known squence number */
@@ -519,7 +561,7 @@ void verbose_usage( void );
 void print_advanced_opts ( int verbose );
 int is_batman_if( char *dev, struct batman_if **batman_if );
 void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, unsigned char *hna_recv_buff, int16_t hna_buff_len );
-void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags );
+void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags, uint8_t new_gwtypes );
 void get_gw_speeds( unsigned char class, int *down, int *up );
 unsigned char get_gw_class( int down, int up );
 void choose_gw();

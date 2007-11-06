@@ -286,13 +286,11 @@ void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t n
 	update_routes( orig_node, best_neigh_node, hna_recv_buff, hna_buff_len );
 
 	
-	if ( orig_node->gwflags != in->gwflags )
-		update_gw_list( orig_node, in->gwflags );
-
-//	orig_node->gwflags = in->gwflags;
+	if ( orig_node->gwflags != in->gwflags || orig_node->gwtypes != in->gwtypes )
+		update_gw_list( orig_node, in->gwflags, in->gwtypes );
 
 	/* restart gateway selection if we have more packets and routing class 3 */
-	if ( ( orig_node->gwflags != 0 ) && ( routing_class == 3 ) && ( curr_gateway != NULL ) ) {
+	if ( routing_class == 3  &&  curr_gateway != NULL  &&  orig_node->gwflags  && (orig_node->gwtypes & ((two_way_tunnel?TWO_WAY_TUNNEL_FLAG:0) | (one_way_tunnel?ONE_WAY_TUNNEL_FLAG:0)))  ) {
 
 		if ( ( curr_gateway->orig_node != orig_node ) && (pref_gateway == 0 || pref_gateway == orig_node->orig ) && ( (curr_gateway->orig_node->router->packet_count + gw_change_hysteresis) <= orig_node->router->packet_count ) ) {
 			
@@ -771,7 +769,7 @@ void debug_orig() {
 				
 				get_gw_speeds( gw_node->orig_node->gwflags, &download_speed, &upload_speed );
 				
-				debug_output( 2, "%s %-15s %''15s (%3i), gw_class %2i - %i%s/%i%s, reliability: %i \n", ( curr_gateway == gw_node ? "=>" : "  " ), str, str2, gw_node->orig_node->router->packet_count, gw_node->orig_node->gwflags, ( download_speed > 2048 ? download_speed / 1024 : download_speed ), ( download_speed > 2048 ? "MBit" : "KBit" ), ( upload_speed > 2048 ? upload_speed / 1024 : upload_speed ), ( upload_speed > 2048 ? "MBit" : "KBit" ), gw_node->unavail_factor );
+				debug_output( 2, "%s %-15s %''15s (%3i), gw_class %2i - %i%s/%i%s, reliability: %i, supported tunnel types %s, %s \n", ( curr_gateway == gw_node ? "=>" : "  " ), str, str2, gw_node->orig_node->router->packet_count, gw_node->orig_node->gwflags, ( download_speed > 2048 ? download_speed / 1024 : download_speed ), ( download_speed > 2048 ? "MBit" : "KBit" ), ( upload_speed > 2048 ? upload_speed / 1024 : upload_speed ), ( upload_speed > 2048 ? "MBit" : "KBit" ), gw_node->unavail_factor, ((gw_node->orig_node->gwtypes&TWO_WAY_TUNNEL_FLAG)?"TWT":"-"), ((gw_node->orig_node->gwtypes&ONE_WAY_TUNNEL_FLAG)?"OWT":"-") );
 				
 				batman_count++;
 

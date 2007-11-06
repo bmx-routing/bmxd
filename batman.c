@@ -124,6 +124,10 @@ int32_t no_throw_rules = DEF_NO_THROW_RULES;
 
 int32_t no_unresponsive_check = DEF_NO_UNRESP_CHECK;
 
+int32_t one_way_tunnel = DEF_ONE_WAY_TUNNEL;
+
+int32_t two_way_tunnel = DEF_TWO_WAY_TUNNEL;
+
 int32_t gw_change_hysteresis = DEF_GW_CHANGE_HYSTERESIS;
 
 uint32_t gw_tunnel_prefix  = DEF_GW_TUNNEL_PREFIX;
@@ -463,7 +467,10 @@ void choose_gw() {
 
 		if ( gw_node->deleted )
 			continue;
-
+		
+		if ( !( gw_node->orig_node->gwtypes & ( (two_way_tunnel?TWO_WAY_TUNNEL_FLAG:0) | (one_way_tunnel?ONE_WAY_TUNNEL_FLAG:0) ) ) )
+			continue;
+			
 		switch ( routing_class ) {
 
 			case 1:   /* fast connection */
@@ -639,7 +646,7 @@ void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, 
 
 
 
-void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags ) {
+void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags, uint8_t new_gwtypes ) {
 
 	prof_start( PROF_update_gw_list );
 	struct list_head *gw_pos, *gw_pos_tmp;
@@ -654,12 +661,14 @@ void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags ) {
 		if ( gw_node->orig_node == orig_node ) {
 
 			addr_to_string( gw_node->orig_node->orig, orig_str, ADDR_STR_LEN );
-			debug_output( 3, "Gateway class of originator %s changed from %i to %i\n", orig_str, gw_node->orig_node->gwflags, new_gwflags );
+			
+			debug_output( 3, "Gateway class of originator %s changed from %i to %i, new supported tunnel types %s, %s\n", orig_str, gw_node->orig_node->gwflags, new_gwflags, ((new_gwtypes&TWO_WAY_TUNNEL_FLAG)?"TWT":"-"), ((new_gwtypes&ONE_WAY_TUNNEL_FLAG)?"OWT":"-") );
 
-			if ( new_gwflags == 0 ) {
+			if ( !new_gwflags || (!( new_gwtypes & ( (two_way_tunnel?TWO_WAY_TUNNEL_FLAG:0) | (one_way_tunnel?ONE_WAY_TUNNEL_FLAG:0) ) )) ) {
 
 				gw_node->deleted = get_time();
 				gw_node->orig_node->gwflags = new_gwflags;
+				gw_node->orig_node->gwtypes = new_gwtypes;
 				
 				debug_output( 3, "Gateway %s removed from gateway list\n", orig_str );
 
@@ -670,6 +679,7 @@ void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags ) {
 
 				gw_node->deleted = 0;
 				gw_node->orig_node->gwflags = new_gwflags;
+				gw_node->orig_node->gwtypes = new_gwtypes;
 
 			}
 
@@ -683,7 +693,7 @@ void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags ) {
 	addr_to_string( orig_node->orig, orig_str, ADDR_STR_LEN );
 	get_gw_speeds( new_gwflags, &download_speed, &upload_speed );
 
-	debug_output( 3, "Found new gateway %s -> class: %i - %i%s/%i%s\n", orig_str, new_gwflags, ( download_speed > 2048 ? download_speed / 1024 : download_speed ), ( download_speed > 2048 ? "MBit" : "KBit" ), ( upload_speed > 2048 ? upload_speed / 1024 : upload_speed ), ( upload_speed > 2048 ? "MBit" : "KBit" ) );
+	debug_output( 3, "Found new gateway %s -> class: %i - %i%s/%i%s, new supported tunnel types %s, %s\n", orig_str, new_gwflags, ( download_speed > 2048 ? download_speed / 1024 : download_speed ), ( download_speed > 2048 ? "MBit" : "KBit" ), ( upload_speed > 2048 ? upload_speed / 1024 : upload_speed ), ( upload_speed > 2048 ? "MBit" : "KBit" ), ((new_gwtypes&TWO_WAY_TUNNEL_FLAG)?"TWT":"-"), ((new_gwtypes&ONE_WAY_TUNNEL_FLAG)?"OWT":"-" ) );
 
 	gw_node = debugMalloc( sizeof(struct gw_node), 103 );
 	memset( gw_node, 0, sizeof(struct gw_node) );
@@ -691,6 +701,7 @@ void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags ) {
 
 	gw_node->orig_node = orig_node;
 	orig_node->gwflags = new_gwflags;
+	orig_node->gwtypes = new_gwtypes;
 	gw_node->unavail_factor = 0;
 	gw_node->last_failure = get_time();
 	
@@ -1031,7 +1042,8 @@ int8_t batman() {
 		batman_if->out.flags = 0x00;
 		batman_if->out.ttl = batman_if->if_ttl;
 		batman_if->out.seqno = 1;
-		batman_if->out.gwflags = ( batman_if->if_num == 0 ? gateway_class : 0 );
+		batman_if->out.gwflags = ( (( two_way_tunnel || one_way_tunnel ) & (batman_if->if_num == 0)) ? gateway_class : 0 );
+		batman_if->out.gwtypes = gateway_class ? ( (two_way_tunnel?TWO_WAY_TUNNEL_FLAG:0) | (one_way_tunnel?ONE_WAY_TUNNEL_FLAG:0) ) : 0;
 		batman_if->out.version = COMPAT_VERSION;
 
 		batman_if->if_rp_filter_old = get_rp_filter( batman_if->dev );
@@ -1110,8 +1122,8 @@ int8_t batman() {
 			}
 
 
-			if ( ((struct bat_packet *)&in)->gwflags != 0 )
-				debug_output( 4, "Is an internet gateway (class %i) \n", ((struct bat_packet *)&in)->gwflags );
+			if ( ((struct bat_packet *)&in)->gwflags != 0 && ((struct bat_packet *)&in)->gwtypes != 0 )
+				debug_output( 4, "Is an internet gateway (class %i, types %i) \n", ((struct bat_packet *)&in)->gwflags, ((struct bat_packet *)&in)->gwtypes );
 
 			if ( hna_buff_len > 4 ) {
 

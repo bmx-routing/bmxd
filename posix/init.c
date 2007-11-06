@@ -106,13 +106,16 @@ void set_init_arg( char* switch_name, char* switch_arg, int min, int max, int32_
 }
 
 
-void set_gw_network ( char *optarg_str ) {
+void set_gw_network ( char *optarg_p ) {
 	
 	struct in_addr tmp_ip_holder;
 	uint16_t netmask;
 	char *slash_ptr;
 	static char netmask_str[ADDR_STR_LEN];
 		
+	char optarg_str[20];
+	
+	memcpy( optarg_str, optarg_p, sizeof(optarg_str) < strlen( optarg_p) ? sizeof(optarg_str) : strlen(optarg_p) );
 	
 	if ( ( slash_ptr = strchr( optarg_str, '/' ) ) == NULL ) {
 
@@ -299,6 +302,8 @@ void apply_init_args( int argc, char *argv[] ) {
    {NBRFSIZE_SWITCH,            1, 0, 0},
    {GW_CHANGE_HYSTERESIS_SWITCH,1, 0, 0},
    {GW_TUNNEL_NETW_SWITCH,      1, 0, 0},
+   {TWO_WAY_TUNNEL_SWITCH,      1, 0, 0},
+   {ONE_WAY_TUNNEL_SWITCH,      1, 0, 0},
    {TTL_SWITCH,                 1, 0, 0},
    {ASOCIAL_SWITCH,             0, 0, 0},
    {NO_UNREACHABLE_RULE_SWITCH, 0, 0, 0},
@@ -320,6 +325,7 @@ void apply_init_args( int argc, char *argv[] ) {
    {REBRC_DELAY_SWITCH,         1, 0, 0},
    {PENALTY_MIN_SWITCH,         1, 0, 0},
    {PENALTY_EXCEED_SWITCH,      1, 0, 0},
+   {PARALLEL_BAT_NET1_SWITCH,   0, 0, 0},
    {0, 0, 0, 0}
 		};
 
@@ -497,6 +503,18 @@ void apply_init_args( int argc, char *argv[] ) {
 					found_args += 2;
 					break;
 
+				} else if ( strcmp( TWO_WAY_TUNNEL_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					set_init_arg( TWO_WAY_TUNNEL_SWITCH, optarg, MIN_TWO_WAY_TUNNEL, MAX_TWO_WAY_TUNNEL, &two_way_tunnel );
+					found_args += 2;
+					break;
+				
+				} else if ( strcmp( ONE_WAY_TUNNEL_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					set_init_arg( ONE_WAY_TUNNEL_SWITCH, optarg, MIN_ONE_WAY_TUNNEL, MAX_ONE_WAY_TUNNEL, &one_way_tunnel );
+					found_args += 2;
+					break;
+				
 				} else if ( strcmp( TTL_SWITCH, long_options[option_index].name ) == 0 ) {
 
 					set_init_arg( TTL_SWITCH, optarg, MIN_TTL, MAX_TTL, &ttl );
@@ -646,6 +664,19 @@ void apply_init_args( int argc, char *argv[] ) {
 					found_args += 1;
 					break;
 							
+				} else if ( strcmp( PARALLEL_BAT_NET1_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					errno = 0;
+					
+					set_init_arg( BASE_PORT_SWITCH,       "14305", MIN_BASE_PORT,       MAX_BASE_PORT,       &base_port ); 
+					set_init_arg( RT_TABLE_OFFSET_SWITCH, "165",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset ); 
+					set_init_arg( RT_PRIO_DEFAULT_SWITCH, "16600", MIN_RT_PRIO_DEFAULT, MAX_RT_PRIO_DEFAULT, &rt_prio_default ); 
+					set_init_arg( NBRFSIZE_SWITCH,        "10",    MIN_SEQ_RANGE,       MAX_SEQ_RANGE,       &sequence_range ); 
+					set_gw_network( "169.254.16.0/22" );
+
+					found_args += 1;
+					break;
+					
 				/* this is just a template:
 				} else if ( strcmp( _SWITCH, long_options[option_index].name ) == 0 ) {
 

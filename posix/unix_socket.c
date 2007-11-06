@@ -175,7 +175,7 @@ void *unix_listen( void *arg ) {
 	struct in_addr tmp_ip_holder;
 	int32_t status, max_sock, unix_opts, download_speed, upload_speed;
 	int8_t res;
-	char buff[100], str[16], was_gateway, tmp_unix_value;
+	char buff[100], str[16], was_gateway, is_gateway, tmp_unix_value;
 	fd_set wait_sockets, tmp_wait_sockets;
 	socklen_t sun_size = sizeof(struct sockaddr_un);
 	uint8_t unix_client_deleted = NO;
@@ -356,18 +356,23 @@ void *unix_listen( void *arg ) {
 
 									if ((buff[2] == 0) || (probe_tun(0))) {
 
-										was_gateway = ( gateway_class > 0 ? 1 : 0 );
+										was_gateway = ( (gateway_class && (one_way_tunnel || two_way_tunnel)) ? 1 : 0 );
 
 										gateway_class = buff[2];
+										
+										is_gateway = ( (gateway_class  && (one_way_tunnel || two_way_tunnel)) ? 1 : 0 );
 
 										batman_if = list_entry( (&if_list)->next, struct batman_if, list );
 
-										batman_if->out.gwflags = gateway_class;
+										batman_if->out.gwflags = ( is_gateway ? gateway_class : 0 );
 
-										if ( ( !was_gateway ) && ( gateway_class > 0 ) )
+										batman_if->out.gwtypes = is_gateway ? ( (two_way_tunnel?TWO_WAY_TUNNEL_FLAG:0) | (one_way_tunnel?ONE_WAY_TUNNEL_FLAG:0) ) : 0;
+
+										
+										if ( ( !was_gateway ) && ( is_gateway ) )
 											init_interface_gw( batman_if );
 
-										if ( ( gateway_class > 0 ) && ( routing_class > 0 ) ) {
+										if ( ( is_gateway ) && ( routing_class > 0 ) ) {
 
 											routing_class = 0;
 
