@@ -99,6 +99,8 @@ uint32_t handle_tun_ip_reply( struct curr_gw_data *curr_gw_data, struct sockaddr
 
 	if ( sender_addr->sin_addr.s_addr == gw_addr->sin_addr.s_addr && rcv_buff_len == tx_rp_size && tp->type == TUNNEL_IP_REPLY ) {
 
+		tp->lease_lt = ntohs( tp->lease_lt );
+		
 		addr_to_string( *pref_addr, pref_str, sizeof(pref_str) );
 		addr_to_string( tp->lease_ip, tmp_str, sizeof(tmp_str) );
 		debug_output( 3, "Gateway client - got IP %s (preferred: IP %s) from gateway: %s for %d seconds.\n", tmp_str, pref_str, gw_str, tp->lease_lt );
@@ -776,6 +778,8 @@ void *gw_listen( void *arg ) {
 					} else if ( tp.type == TUNNEL_IP_REQUEST && two_way_tunnel ) {
 						
 						tp.lease_lt = get_ip_addr( addr.sin_addr.s_addr, &tp.lease_ip, gw_client_list, my_tun_ip, my_tun_netmask );
+						
+						tp.lease_lt = htons( tp.lease_lt );
 							
 						tp.type = TUNNEL_IP_REPLY;
 						
