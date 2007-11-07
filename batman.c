@@ -145,9 +145,8 @@ pthread_t curr_gateway_thread_id = 0;
 
 uint32_t pref_gateway = 0;
 
-unsigned char *hna_buff = NULL;
-
-uint8_t num_hna = 0;
+struct hna_packet *my_hna_array = NULL;
+uint16_t my_hna_array_len = 0;
 
 uint8_t found_ifs = 0;
 int32_t receive_max_sock = 0;
@@ -161,6 +160,8 @@ struct list_head_first forw_list;
 struct list_head_first gw_list;
 struct list_head_first if_list;
 struct list_head_first hna_list;
+
+uint16_t hna_list_size = 0;
 
 struct vis_if vis_if;
 struct unix_if unix_if;
@@ -410,28 +411,29 @@ int is_batman_if( char *dev, struct batman_if **batman_if ) {
 
 void add_del_hna( struct orig_node *orig_node, int8_t del ) {
 
-	uint16_t hna_buff_count = 0;
-	uint32_t hna, netmask;
+	uint16_t hna_count = 0;
+	uint32_t hna;
+ 	uint8_t  netmask;
 
-	while ( ( hna_buff_count + 1 ) * 5 <= orig_node->hna_buff_len ) {
+	while ( hna_count < orig_node->hna_array_len ) {
 
-		memcpy( &hna, ( uint32_t *)&orig_node->hna_buff[ hna_buff_count * 5 ], 4 );
-		netmask = ( uint32_t )orig_node->hna_buff[ ( hna_buff_count * 5 ) + 4 ];
-
-		if ( ( netmask > 0 ) && ( netmask < 33 ) ) {
+		hna =     orig_node->hna_array[hna_count].addr;
+		netmask = orig_node->hna_array[hna_count].netmask;
+		
+		if ( ( netmask > 0 ) && ( netmask <= 32 ) ) {
 			
 			add_del_route( hna, netmask, orig_node->router->addr, orig_node->router->if_incoming->addr.sin_addr.s_addr, orig_node->batman_if->if_index, orig_node->batman_if->dev, BATMAN_RT_TABLE_NETWORKS, 0, del );
 			
 		}
 
-		hna_buff_count++;
+		hna_count++;
 
 	}
 
 	if ( del ) {
 
-		debugFree( orig_node->hna_buff, 1101 );
-		orig_node->hna_buff_len = 0;
+		debugFree( orig_node->hna_array, 1101 );
+		orig_node->hna_array_len = 0;
 
 	}
 
@@ -576,7 +578,7 @@ void choose_gw() {
 
 
 
-void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, unsigned char *hna_recv_buff, int16_t hna_buff_len ) {
+void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, struct hna_packet *hna_array, int16_t hna_array_len ) {
 
 	prof_start( PROF_update_routes );
 	static char orig_str[ADDR_STR_LEN], next_str[ADDR_STR_LEN];
@@ -603,7 +605,7 @@ void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, 
 			}
 
 			/* remove old announced network(s) */
-			if ( orig_node->hna_buff_len > 0 )
+			if ( orig_node->hna_array_len > 0 )
 				add_del_hna( orig_node, 1 );
 
 			add_del_route( orig_node->orig, 32, orig_node->router->addr, 0, orig_node->batman_if->if_index, orig_node->batman_if->dev, BATMAN_RT_TABLE_HOSTS, 0, 1 );
@@ -625,12 +627,12 @@ void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, 
 			orig_node->router = neigh_node;
 
 			/* add new announced network(s) */
-			if ( ( hna_buff_len > 0 ) && ( hna_recv_buff != NULL ) ) {
+			if ( ( hna_array_len > 0 ) && ( hna_array != NULL ) ) {
 
-				orig_node->hna_buff = debugMalloc( hna_buff_len, 101 );
-				orig_node->hna_buff_len = hna_buff_len;
+				orig_node->hna_array = debugMalloc( hna_array_len * sizeof(struct hna_packet), 101 );
+				orig_node->hna_array_len = hna_array_len;
 
-				memmove( orig_node->hna_buff, hna_recv_buff, hna_buff_len );
+				memmove( orig_node->hna_array, hna_array, hna_array_len * sizeof(struct hna_packet) );
 
 				add_del_hna( orig_node, 0 );
 
@@ -643,17 +645,17 @@ void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, 
 	} else if ( orig_node != NULL ) {
 
 		/* may be just HNA changed */
-		if ( ( hna_buff_len != orig_node->hna_buff_len ) || ( ( hna_buff_len > 0 ) && ( orig_node->hna_buff_len > 0 ) && ( memcmp( orig_node->hna_buff, hna_recv_buff, hna_buff_len ) != 0 ) ) ) {
+		if ( ( hna_array_len != orig_node->hna_array_len ) || ( ( hna_array_len > 0 ) && ( orig_node->hna_array_len > 0 ) && ( memcmp( orig_node->hna_array, hna_array, hna_array_len * sizeof(struct hna_packet) ) != 0 ) ) ) {
 
-			if ( orig_node->hna_buff_len > 0 )
+			if ( orig_node->hna_array_len > 0 )
 				add_del_hna( orig_node, 1 );
 
-			if ( ( hna_buff_len > 0 ) && ( hna_recv_buff != NULL ) ) {
+			if ( ( hna_array_len > 0 ) && ( hna_array != NULL ) ) {
 
-				orig_node->hna_buff = debugMalloc( hna_buff_len, 102 );
-				orig_node->hna_buff_len = hna_buff_len;
+				orig_node->hna_array = debugMalloc( hna_array_len * sizeof(struct hna_packet), 102 );
+				orig_node->hna_array_len = hna_array_len;
 
-				memcpy( orig_node->hna_buff, hna_recv_buff, hna_buff_len );
+				memcpy( orig_node->hna_array, hna_array, hna_array_len * sizeof(struct hna_packet) );
 
 				add_del_hna( orig_node, 0 );
 
@@ -955,7 +957,7 @@ void generate_vis_packet() {
 	}
 
 	/* hna announcements */
-	if ( num_hna > 0 ) {
+	if ( !( list_empty( &hna_list ) ) ) {
 
 		list_for_each( list_pos, &hna_list ) {
 
@@ -1009,9 +1011,10 @@ int8_t batman() {
 	struct hna_node *hna_node;
 	struct forw_node *forw_node;
 	uint32_t neigh, hna, netmask, debug_timeout, vis_timeout, select_timeout, curr_time;
-	unsigned char in[2001], *hna_recv_buff;
+	unsigned char in[2001];
+ 	struct hna_packet *hna_array;
 	static char orig_str[ADDR_STR_LEN], neigh_str[ADDR_STR_LEN], ifaddr_str[ADDR_STR_LEN];
-	int16_t hna_buff_count, hna_buff_len;
+	int16_t hna_count, hna_array_len;
 	uint8_t forward_old, if_rp_filter_all_old, if_rp_filter_default_old, if_send_redirects_all_old, if_send_redirects_default_old;
 	uint8_t is_my_addr, is_my_orig, is_broadcast, is_duplicate, is_bidirectional, is_accepted, is_direct_neigh, is_bntog, forward_duplicate_packet, has_unidirectional_flag, has_directlink_flag, has_duplicated_flag, has_version;
 	int nlq_rate_value, rand_num_value, acceptance_rate_value;
@@ -1034,18 +1037,18 @@ int8_t batman() {
 	prof_init( PROF_send_outstanding_packets, "send_outstanding_packets" );
 
 	if ( !( list_empty( &hna_list ) ) ) {
+		
+		my_hna_array = debugMalloc( hna_list_size * sizeof(struct hna_packet), 15 );
+		memset( my_hna_array, 0, hna_list_size * sizeof(struct hna_packet) );
 
 		list_for_each( list_pos, &hna_list ) {
 
 			hna_node = list_entry( list_pos, struct hna_node, list );
 
-			hna_buff = debugRealloc( hna_buff, ( num_hna + 1 ) * 5 * sizeof( unsigned char ), 15 );
-
-			memmove( &hna_buff[ num_hna * 5 ], ( unsigned char *)&hna_node->addr, 4 );
-			hna_buff[ ( num_hna * 5 ) + 4 ] = ( unsigned char )hna_node->netmask;
-
-			num_hna++;
-
+			my_hna_array[my_hna_array_len].addr    = hna_node->addr;
+			my_hna_array[my_hna_array_len].netmask = hna_node->netmask;
+			
+			my_hna_array_len++;
 			
 			/* add throw routing entries for own hna */  
 		        add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS, 1, 0 );  
@@ -1054,7 +1057,7 @@ int8_t batman() {
 			add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL, 1, 0 );  
 			
 		}
-
+		
 	}
 
 	list_for_each( list_pos, &if_list ) {
@@ -1100,12 +1103,18 @@ int8_t batman() {
 
 		/* harden select_timeout against sudden time change (e.g. ntpdate) */
 		curr_time = get_time();
-		select_timeout = ( curr_time < ((struct forw_node *)forw_list.next)->send_time ? ((struct forw_node *)forw_list.next)->send_time - curr_time : 10 );
-
-		res = receive_packet( in, sizeof(in), &hna_buff_len, &neigh, select_timeout, &if_incoming );
-
-		if ( res < 0 )
-			return -1;
+		
+		if (curr_time < ((struct forw_node *)forw_list.next)->send_time) {
+		
+			select_timeout = ((struct forw_node *)forw_list.next)->send_time - curr_time ;
+			
+			res = receive_packet( in, sizeof(in), &hna_array_len, &neigh, select_timeout, &if_incoming );
+			
+		} else {
+			
+			res = 0;
+			
+		}
 
 		if ( res > 0 ) {
 
@@ -1126,8 +1135,7 @@ int8_t batman() {
 
 			debug_output( 4, "Received BATMAN packet via NB: %s , IF: %s %s (from OG: %s, seqno %d, TTL %d, V %d, UDF %d, IDF %d, DPF %d) \n", neigh_str, if_incoming->dev, ifaddr_str, orig_str, ((struct bat_packet *)&in)->seqno, ((struct bat_packet *)&in)->ttl, has_version, has_unidirectional_flag, has_directlink_flag, has_duplicated_flag );
 
-			hna_buff_len -= sizeof(struct bat_packet);
-			hna_recv_buff = ( hna_buff_len > 4 ? in + sizeof(struct bat_packet) : NULL );
+			hna_array = ( hna_array_len > 0 ? (struct hna_packet *) (in + sizeof(struct bat_packet)) : NULL );
 
 			list_for_each( list_pos, &if_list ) {
 
@@ -1148,34 +1156,30 @@ int8_t batman() {
 			if ( ((struct bat_packet *)&in)->gwflags != 0 && ((struct bat_packet *)&in)->gwtypes != 0 )
 				debug_output( 4, "Is an internet gateway (class %i, types %i) \n", ((struct bat_packet *)&in)->gwflags, ((struct bat_packet *)&in)->gwtypes );
 
-			if ( hna_buff_len > 4 ) {
+			if ( hna_array_len >= 1 ) {
 
-				debug_output( 4, "HNA information received (%i HNA network%s): \n", hna_buff_len / 5, ( hna_buff_len / 5 > 1 ? "s": "" ) );
-				hna_buff_count = 0;
+				debug_output( 4, "HNA information received (%i HNA network%s): \n", hna_array_len, ( hna_array_len > 1 ? "s": "" ) );
+				hna_count = 0;
 
-				while ( ( hna_buff_count + 1 ) * 5 <= hna_buff_len ) {
+				while ( hna_count < hna_array_len ) {
 
-					memmove( &hna, ( uint32_t *)&hna_recv_buff[ hna_buff_count * 5 ], 4 );
-					netmask = ( uint32_t )hna_recv_buff[ ( hna_buff_count * 5 ) + 4 ];
+					hna =     (hna_array[hna_count]).addr;
+					netmask = (hna_array[hna_count]).netmask;
 
 					addr_to_string( hna, orig_str, sizeof(orig_str) );
 
-					if ( ( netmask > 0 ) && ( netmask < 33 ) )
+					if ( ( netmask > 0 ) && ( netmask <= 32 ) )
 						debug_output( 4, "hna: %s/%i\n", orig_str, netmask );
 					else
 						debug_output( 4, "hna: %s/%i -> ignoring (invalid netmask) \n", orig_str, netmask );
 
-					hna_buff_count++;
+					hna_count++;
 
 				}
 
 			}
 
-			if ( ((struct bat_packet *)&in)->version != COMPAT_VERSION ) {
-
-				debug_output( 4, "Drop packet: incompatible batman version (%i) \n", ((struct bat_packet *)&in)->version );
-
-			} else if ( is_my_addr ) {
+			if ( is_my_addr ) {
 
 				debug_output( 4, "Drop packet: received my own broadcast (sender: %s) \n", neigh_str );
 
@@ -1284,7 +1288,7 @@ int8_t batman() {
 						  )
 						) ) {
 						
-						update_orig( orig_node, (struct bat_packet *)in , neigh, if_incoming, hna_recv_buff, hna_buff_len, curr_time );
+						update_orig( orig_node, (struct bat_packet *)in , neigh, if_incoming, hna_array, hna_array_len, curr_time );
 					
 					}
 								 
@@ -1309,7 +1313,7 @@ int8_t batman() {
 						/* we are an asocial mobile device and dont want to forward other nodes packet */
 						if( mobile_device ) {
 
-							schedule_forward_packet( (struct bat_packet *)in, 1, 1, has_duplicated_flag, hna_recv_buff, hna_buff_len, if_incoming );
+							schedule_forward_packet( (struct bat_packet *)in, 1, 1, has_duplicated_flag, hna_array, hna_array_len, if_incoming );
 
 							debug_output( 4, "Forward packet: with mobile device policy: rebroadcast neighbour packet with direct link and unidirectional flag \n" );
 
@@ -1317,7 +1321,7 @@ int8_t batman() {
 						} else if ( is_accepted && is_bntog ) {
 
 							/* mark direct link on incoming interface */
-							schedule_forward_packet( (struct bat_packet *)in, 0, 1, has_duplicated_flag, hna_recv_buff, hna_buff_len, if_incoming );
+							schedule_forward_packet( (struct bat_packet *)in, 0, 1, has_duplicated_flag, hna_array, hna_array_len, if_incoming );
 
 							debug_output( 4, "Forward packet: rebroadcast neighbour packet with direct link flag \n" );
 /*
@@ -1331,7 +1335,7 @@ int8_t batman() {
 						/* if a bidirectional neighbour sends us a packet who is not our best link to him- retransmit it with unidirectional flag in order to prevent routing problems */
 						} else if ( ( is_accepted && !is_bntog ) || ( !is_accepted ) ) {
 
-							schedule_forward_packet( (struct bat_packet *)in, 1, 1, has_duplicated_flag, hna_recv_buff, hna_buff_len, if_incoming );
+							schedule_forward_packet( (struct bat_packet *)in, 1, 1, has_duplicated_flag, hna_array, hna_array_len, if_incoming );
 
 							debug_output( 4, "Forward packet: rebroadcast neighbour packet with direct link and unidirectional flag \n" );
 
@@ -1344,7 +1348,7 @@ int8_t batman() {
 
 							if ( !is_duplicate ) {
 
-								schedule_forward_packet( (struct bat_packet *)in, 0, 0, has_duplicated_flag, hna_recv_buff, hna_buff_len, if_incoming );
+								schedule_forward_packet( (struct bat_packet *)in, 0, 0, has_duplicated_flag, hna_array, hna_array_len, if_incoming );
 
 								debug_output( 4, "Forward packet: rebroadcast originator packet \n" );
 
@@ -1375,7 +1379,7 @@ int8_t batman() {
 								/* we are forwarding duplicate o-packets if they come via our best neighbour and ttl is valid */
 								if ( forward_duplicate_packet ) {
 
-									schedule_forward_packet( (struct bat_packet *)in, 0, 0, has_duplicated_flag, hna_recv_buff, hna_buff_len, if_incoming );
+									schedule_forward_packet( (struct bat_packet *)in, 0, 0, has_duplicated_flag, hna_array, hna_array_len, if_incoming );
 
 									debug_output( 4, "Forward packet: duplicate packet received via best neighbour with best ttl \n" );
 /*
@@ -1404,6 +1408,10 @@ int8_t batman() {
 
 			}
 
+		} else if ( res < 0 ) {
+			
+			return -1;
+			
 		}
 
 
@@ -1460,8 +1468,8 @@ int8_t batman() {
 
 	}
 
-	if ( hna_buff != NULL )
-		debugFree( hna_buff, 1104 );
+	if ( my_hna_array != NULL )
+		debugFree( my_hna_array, 1104 );
 
 
 	list_for_each_safe( list_pos, forw_pos_tmp, &forw_list ) {

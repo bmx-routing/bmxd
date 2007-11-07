@@ -336,15 +336,18 @@ extern uint8_t gateway_class;
 extern char *prog_name;
 extern uint8_t debug_level;
 extern uint8_t debug_level_max;
-extern uint8_t num_hna;
+
+extern struct hna_packet *my_hna_array;
+extern uint16_t my_hna_array_len;
+
+extern uint16_t hna_list_size;
+
 
 extern int16_t num_words;
 
 extern uint32_t pref_gateway;
 
 extern int8_t stop;
-
-extern unsigned char *hna_buff;
 
 extern struct gw_listen_arg gw_listen_arg;
 
@@ -402,11 +405,9 @@ struct bat_packet
 #endif
 			
 	uint8_t  gwflags;     /* flags related to gateway functions: gateway class */
-//	uint8_t  flags;       /* 0x80: UNIDIRECTIONAL link, 0x40: DIRECTLINK flag, ... */
 	uint8_t  ttl;
 	uint32_t orig;
 	uint16_t seqno;
-//	uint8_t  version;     /* batman compatibility version field */
 } __attribute__((packed));
 
 struct orig_node                 /* structure for orig_list maintaining nodes of mesh */
@@ -418,8 +419,8 @@ struct orig_node                 /* structure for orig_list maintaining nodes of
 	uint32_t last_valid;              /* when last packet from this node was received */
 	uint8_t  gwflags;                 /* flags related to gateway functions: gateway class */
 	uint8_t  gwtypes;                 /* flags related to offered gateway tunnel types */
-	unsigned char *hna_buff;
-	int16_t  hna_buff_len;
+	struct hna_packet *hna_array;
+	int16_t  hna_array_len;
 	uint16_t last_seqno;              /* last and best known squence number */
 	
 	uint8_t last_seqno_largest_ttl;	  /* largest (best) TTL received with last sequence number */
@@ -451,6 +452,12 @@ struct neigh_node
 	TYPE_OF_WORD seq_bits[ MAX_NUM_WORDS ];
 	struct batman_if *if_incoming;
 };
+
+struct hna_packet
+{
+	uint32_t addr;
+	uint8_t netmask;
+} __attribute__((packed));
 
 struct hna_node
 {
@@ -561,7 +568,7 @@ void usage( void );
 void verbose_usage( void );
 void print_advanced_opts ( int verbose );
 int is_batman_if( char *dev, struct batman_if **batman_if );
-void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, unsigned char *hna_recv_buff, int16_t hna_buff_len );
+void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, struct hna_packet *hna_array, int16_t hna_array_len );
 void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags, uint8_t new_gwtypes );
 void get_gw_speeds( unsigned char class, int *down, int *up );
 unsigned char get_gw_class( int down, int up );

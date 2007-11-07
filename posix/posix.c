@@ -252,7 +252,7 @@ int8_t add_default_route() {
 
 
 
-int8_t receive_packet( unsigned char *packet_buff, int32_t packet_buff_len, int16_t *hna_buff_len, uint32_t *neigh, uint32_t timeout, struct batman_if **if_incoming ) {
+int8_t receive_packet( unsigned char *packet_buff, int32_t packet_buff_len, int16_t *hna_array_len, uint32_t *neigh, uint32_t timeout, struct batman_if **if_incoming ) {
 
 	struct sockaddr_in addr;
 	struct timeval tv;
@@ -260,60 +260,79 @@ int8_t receive_packet( unsigned char *packet_buff, int32_t packet_buff_len, int1
 	struct batman_if *batman_if;
 	uint32_t addr_len;
 	int8_t res;
+	int16_t rcv_buff_len = 0;
 	fd_set tmp_wait_set;
 
 
 	addr_len = sizeof(struct sockaddr_in);
 	memcpy( &tmp_wait_set, &receive_wait_set, sizeof(fd_set) );
 
-	while (1) {
-
 		tv.tv_sec = timeout / 1000;
 		tv.tv_usec = ( timeout % 1000 ) * 1000;
 
 		res = select( receive_max_sock + 1, &tmp_wait_set, NULL, NULL, &tv );
 
-		if ( res >= 0 )
-			break;
+		if ( res == 0 )
+			return 0;
 
-		if ( errno != EINTR ) {
+		if ( res < 0 && errno != EINTR ) {
 
 			debug_output( 0, "Error - can't select: %s\n", strerror(errno) );
 			return -1;
 
 		}
+		
+		if( res < 0 ) {
+			debug_output(0, "TBR: receive_packet(): am iam coming along here? !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+			return 0;
+		}
 
-	}
-
-	if ( res == 0 )
-		return 0;
-
+		
+		
 	list_for_each( if_pos, &if_list ) {
 
 		batman_if = list_entry( if_pos, struct batman_if, list );
 
 		if ( FD_ISSET( batman_if->udp_recv_sock, &tmp_wait_set ) ) {
 
-			if ( ( *hna_buff_len = recvfrom( batman_if->udp_recv_sock, packet_buff, packet_buff_len - 1, 0, (struct sockaddr *)&addr, &addr_len ) ) < 0 ) {
+			if ( ( rcv_buff_len = recvfrom( batman_if->udp_recv_sock, packet_buff, packet_buff_len - 1, 0, (struct sockaddr *)&addr, &addr_len ) ) < 0 ) {
 
 				debug_output( 0, "Error - can't receive packet: %s\n", strerror(errno) );
 				return -1;
 
 			}
 
-			if ( *hna_buff_len < sizeof(struct bat_packet) )
-				return 0;
-
-			((struct bat_packet *)packet_buff)->seqno = ntohs( ((struct bat_packet *)packet_buff)->seqno ); /* network to host order for our 16bit seqno. */
-
 			(*if_incoming) = batman_if;
+
+
 			break;
 
 		}
 
 	}
+	
+	if ( rcv_buff_len < sizeof(struct bat_packet) )
+		return 0;
+	
+	if ( ((struct bat_packet *)packet_buff)->version != COMPAT_VERSION || (((struct bat_packet *)&packet_buff)->flags & EXTENSION_MSG) != 0 ) {
+
+		debug_output( 4, "Drop packet: incompatible batman version (%i) \n", ((struct bat_packet *)packet_buff)->version );
+
+		return 0;
+
+	}	
+	
+	((struct bat_packet *)packet_buff)->seqno = ntohs( ((struct bat_packet *)packet_buff)->seqno ); /* network to host order for our 16bit seqno. */
 
 	*neigh = addr.sin_addr.s_addr;
+
+	*hna_array_len = (rcv_buff_len - sizeof(struct bat_packet)) / sizeof(struct hna_packet) ;
+	
+	if( (rcv_buff_len - sizeof(struct bat_packet)) % sizeof(struct hna_packet) != 0 ) {
+		
+		debug_output(0, "TBR: receive_packet(): received strange hna buffer len %d ? !!!!!!!!!!!!!!\n", (rcv_buff_len - sizeof(struct bat_packet)));
+		return -1;
+	}
 
 	return 1;
 

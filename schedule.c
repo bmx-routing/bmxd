@@ -42,12 +42,13 @@ void schedule_own_packet( struct batman_if *batman_if ) {
 	forw_node_new->own = 1;
 
 	/* non-primary interfaces do not send hna information */
-	if ( ( num_hna > 0 ) && ( batman_if->if_num == 0 ) ) {
-
-		forw_node_new->pack_buff = debugMalloc( sizeof(struct bat_packet) + num_hna * 5 * sizeof(unsigned char), 502 );
+	if ( ( my_hna_array_len > 0 ) && ( batman_if->if_num == 0 ) ) {
+		
+		//TBD: Do we really need sizeof(unsigned char) ???
+		forw_node_new->pack_buff = debugMalloc( sizeof(struct bat_packet) + my_hna_array_len * sizeof(struct hna_packet) * sizeof(unsigned char) , 502 );
 		memcpy( forw_node_new->pack_buff, (unsigned char *)&batman_if->out, sizeof(struct bat_packet) );
-		memcpy( forw_node_new->pack_buff + sizeof(struct bat_packet), hna_buff, num_hna * 5 * sizeof(unsigned char) );
-		forw_node_new->pack_buff_len = sizeof(struct bat_packet) + num_hna * 5 * sizeof(unsigned char);
+		memcpy( forw_node_new->pack_buff + sizeof(struct bat_packet), my_hna_array, my_hna_array_len * sizeof(struct hna_packet) * sizeof(unsigned char) );
+		forw_node_new->pack_buff_len = sizeof(struct bat_packet) + my_hna_array_len * sizeof(struct hna_packet) * sizeof(unsigned char);
 	
 	} else {
 
@@ -84,7 +85,7 @@ void schedule_own_packet( struct batman_if *batman_if ) {
 
 
 
-void schedule_forward_packet( struct bat_packet *in, uint8_t unidirectional, uint8_t directlink, uint8_t cloned, unsigned char *hna_recv_buff, int16_t hna_buff_len, struct batman_if *if_outgoing ) {
+void schedule_forward_packet( struct bat_packet *in, uint8_t unidirectional, uint8_t directlink, uint8_t cloned, struct hna_packet *hna_array, int16_t hna_array_len, struct batman_if *if_outgoing ) {
 
 	prof_start( PROF_schedule_forward_packet );
 	struct forw_node *forw_node_new;
@@ -101,12 +102,12 @@ void schedule_forward_packet( struct bat_packet *in, uint8_t unidirectional, uin
 
 		INIT_LIST_HEAD( &forw_node_new->list );
 
-		if ( ( hna_buff_len > 0 ) && ( hna_recv_buff != NULL ) ) { 
+		if ( ( hna_array_len > 0 ) && ( hna_array != NULL ) ) { 
 
-			forw_node_new->pack_buff = debugMalloc( sizeof(struct bat_packet) + hna_buff_len, 505 );
+			forw_node_new->pack_buff = debugMalloc( sizeof(struct bat_packet) + (hna_array_len * sizeof( struct hna_packet)), 505 );
 			memcpy( forw_node_new->pack_buff, in, sizeof(struct bat_packet) );
-			memcpy( forw_node_new->pack_buff + sizeof(struct bat_packet), hna_recv_buff, hna_buff_len );
-			forw_node_new->pack_buff_len = sizeof(struct bat_packet) + hna_buff_len;
+			memcpy( forw_node_new->pack_buff + sizeof(struct bat_packet), hna_array, (hna_array_len * sizeof( struct hna_packet)) );
+			forw_node_new->pack_buff_len = sizeof(struct bat_packet) + (hna_array_len * sizeof( struct hna_packet));
 
 		} else {
 

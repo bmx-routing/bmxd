@@ -233,7 +233,9 @@ void add_del_hna_opt ( char *optarg_str, int8_t del ) {
 				printf( "removing HNA %s/%i \n", str, hna_node->netmask );
 				
 				list_del( prev_hna_list_head, hna_list_pos, &hna_list );
-				debugFree( hna_node, 1103 );	
+				debugFree( hna_node, 1103 );
+				
+				hna_list_size--;
 			
 			} else {
 				
@@ -257,6 +259,8 @@ void add_del_hna_opt ( char *optarg_str, int8_t del ) {
 		printf( "adding HNA %s/%i \n", str, hna_node->netmask );
 	
 		list_add_tail( &hna_node->list, &hna_list );
+		
+		hna_list_size++;
 
 	}
 	*slash_ptr = '/';
@@ -267,11 +271,8 @@ void apply_init_args( int argc, char *argv[] ) {
 
 	struct in_addr tmp_ip_holder;
 	struct batman_if *batman_if;
-//	struct hna_node *hna_node;
 	struct debug_level_info *debug_level_info;
-//	struct list_head *list_pos;
 	uint8_t found_args = 1, batch_mode = 0, apply_default_paras_and_break = NO;
-//	uint16_t netmask;
 	int8_t res;
 
 	int32_t optchar, recv_buff_len, bytes_written, download_speed = 0, upload_speed = 0;

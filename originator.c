@@ -135,7 +135,7 @@ struct orig_node *get_orig_node( uint32_t addr ) {
 
 
 
-void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t neigh, struct batman_if *if_incoming, unsigned char *hna_recv_buff, int16_t hna_buff_len, uint32_t rcvd_time ) {
+void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t neigh, struct batman_if *if_incoming, struct hna_packet *hna_array, int16_t hna_array_len, uint32_t rcvd_time ) {
 
 	prof_start( PROF_update_originator );
 	struct list_head *neigh_pos;
@@ -283,7 +283,7 @@ void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t n
 	
 	
 	/* update routing table and check for changed hna announcements */
-	update_routes( orig_node, best_neigh_node, hna_recv_buff, hna_buff_len );
+	update_routes( orig_node, best_neigh_node, hna_array, hna_array_len );
 
 	
 	if ( orig_node->gwflags != in->gwflags || orig_node->gwtypes != in->gwtypes )
@@ -471,7 +471,7 @@ void purge_orig( uint32_t curr_time ) {
 						debug_output( 4, "Deleting previous route \n" );
 
 						/* remove old announced network(s) */
-						if ( orig_node->hna_buff_len > 0 )
+						if ( orig_node->hna_array_len > 0 )
 							add_del_hna( orig_node, 1 );
 
 						add_del_route( orig_node->orig, 32, orig_node->router->addr, 0, orig_node->batman_if->if_index, orig_node->batman_if->dev, BATMAN_RT_TABLE_HOSTS, 0, 1 );
@@ -496,7 +496,7 @@ void purge_orig( uint32_t curr_time ) {
 			}
 
 			if ( ( neigh_purged ) && ( ( best_neigh_node == NULL ) || ( orig_node->router == NULL ) || ( best_neigh_node->packet_count > orig_node->router->packet_count ) ) )
-				update_routes( orig_node, best_neigh_node, orig_node->hna_buff, orig_node->hna_buff_len );
+				update_routes( orig_node, best_neigh_node, orig_node->hna_array, orig_node->hna_array_len );
 
 		}
 
@@ -741,7 +741,7 @@ void debug_orig() {
 	int dbg_ogm_out = 0, lq, nlq, l2q;
 	static char dbg_ogm_str[MAX_DBG_STR_SIZE + 1]; // TBD: must be checked for overflow when using with sprintf
 	uint8_t debug_neighbor = NO;
-	uint16_t hna_buff_count = 0;
+	uint16_t hna_count = 0;
 	uint32_t hna, netmask;
 
 
@@ -908,24 +908,24 @@ void debug_orig() {
 
 			orig_node = hashit->bucket->data;
 
-			if ( orig_node->router == NULL || orig_node->hna_buff_len == 0)
+			if ( orig_node->router == NULL || orig_node->hna_array_len == 0)
 				continue;
 
 			addr_to_string( orig_node->orig, str, sizeof (str) );
 			dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s", str ); 
 				
-			hna_buff_count = 0;
+			hna_count = 0;
 			
-			while ( ( hna_buff_count + 1 ) * 5 <= orig_node->hna_buff_len ) {
+			while ( hna_count < orig_node->hna_array_len ) {
 
-				memcpy( &hna, ( uint32_t *)&orig_node->hna_buff[ hna_buff_count * 5 ], 4 );
-				netmask = ( uint32_t )orig_node->hna_buff[ ( hna_buff_count * 5 ) + 4 ];
-				
+				hna =     orig_node->hna_array[hna_count].addr;
+				netmask = orig_node->hna_array[hna_count].netmask;
+
 				addr_to_string( hna, str, sizeof (str) );
 
 				dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), " %15s/%2d ", str, netmask );
 
-				hna_buff_count++;
+				hna_count++;
 
 			}
 
