@@ -250,10 +250,12 @@ int8_t add_default_route() {
 
 }
 
+	unsigned char packet_in[2001];
 
+int8_t receive_packet( struct bat_packet **ogm, struct hna_packet **hna_array, int16_t *hna_array_len, uint32_t *neigh, uint32_t timeout, struct batman_if **if_incoming ) {
 
-int8_t receive_packet( unsigned char *packet_buff, int32_t packet_buff_len, int16_t *hna_array_len, uint32_t *neigh, uint32_t timeout, struct batman_if **if_incoming ) {
-
+	unsigned char *packet_buff = packet_in;
+	int32_t packet_buff_len = sizeof(packet_in);
 	struct sockaddr_in addr;
 	struct timeval tv;
 	struct list_head *if_pos;
@@ -282,11 +284,6 @@ int8_t receive_packet( unsigned char *packet_buff, int32_t packet_buff_len, int1
 
 		}
 		
-		if( res < 0 ) {
-			debug_output(0, "TBR: receive_packet(): am iam coming along here? !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
-			return 0;
-		}
-
 		
 		
 	list_for_each( if_pos, &if_list ) {
@@ -304,7 +301,6 @@ int8_t receive_packet( unsigned char *packet_buff, int32_t packet_buff_len, int1
 
 			(*if_incoming) = batman_if;
 
-
 			break;
 
 		}
@@ -320,7 +316,13 @@ int8_t receive_packet( unsigned char *packet_buff, int32_t packet_buff_len, int1
 
 		return 0;
 
-	}	
+	}
+		
+	if( (rcv_buff_len - sizeof(struct bat_packet)) % sizeof(struct hna_packet) != 0 ) {
+		
+		debug_output(0, "TBR: receive_packet(): received strange hna buffer len %d ? !!!!!!!!!!!!!!\n", (rcv_buff_len - sizeof(struct bat_packet)));
+		return -1;
+	}
 	
 	((struct bat_packet *)packet_buff)->seqno = ntohs( ((struct bat_packet *)packet_buff)->seqno ); /* network to host order for our 16bit seqno. */
 
@@ -328,11 +330,9 @@ int8_t receive_packet( unsigned char *packet_buff, int32_t packet_buff_len, int1
 
 	*hna_array_len = (rcv_buff_len - sizeof(struct bat_packet)) / sizeof(struct hna_packet) ;
 	
-	if( (rcv_buff_len - sizeof(struct bat_packet)) % sizeof(struct hna_packet) != 0 ) {
-		
-		debug_output(0, "TBR: receive_packet(): received strange hna buffer len %d ? !!!!!!!!!!!!!!\n", (rcv_buff_len - sizeof(struct bat_packet)));
-		return -1;
-	}
+	*hna_array = ( *hna_array_len > 0 ? (struct hna_packet *) (packet_buff + sizeof(struct bat_packet)) : NULL );
+	
+	*ogm = (struct bat_packet *)packet_buff;
 
 	return 1;
 
