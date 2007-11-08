@@ -252,15 +252,19 @@ int8_t add_default_route() {
 
 
 
-int8_t receive_packet( struct bat_packet **ogm, struct hna_packet **hna_array, int16_t *hna_array_len, uint32_t *neigh, uint32_t timeout, struct batman_if **if_incoming ) {
+int8_t receive_packet( struct bat_packet **ogm, struct hna_packet **hna_array, int16_t *hna_array_len, uint32_t *neigh, uint32_t timeout, struct batman_if **if_incoming, uint32_t *batman_time ) {
 
+	
 	static unsigned char packet_in[2001];
 	static unsigned char *pos = NULL;
 	static int32_t len = 0;
-	static struct sockaddr_in addr;
-	static uint32_t addr_len;
+	static uint32_t rcvd_neighbor = 0, rcvd_time = 0;
+
+	
 	static char str[ADDR_STR_LEN];
 	
+	struct sockaddr_in addr;
+	uint32_t addr_len;
 	struct timeval tv;
 	struct list_head *if_pos;
 	struct batman_if *batman_if;
@@ -270,7 +274,7 @@ int8_t receive_packet( struct bat_packet **ogm, struct hna_packet **hna_array, i
 	
 	if( ! (len == 0 || len >= sizeof(struct bat_packet)) ) {
 		
-		addr_to_string( addr.sin_addr.s_addr, str, sizeof(str) );
+		addr_to_string( rcvd_neighbor, str, sizeof(str) );
 		debug_output(0, "Drop packet: processing strange packet buffer size. %i from: %s !!!!!!!!!!!!!!\n", len, str );
 		return -1;
 	}
@@ -287,6 +291,8 @@ int8_t receive_packet( struct bat_packet **ogm, struct hna_packet **hna_array, i
 		tv.tv_usec = ( timeout % 1000 ) * 1000;
 		
 		res = select( receive_max_sock + 1, &tmp_wait_set, NULL, NULL, &tv );
+		
+		*batman_time = rcvd_time = get_time();
 		
 		if ( res < 0 && errno != EINTR ) {
 		
@@ -314,6 +320,8 @@ int8_t receive_packet( struct bat_packet **ogm, struct hna_packet **hna_array, i
 				}
 		
 				(*if_incoming) = batman_if;
+				
+				rcvd_neighbor = addr.sin_addr.s_addr;
 		
 				break;
 			}
@@ -328,17 +336,19 @@ int8_t receive_packet( struct bat_packet **ogm, struct hna_packet **hna_array, i
 		
 		debug_output( 4, "Drop packet: incompatible batman version: %i, flags. %X, size. %i \n", ((struct bat_packet *)pos)->version, ((struct bat_packet *)pos)->flags, len );
 		len = 0;
+		*batman_time = rcvd_time;
 		return 0;
 	}
 	
 	((struct bat_packet *)pos)->seqno = ntohs( ((struct bat_packet *)pos)->seqno ); /* network to host order for our 16bit seqno. */
 
-	*neigh = addr.sin_addr.s_addr;
+	*neigh = rcvd_neighbor;
 
 	*ogm = (struct bat_packet *)pos;
 	
 	*hna_array = (struct hna_packet *) (pos + sizeof(struct bat_packet));
 	
+	*batman_time = rcvd_time;
 	
 	hna_pos = 0;
 	

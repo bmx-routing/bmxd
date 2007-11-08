@@ -86,6 +86,8 @@ int8_t resist_blocked_send = DEF_RESIST_BLOCKED_SEND;
 of last send own OGMs rebroadcasted from neighbors */
 int32_t bidirect_link_to = DEFAULT_BIDIRECT_TIMEOUT;
 
+int32_t packet_aggregation = NO;
+
 int32_t sequence_range = DEFAULT_SEQ_RANGE;
 int32_t ttl = DEFAULT_TTL;
 
@@ -1014,7 +1016,7 @@ int8_t batman() {
 	struct neigh_node *neigh_node;
 	struct hna_node *hna_node;
 	struct forw_node *forw_node;
-	uint32_t neigh, hna, netmask, debug_timeout, vis_timeout, select_timeout, curr_time;
+	uint32_t neigh, hna, netmask, debug_timeout, vis_timeout, select_timeout, aggregation_time = 0, curr_time;
 	struct bat_packet *ogm;
 	struct hna_packet *hna_array;
 	
@@ -1026,6 +1028,9 @@ int8_t batman() {
 	int res;
 
 	debug_timeout = vis_timeout = get_time();
+		
+	if ( packet_aggregation )
+		aggregation_time = get_time() + 100 + rand_num( 100 );
 
 	if ( NULL == ( orig_hash = hash_new( 128, compare_orig, choose_orig ) ) )
 		return(-1);
@@ -1041,6 +1046,7 @@ int8_t batman() {
 	prof_init( PROF_schedule_forward_packet, "schedule_forward_packet" );
 	prof_init( PROF_send_outstanding_packets, "send_outstanding_packets" );
 
+		
 	if ( !( list_empty( &hna_list ) ) ) {
 		
 		my_hna_array = debugMalloc( hna_list_size * sizeof(struct hna_packet), 15 );
@@ -1103,28 +1109,37 @@ int8_t batman() {
 	forward_old = get_forwarding();
 	set_forwarding(1);
 
+	curr_time = get_time();
+
 	while ( !is_aborted() ) {
 
 		debug_output( 4, " \n \n" );
 
 		/* harden select_timeout against sudden time change (e.g. ntpdate) */
-		curr_time = get_time();
+		//curr_time = get_time();
 		
-		if (curr_time < ((struct forw_node *)forw_list.next)->send_time) {
+		if ( packet_aggregation == NO  &&  curr_time < ((struct forw_node *)forw_list.next)->send_time) {
 		
 			select_timeout = ((struct forw_node *)forw_list.next)->send_time - curr_time ;
 			
-			res = receive_packet( &ogm, &hna_array, &hna_array_len, &neigh, select_timeout, &if_incoming );
+			res = receive_packet( &ogm, &hna_array, &hna_array_len, &neigh, select_timeout, &if_incoming, &curr_time );
 			
+		} else if ( packet_aggregation == YES  && curr_time < aggregation_time ) { 
+		
+			select_timeout = aggregation_time - curr_time ;
+			
+			res = receive_packet( &ogm, &hna_array, &hna_array_len, &neigh, select_timeout, &if_incoming, &curr_time );
+		
 		} else {
 			
 			res = 0;
-			
+			debug_output( 4, "skipping select \n" );
+		
 		}
 
 		if ( res > 0 ) {
 
-			curr_time = get_time();
+			//curr_time = get_time();
 
 			addr_to_string( ogm->orig, orig_str, sizeof(orig_str) );
 			addr_to_string( neigh, neigh_str, sizeof(neigh_str) );
@@ -1419,8 +1434,16 @@ int8_t batman() {
 		}
 
 
-		send_outstanding_packets();
+		if ( packet_aggregation == YES  &&  aggregation_time <= curr_time ) {
 
+			send_outstanding_packets();
+			aggregation_time = curr_time + (originator_interval/10) + rand_num( originator_interval/10 );
+			
+		} else if ( packet_aggregation == NO ) {
+
+			send_outstanding_packets();
+			
+		}
 
 		if ( debug_timeout + 1000 < curr_time ) {
 

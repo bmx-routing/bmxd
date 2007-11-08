@@ -160,130 +160,216 @@ void send_outstanding_packets() {
 	struct list_head *forw_pos, *if_pos, *temp;
 	struct batman_if *batman_if;
 	static char orig_str[ADDR_STR_LEN];
-	uint8_t directlink;
-	uint8_t unidirectional;
-	uint8_t ttl, send_ogm_only_via_owning_if;
+	uint8_t directlink, unidirectional, ttl, send_ogm_only_via_owning_if;
+	int16_t aggregated_packets, aggregated_size, iteration, jumbo_packet = 0;
+	int32_t send_bucket;
+	uint8_t done;
 	
-	uint32_t curr_time;
+	uint32_t start_time = get_time();
 
+	while ( ! list_empty( &forw_list ) ) {
 
-	if ( list_empty( &forw_list ) )
-		return;
-
-	curr_time = get_time();
-
-	list_for_each_safe( forw_pos, temp, &forw_list ) {
-
-		forw_node = list_entry( forw_pos, struct forw_node, list );
-
-		if ( forw_node->send_time <= curr_time ) {
-
-			addr_to_string( ((struct bat_packet *)forw_node->pack_buff)->orig, orig_str, ADDR_STR_LEN );
-
-			directlink = ( ( ((struct bat_packet *)forw_node->pack_buff)->flags & DIRECTLINK_FLAG ) ? 1 : 0 );
-			unidirectional = ( ( ((struct bat_packet *)forw_node->pack_buff)->flags & UNIDIRECTIONAL_FLAG ) ? 1 : 0 );
-			ttl = ((struct bat_packet *)forw_node->pack_buff)->ttl;
-			send_ogm_only_via_owning_if = ( (forw_node->own && forw_node->if_outgoing->send_ogm_only_via_owning_if) ? 1 : 0 );
-			
-			/* change sequence number to network order */
-			((struct bat_packet *)forw_node->pack_buff)->seqno = htons( ((struct bat_packet *)forw_node->pack_buff)->seqno );
-
-			/* rebroadcast only to allow neighbor to detect bidirectional link */
-			if ( unidirectional || ( directlink && ttl == 0 ) ) {
-
-				if ( forw_node->if_outgoing != NULL ) {
-
-					debug_output( 4, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s\n", orig_str, ntohs( ((struct bat_packet *)forw_node->pack_buff)->seqno ), ((struct bat_packet *)forw_node->pack_buff)->ttl, forw_node->if_outgoing->dev );
-
-					if ( send_udp_packet( forw_node->pack_buff, forw_node->pack_buff_len, &forw_node->if_outgoing->broad, forw_node->if_outgoing->udp_send_sock ) < 0 )
-						restore_and_exit(0);
-
-				} else {
-
-					debug_output( 0, "Error - can't forward packet with UDF/IDF: outgoing iface not specified \n" );
-
-				}
-
-			/* (re-) broadcast to propagate existence of path to OG*/
-			} else {
-				
-				if ( ( directlink ) && ( forw_node->if_outgoing == NULL ) ) {
+		forw_node = list_entry( (&forw_list)->next, struct forw_node, list );
 	
-					debug_output( 0, "Error - can't forward packet with IDF: outgoing iface not specified \n" );
-					restore_and_exit(0);
+		if ( forw_node->send_time > start_time )
+			break;
 	
-				}
-				
-				int32_t send_bucket = ((int32_t)(rand_num( 100 )));
-								
-				uint8_t not_done = YES;
-				
-				while ( not_done ) {
+		jumbo_packet++;
+		
+		iteration = 0;
+		
+		send_bucket = ((int32_t)(rand_num( 100 )));
+									
+		done = NO;
 					
-					not_done = NO;
-	
-					list_for_each(if_pos, &if_list) {
-
-						batman_if = list_entry(if_pos, struct batman_if, list);
-
-						if ( ( send_bucket <= batman_if->if_send_clones ) && 
-						     ( !send_ogm_only_via_owning_if || forw_node->if_outgoing == batman_if ) ) { 
+		while ( ! done ) {
 						
-							if ( (send_bucket + 100) <= batman_if->if_send_clones )
-								not_done = YES;
-							
-							if ( ( directlink ) && ( forw_node->if_outgoing == batman_if ) ) {
-								((struct bat_packet *)forw_node->pack_buff)->flags = 
-										((struct bat_packet *)forw_node->pack_buff)->flags | DIRECTLINK_FLAG;
-							} else {
-								((struct bat_packet *)forw_node->pack_buff)->flags = 
-										((struct bat_packet *)forw_node->pack_buff)->flags & ~DIRECTLINK_FLAG;
-							}
+			done = YES;
+			iteration++;
 	
-							debug_output( 4, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s\n", orig_str, ntohs( ((struct bat_packet *)forw_node->pack_buff)->seqno ), ((struct bat_packet *)forw_node->pack_buff)->ttl, batman_if->dev );
+			aggregated_packets = 0;
+			aggregated_size = 0;
+			
+			list_for_each_safe( forw_pos, temp, &forw_list ) {
 	
-							/* OGMs for non-primary interfaces do not send hna information */
-							if ( ( forw_node->own ) && ( ((struct bat_packet *)forw_node->pack_buff)->orig != ((struct batman_if *)if_list.next)->addr.sin_addr.s_addr ) ) {
+				forw_node = list_entry( forw_pos, struct forw_node, list );
 	
-								if ( send_udp_packet( forw_node->pack_buff, sizeof(struct bat_packet), &batman_if->broad, batman_if->udp_send_sock ) < 0 )
-									restore_and_exit(0);
-	
-							} else {
-	
-								if ( send_udp_packet( forw_node->pack_buff, forw_node->pack_buff_len, &batman_if->broad, batman_if->udp_send_sock ) < 0 )
-									restore_and_exit(0);
-	
-							}
-
-						}
+				if ( forw_node->send_time <= start_time && (aggregated_size + forw_node->pack_buff_len) <= MAX_PACKET_OUT_SIZE ) {
 					
+					if ( packet_aggregation )
+						aggregated_size+= forw_node->pack_buff_len;
+					
+					addr_to_string( ((struct bat_packet *)forw_node->pack_buff)->orig, orig_str, ADDR_STR_LEN );
+		
+					directlink = ( ( ((struct bat_packet *)forw_node->pack_buff)->flags & DIRECTLINK_FLAG ) ? 1 : 0 );
+					unidirectional = ( ( ((struct bat_packet *)forw_node->pack_buff)->flags & UNIDIRECTIONAL_FLAG ) ? 1 : 0 );
+					ttl = ((struct bat_packet *)forw_node->pack_buff)->ttl;
+					send_ogm_only_via_owning_if = ( (forw_node->own && forw_node->if_outgoing->send_ogm_only_via_owning_if) ? 1 : 0 );
+					
+					/* change sequence number to network order */
+					if ( iteration == 1 )
+						((struct bat_packet *)forw_node->pack_buff)->seqno = htons( ((struct bat_packet *)forw_node->pack_buff)->seqno );
+		
+					/* rebroadcast only to allow neighbor to detect bidirectional link */
+					if ( unidirectional || ( directlink && ttl == 0 ) ) {
+						
+						if ( iteration == 1 ) {
+		
+							if ( forw_node->if_outgoing != NULL ) {
+			
+								debug_output( 4, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s, len %d\n", orig_str, ntohs( ((struct bat_packet *)forw_node->pack_buff)->seqno ), ((struct bat_packet *)forw_node->pack_buff)->ttl, forw_node->if_outgoing->dev, forw_node->pack_buff_len );
+			
+								if ( packet_aggregation ) {
+									
+									memcpy( (forw_node->if_outgoing->packet_out + forw_node->if_outgoing->packet_out_len), forw_node->pack_buff, forw_node->pack_buff_len );
+									
+									forw_node->if_outgoing->packet_out_len+= forw_node->pack_buff_len;
+								
+									aggregated_packets++;
+								
+								} else {
+									
+									if ( send_udp_packet( forw_node->pack_buff, forw_node->pack_buff_len, &forw_node->if_outgoing->broad, forw_node->if_outgoing->udp_send_sock ) < 0 )
+										restore_and_exit(0);
+								
+								}
+								
+							} else {
+			
+								debug_output( 0, "Error - can't forward packet with UDF/IDF: outgoing iface not specified \n" );
+			
+							}
+						}
+		
+					/* (re-) broadcast to propagate existence of path to OG*/
+					} else {
+						
+						if ( ( directlink ) && ( forw_node->if_outgoing == NULL ) ) {
+			
+							debug_output( 0, "Error - can't forward packet with IDF: outgoing iface not specified \n" );
+							restore_and_exit(0);
+			
+						}
+			
+						list_for_each(if_pos, &if_list) {
+		
+							batman_if = list_entry(if_pos, struct batman_if, list);
+		
+							if ( ( send_bucket <= batman_if->if_send_clones ) && 
+								( !send_ogm_only_via_owning_if || forw_node->if_outgoing == batman_if ) ) { 
+							
+								if ( (send_bucket + 100) <= batman_if->if_send_clones )
+									done = NO;
+								
+								if ( ( directlink ) && ( forw_node->if_outgoing == batman_if ) ) {
+									((struct bat_packet *)forw_node->pack_buff)->flags = 
+											((struct bat_packet *)forw_node->pack_buff)->flags | DIRECTLINK_FLAG;
+								} else {
+									((struct bat_packet *)forw_node->pack_buff)->flags = 
+											((struct bat_packet *)forw_node->pack_buff)->flags & ~DIRECTLINK_FLAG;
+								}
+		
+		
+								/* OGMs for non-primary interfaces do not send hna information */
+								if ( ( forw_node->own ) && ( ((struct bat_packet *)forw_node->pack_buff)->orig != ((struct batman_if *)if_list.next)->addr.sin_addr.s_addr ) ) {
+		
+									debug_output( 4, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s, len %d\n", orig_str, ntohs( ((struct bat_packet *)forw_node->pack_buff)->seqno ), ((struct bat_packet *)forw_node->pack_buff)->ttl, batman_if->dev, sizeof(struct bat_packet) );
+									
+									if ( packet_aggregation ) {
+										
+										memcpy( (batman_if->packet_out + batman_if->packet_out_len), forw_node->pack_buff, sizeof(struct bat_packet) );
+									
+										batman_if->packet_out_len+= sizeof(struct bat_packet);
+									
+										aggregated_packets++;
+										
+									} else {
+										
+									if ( send_udp_packet( forw_node->pack_buff, sizeof(struct bat_packet), &batman_if->broad, batman_if->udp_send_sock ) < 0 )
+										restore_and_exit(0);
+									
+									}
+	
+								} else {
+									
+									debug_output( 4, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s, len %d\n", orig_str, ntohs( ((struct bat_packet *)forw_node->pack_buff)->seqno ), ((struct bat_packet *)forw_node->pack_buff)->ttl, batman_if->dev, forw_node->pack_buff_len );
+	
+									if ( packet_aggregation ) {
+										
+										memcpy( (batman_if->packet_out + batman_if->packet_out_len), forw_node->pack_buff, forw_node->pack_buff_len );
+									
+										batman_if->packet_out_len+= forw_node->pack_buff_len;
+									
+										aggregated_packets++;
+										
+									} else {
+										
+										if ( send_udp_packet( forw_node->pack_buff, forw_node->pack_buff_len, &batman_if->broad, batman_if->udp_send_sock ) < 0 )
+											restore_and_exit(0);
+										
+									}
+								}
+							}
+						}
+						
+						((struct bat_packet *)forw_node->pack_buff)->flags = 
+								((struct bat_packet *)forw_node->pack_buff)->flags | CLONED_FLAG;
+						
+		
 					}
 					
-					((struct bat_packet *)forw_node->pack_buff)->flags = 
-							((struct bat_packet *)forw_node->pack_buff)->flags | CLONED_FLAG;
+					if ( done ) {
+						
+						list_del( (struct list_head *)&forw_list, forw_pos, &forw_list );
+						
+						if ( forw_node->own )
+							schedule_own_packet( forw_node->if_outgoing );
+						
+						debugFree( forw_node->pack_buff, 1501 );
+						debugFree( forw_node, 1502 );
 					
-					send_bucket = send_bucket + 100;
-							
+					}
+				
+				} else if ( packet_aggregation ) {
+					
+					if ( aggregated_packets == 0 ) {
+						
+						debug_output( 0, "Error - single packet to large to fit in allowed maximum packet size !! \n");
+						
+						restore_and_exit(0);
+						
+					}
 				}
-
+				
 			}
-
-			list_del( (struct list_head *)&forw_list, forw_pos, &forw_list );
-
-			if ( forw_node->own )
-				schedule_own_packet( forw_node->if_outgoing );
-
-			debugFree( forw_node->pack_buff, 1501 );
-			debugFree( forw_node, 1502 );
-
-		} else {
-
-			break;
-
+			
+			if ( packet_aggregation ) {
+				
+				list_for_each(if_pos, &if_list) {
+			
+					batman_if = list_entry(if_pos, struct batman_if, list);
+				
+					if ( batman_if->packet_out_len > 0 ) {
+						
+						if ( send_udp_packet( batman_if->packet_out, batman_if->packet_out_len, &batman_if->broad, batman_if->udp_send_sock ) < 0 )
+							restore_and_exit(0);
+						
+					}
+								
+					batman_if->packet_out_len = 0;
+				
+				}
+			}		
+	
+			send_bucket = send_bucket + 100;
+			
+			if ( aggregated_packets >= 0 )
+				debug_output( 4, "jumbo packet: %d, clone iteration: %d, aggregations: %d \n\n", jumbo_packet, iteration-1, aggregated_packets);
+	
 		}
-
+		
 	}
-
+	
 	prof_stop( PROF_send_outstanding_packets );
 
 }

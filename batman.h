@@ -94,6 +94,12 @@ extern char unix_path[];
 
 #define TEST_SWITCH              "test"
 
+#define MAX_PACKET_OUT_SIZE 300
+	
+extern int32_t packet_aggregation;
+#define PACKET_AGGREGATION_SWITCH "ogm-aggregation"
+
+
 extern int32_t sequence_range;
 #define FULL_SEQ_RANGE ((uint16_t)-1)
 #define MAX_SEQ_RANGE 250      /* TBD: should not be larger until neigh_node.packet_count (and related variables) is only 8 bit */
@@ -108,7 +114,7 @@ extern int16_t originator_interval;
 #define DEFAULT_ORIGINATOR_INTERVAL 1000
 #define MIN_ORIGINATOR_INTERVAL JITTER
 #define MAX_ORIGINATOR_INTERVAL 10000 
-	
+
 extern uint8_t mobile_device;
 #define ASOCIAL_SWITCH           "asocial-device"
 
@@ -509,6 +515,8 @@ struct batman_if
 	uint8_t if_bidirect_link_to;
 	uint8_t send_ogm_only_via_owning_if;
 	int16_t if_send_clones;
+	unsigned char packet_out[MAX_PACKET_OUT_SIZE + 1];
+	int16_t packet_out_len;
 };
 
 struct gw_listen_arg
