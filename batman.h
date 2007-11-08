@@ -39,7 +39,7 @@
 
 #define SOURCE_VERSION "0.3-alpha" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
 
-#define COMPAT_VERSION 7
+#define COMPAT_VERSION 8
 
 
 #define ADDR_STR_LEN 16
@@ -374,8 +374,7 @@ extern struct debug_clients debug_clients;
 #define UNIDIRECTIONAL_FLAG 0x08 /* set when re-broadcasting a received OGM via a curretnly not bi-directional link and only together with IDF */
 #define DIRECTLINK_FLAG     0x04 /* set when re-broadcasting a received OGM with identical OG IP and NB IP on the interface link as received */
 #define CLONED_FLAG         0x02 /* set when (re-)broadcasting a OGM not-for-the-first time or re-broadcasting a OGM with this flag */
-
-#define EXTENSION_MSG       0x00 /* unset for OGM, set for OGM related extensions like HNA,... */
+#define EXTENSION_MSG       0x01 /* unset for OGM, set for OGM related extensions like HNA,... */
 
 /* the flags for bat_packet gwtypes: */
 #define TWO_WAY_TUNNEL_FLAG   0x01
@@ -408,6 +407,9 @@ struct bat_packet
 	uint8_t  ttl;
 	uint32_t orig;
 	uint16_t seqno;
+	uint8_t  reserved2;
+	uint8_t  reserved3;
+
 } __attribute__((packed));
 
 struct orig_node                 /* structure for orig_list maintaining nodes of mesh */
@@ -455,8 +457,9 @@ struct neigh_node
 
 struct hna_packet
 {
-	uint32_t addr;
+	uint8_t type;
 	uint8_t netmask;
+	uint32_t addr;
 } __attribute__((packed));
 
 struct hna_node

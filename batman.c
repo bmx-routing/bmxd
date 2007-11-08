@@ -1052,6 +1052,7 @@ int8_t batman() {
 
 			my_hna_array[my_hna_array_len].addr    = hna_node->addr;
 			my_hna_array[my_hna_array_len].netmask = hna_node->netmask;
+			my_hna_array[my_hna_array_len].type    = EXTENSION_MSG;
 			
 			my_hna_array_len++;
 			
@@ -1159,7 +1160,7 @@ int8_t batman() {
 			if ( ogm->gwflags != 0 && ogm->gwtypes != 0 )
 				debug_output( 4, "Is an internet gateway (class %i, types %i) \n", ogm->gwflags, ogm->gwtypes );
 
-			if ( hna_array_len >= 1 ) {
+			if ( hna_array_len > 0 ) {
 
 				debug_output( 4, "HNA information received (%i HNA network%s): \n", hna_array_len, ( hna_array_len > 1 ? "s": "" ) );
 				hna_count = 0;
@@ -1201,11 +1202,11 @@ int8_t batman() {
 				   ( !has_duplicated_flag ) &&
 				   ( ogm->seqno != ( if_incoming->out.seqno - OUT_SEQNO_OFFSET ) )
 				   ) {
-				   
+				
 					debug_output( 3, "STRANGE: received own OGM via NB: %s, lastTxIfSeqno: %d, currRxSeqno: %d, prevRxSeqno: %d, currRxSeqno-prevRxSeqno %d \n", neigh_str, ( if_incoming->out.seqno - OUT_SEQNO_OFFSET ), ogm->seqno, orig_neigh_node->bidirect_link[if_incoming->if_num], ogm->seqno - orig_neigh_node->bidirect_link[if_incoming->if_num] );
 
-				   
-				   }							   
+				}							   
+				
 				/* neighbour has to indicate direct link and it has to come via the corresponding interface */
 				/* if received seqno equals last send seqno save new seqno for bidirectional check */
 				if ( ( has_directlink_flag ) &&
