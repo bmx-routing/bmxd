@@ -86,7 +86,7 @@ int8_t resist_blocked_send = DEF_RESIST_BLOCKED_SEND;
 of last send own OGMs rebroadcasted from neighbors */
 int32_t bidirect_link_to = DEFAULT_BIDIRECT_TIMEOUT;
 
-int32_t packet_aggregation = NO;
+int32_t aggregations_po = DEF_AGGREGATIONS_PO;
 
 int32_t sequence_range = DEFAULT_SEQ_RANGE;
 int32_t ttl = DEFAULT_TTL;
@@ -1019,22 +1019,23 @@ int8_t batman() {
 	uint32_t neigh, hna, netmask, debug_timeout, vis_timeout, select_timeout, aggregation_time = 0, curr_time;
 	struct bat_packet *ogm;
 	struct hna_packet *hna_array;
-	
+	uint16_t aggr_interval;
+
 	static char orig_str[ADDR_STR_LEN], neigh_str[ADDR_STR_LEN], ifaddr_str[ADDR_STR_LEN];
 	int16_t hna_count, hna_array_len;
 	uint8_t forward_old, if_rp_filter_all_old, if_rp_filter_default_old, if_send_redirects_all_old, if_send_redirects_default_old;
 	uint8_t is_my_addr, is_my_orig, is_broadcast, is_duplicate, is_bidirectional, is_accepted, is_direct_neigh, is_bntog, forward_duplicate_packet, has_unidirectional_flag, has_directlink_flag, has_duplicated_flag, has_version;
 	int nlq_rate_value, rand_num_value, acceptance_rate_value;
 	int res;
-
-	debug_timeout = vis_timeout = get_time();
+	
+	curr_time = debug_timeout = vis_timeout = get_time();
 		
-	if ( packet_aggregation )
-		aggregation_time = get_time() + 100 + rand_num( 100 );
+	if ( aggregations_po )
+		aggregation_time = get_time() + 50 + rand_num( 100 );
 
 	if ( NULL == ( orig_hash = hash_new( 128, compare_orig, choose_orig ) ) )
 		return(-1);
-
+	
 	/* for profiling the functions */
 	prof_init( PROF_choose_gw, "choose_gw" );
 	prof_init( PROF_update_routes, "update_routes" );
@@ -1111,6 +1112,7 @@ int8_t batman() {
 
 	curr_time = get_time();
 
+	
 	while ( !is_aborted() ) {
 
 		debug_output( 4, " \n \n" );
@@ -1118,13 +1120,13 @@ int8_t batman() {
 		/* harden select_timeout against sudden time change (e.g. ntpdate) */
 		//curr_time = get_time();
 		
-		if ( packet_aggregation == NO  &&  curr_time < ((struct forw_node *)forw_list.next)->send_time) {
+		if ( aggregations_po == NO  &&  curr_time < ((struct forw_node *)forw_list.next)->send_time) {
 		
 			select_timeout = ((struct forw_node *)forw_list.next)->send_time - curr_time ;
 			
 			res = receive_packet( &ogm, &hna_array, &hna_array_len, &neigh, select_timeout, &if_incoming, &curr_time );
 			
-		} else if ( packet_aggregation == YES  && curr_time < aggregation_time ) { 
+		} else if ( aggregations_po  &&  curr_time < aggregation_time ) { 
 		
 			select_timeout = aggregation_time - curr_time ;
 			
@@ -1137,6 +1139,7 @@ int8_t batman() {
 		
 		}
 
+		
 		if ( res > 0 ) {
 
 			//curr_time = get_time();
@@ -1264,9 +1267,9 @@ int8_t batman() {
 
 					debug_output( 4, "Drop packet: TTL of zero! \n" );
 
-				} else if ( ( ogm->seqno - orig_node->last_seqno ) > ( FULL_SEQ_RANGE - sequence_range ) ) {
+				} else if ( ((uint16_t)( ogm->seqno - orig_node->last_seqno )) > ((uint16_t)( FULL_SEQ_RANGE - ((uint16_t)sequence_range ))) ) {
 
-					debug_output( 4, "Drop packet: OGM with old seqno: %i, latest was: %i! \n", orig_node->last_seqno, ogm->seqno );
+					debug_output( 3, "Drop packet: OGM from %s, via NB %s, with old seqno! rcvd sqno %i, previos rcvd: %i! OGM-aggregation might be to radical!?\n", neigh_str, orig_str, ogm->seqno, orig_node->last_seqno );
 
 				} else if ( alreadyConsidered( orig_node, ogm->seqno, neigh, if_incoming ) ) {
 
@@ -1332,7 +1335,7 @@ int8_t batman() {
 						/* we are an asocial mobile device and dont want to forward other nodes packet */
 						if( mobile_device ) {
 
-							schedule_forward_packet( ogm, 1, 1, has_duplicated_flag, hna_array, hna_array_len, if_incoming );
+							schedule_forward_packet( ogm, 1, 1, has_duplicated_flag, hna_array, hna_array_len, if_incoming, curr_time );
 
 							debug_output( 4, "Forward packet: with mobile device policy: rebroadcast neighbour packet with direct link and unidirectional flag \n" );
 
@@ -1340,7 +1343,7 @@ int8_t batman() {
 						} else if ( is_accepted && is_bntog ) {
 
 							/* mark direct link on incoming interface */
-							schedule_forward_packet( ogm, 0, 1, has_duplicated_flag, hna_array, hna_array_len, if_incoming );
+							schedule_forward_packet( ogm, 0, 1, has_duplicated_flag, hna_array, hna_array_len, if_incoming, curr_time );
 
 							debug_output( 4, "Forward packet: rebroadcast neighbour packet with direct link flag \n" );
 /*
@@ -1354,7 +1357,7 @@ int8_t batman() {
 						/* if a bidirectional neighbour sends us a packet who is not our best link to him- retransmit it with unidirectional flag in order to prevent routing problems */
 						} else if ( ( is_accepted && !is_bntog ) || ( !is_accepted ) ) {
 
-							schedule_forward_packet( ogm, 1, 1, has_duplicated_flag, hna_array, hna_array_len, if_incoming );
+							schedule_forward_packet( ogm, 1, 1, has_duplicated_flag, hna_array, hna_array_len, if_incoming, curr_time );
 
 							debug_output( 4, "Forward packet: rebroadcast neighbour packet with direct link and unidirectional flag \n" );
 
@@ -1367,7 +1370,7 @@ int8_t batman() {
 
 							if ( !is_duplicate ) {
 
-								schedule_forward_packet( ogm, 0, 0, has_duplicated_flag, hna_array, hna_array_len, if_incoming );
+								schedule_forward_packet( ogm, 0, 0, has_duplicated_flag, hna_array, hna_array_len, if_incoming, curr_time );
 
 								debug_output( 4, "Forward packet: rebroadcast originator packet \n" );
 
@@ -1398,7 +1401,7 @@ int8_t batman() {
 								/* we are forwarding duplicate o-packets if they come via our best neighbour and ttl is valid */
 								if ( forward_duplicate_packet ) {
 
-									schedule_forward_packet( ogm, 0, 0, has_duplicated_flag, hna_array, hna_array_len, if_incoming );
+									schedule_forward_packet( ogm, 0, 0, has_duplicated_flag, hna_array, hna_array_len, if_incoming, curr_time );
 
 									debug_output( 4, "Forward packet: duplicate packet received via best neighbour with best ttl \n" );
 /*
@@ -1434,12 +1437,14 @@ int8_t batman() {
 		}
 
 
-		if ( packet_aggregation == YES  &&  aggregation_time <= curr_time ) {
+		if ( aggregations_po  &&  aggregation_time <= curr_time ) {
+				
+			aggr_interval = originator_interval/aggregations_po;
 
 			send_outstanding_packets();
-			aggregation_time = curr_time + (originator_interval/10) + rand_num( originator_interval/10 );
+			aggregation_time = (curr_time + aggr_interval + rand_num( aggr_interval/2 )) - (aggr_interval/4);
 			
-		} else if ( packet_aggregation == NO ) {
+		} else if ( aggregations_po == NO ) {
 
 			send_outstanding_packets();
 			

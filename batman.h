@@ -96,9 +96,16 @@ extern char unix_path[];
 
 #define MAX_PACKET_OUT_SIZE 300
 	
-extern int32_t packet_aggregation;
-#define PACKET_AGGREGATION_SWITCH "ogm-aggregation"
+extern int32_t aggregations_po;
 
+
+#define AGGREGATIONS_SWITCH    "ogm-aggregation"
+#define NO_AGGREGATIONS_SWITCH "no-ogm-aggregation"
+#define AGGREGATIONS_PO_SWITCH "api" /*"aggregations-per-interval"*/
+#define MIN_AGGREGATIONS_PO 1
+#define MAX_AGGREGATIONS_PO 20
+#define DEF_AGGREGATIONS_PO NO
+#define ENABLED_AGGREGATIONS_PO "4"
 
 extern int32_t sequence_range;
 #define FULL_SEQ_RANGE ((uint16_t)-1)
@@ -398,7 +405,7 @@ struct bat_packet
 #else
 # error "Please fix <bits/endian.h>"
 #endif
-			
+
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 	unsigned int gwtypes:4;  /* to let a gw announce its offered gateway types */
 	unsigned int reserved:4;
@@ -464,15 +471,25 @@ struct neigh_node
 struct hna_packet
 {
 	uint8_t type;
-	uint8_t netmask;
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+	unsigned int netmask:6;
+	unsigned int atype:2;
+#elif __BYTE_ORDER == __BIG_ENDIAN
+	unsigned int atype:2;
+	unsigned int netmask:6;
+#else
+# error "Please fix <bits/endian.h>"
+#endif
 	uint32_t addr;
 } __attribute__((packed));
+
 
 struct hna_node
 {
 	struct list_head list;
-	uint32_t addr;
+	uint8_t type;
 	uint8_t netmask;
+	uint32_t addr;
 };
 
 struct forw_node                 /* structure for forw_list maintaining packets to be send/forwarded */
@@ -501,22 +518,23 @@ struct batman_if
 	int32_t udp_send_sock;
 	int32_t udp_recv_sock;
 	int32_t udp_tunnel_sock;
-	int16_t if_num;
 	int32_t if_index;
+	int16_t if_num;
 	uint8_t if_rp_filter_old;
 	uint8_t if_send_redirects_old;
 	pthread_t listen_thread_id;
 	struct sockaddr_in addr;
 	struct sockaddr_in broad;
+	struct bat_packet out;
 	uint32_t netaddr;
 	uint8_t netmask;
-	struct bat_packet out;
 	uint8_t if_ttl;
 	uint8_t if_bidirect_link_to;
 	uint8_t send_ogm_only_via_owning_if;
 	int16_t if_send_clones;
-	unsigned char packet_out[MAX_PACKET_OUT_SIZE + 1];
 	int16_t packet_out_len;
+	unsigned char packet_out[MAX_PACKET_OUT_SIZE + 1];
+	uint8_t send_own;
 };
 
 struct gw_listen_arg

@@ -113,9 +113,9 @@ void set_gw_network ( char *optarg_p ) {
 	char *slash_ptr;
 	static char netmask_str[ADDR_STR_LEN];
 		
-	char optarg_str[20];
+	char optarg_str[22];
 	
-	memcpy( optarg_str, optarg_p, sizeof(optarg_str) < strlen( optarg_p) ? sizeof(optarg_str) : strlen(optarg_p) );
+	memcpy( optarg_str, optarg_p, sizeof(optarg_str) < strlen( optarg_p)+1 ? sizeof(optarg_str) : strlen(optarg_p)+1 );
 	
 	if ( ( slash_ptr = strchr( optarg_str, '/' ) ) == NULL ) {
 
@@ -148,7 +148,7 @@ void set_gw_network ( char *optarg_p ) {
 	if ( netmask < MIN_GW_TUNNEL_NETMASK || netmask > MAX_GW_TUNNEL_NETMASK ) {
 
 		*slash_ptr = '/';
-		printf( "Invalid GW network (netmask is invalid): %s !\n", optarg_str );
+		printf( "Invalid GW network (netmask %d is invalid): %s !\n", netmask, optarg_str );
 		exit(EXIT_FAILURE);
 
 	}
@@ -309,7 +309,9 @@ void apply_init_args( int argc, char *argv[] ) {
    {GENIII_DEFAULTS_SWITCH,     0, 0, 0},
    {BMX_DEFAULTS_SWITCH,        0, 0, 0},
    {GRAZ07_DEFAULTS_SWITCH,     0, 0, 0},
-   {PACKET_AGGREGATION_SWITCH,  0, 0, 0},
+   {AGGREGATIONS_PO_SWITCH,     1, 0, 0},
+   {NO_AGGREGATIONS_SWITCH,     0, 0, 0},
+   {AGGREGATIONS_SWITCH,        0, 0, 0},
    {BIDIRECT_TIMEOUT_SWITCH,    1, 0, 0},
    {NBRFSIZE_SWITCH,            1, 0, 0},
    {GW_CHANGE_HYSTERESIS_SWITCH,1, 0, 0},
@@ -328,7 +330,6 @@ void apply_init_args( int argc, char *argv[] ) {
    {RESIST_BLOCKED_SEND_SWITCH, 0, 0, 0},
    {RT_TABLE_OFFSET_SWITCH,     1, 0, 0},
    {BASE_PORT_SWITCH,           1, 0, 0},
-   {TEST_SWITCH,                0, 0, 0},
    {DUP_TTL_LIMIT_SWITCH,       1, 0, 0},
    {DUP_RATE_SWITCH,	        1, 0, 0},
    {DUP_DEGRAD_SWITCH,	        1, 0, 0},
@@ -405,13 +406,11 @@ void apply_init_args( int argc, char *argv[] ) {
 	
 			set_init_arg( ASYMMETRIC_EXP_SWITCH, "1", MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP, &asymmetric_exp );
 	
-			set_init_arg( REBRC_DELAY_SWITCH, "35", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
+//			set_init_arg( REBRC_DELAY_SWITCH, "35", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
 	
-			/*
-			packet_aggregation = YES;
-			printf ("--%s \\ \n", PACKET_AGGREGATION_SWITCH );
+			set_init_arg( AGGREGATIONS_PO_SWITCH, ENABLED_AGGREGATIONS_PO, MIN_AGGREGATIONS_PO, MAX_AGGREGATIONS_PO, &aggregations_po );
 			set_init_arg( REBRC_DELAY_SWITCH, "0", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
-			*/
+
 			
 			if ( strcmp( BMX_DEFAULTS_SWITCH, long_options[option_index].name ) == 0 ) {
 				found_args += 1;
@@ -626,6 +625,13 @@ void apply_init_args( int argc, char *argv[] ) {
 					found_args += 2;
 					break;
 					
+				} else if ( strcmp( AGGREGATIONS_PO_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					set_init_arg( AGGREGATIONS_PO_SWITCH, optarg, MIN_AGGREGATIONS_PO, MAX_AGGREGATIONS_PO, &aggregations_po );
+					set_init_arg( REBRC_DELAY_SWITCH, "0", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
+					found_args += 2;
+					break;
+				
 				/*	this is just a template:
 				} else if ( strcmp( _SWITCH, long_options[option_index].name ) == 0 ) {
 
@@ -634,17 +640,21 @@ void apply_init_args( int argc, char *argv[] ) {
 					break;
 				*/
 						
-						//TBD: this mus go to init...
-				
-				} else if ( strcmp( PACKET_AGGREGATION_SWITCH, long_options[option_index].name ) == 0 ) {
+				} else if ( strcmp( NO_AGGREGATIONS_SWITCH, long_options[option_index].name ) == 0 ) {
 
-					printf ("--%s \\ \n", long_options[option_index].name);
-					errno = 0;
-					packet_aggregation = YES;
+					set_init_arg( AGGREGATIONS_PO_SWITCH, "0", 0, 0, &aggregations_po );
+					set_init_arg( REBRC_DELAY_SWITCH, "35", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
+					found_args += 1;
+					break;
+					
+				} else if ( strcmp( AGGREGATIONS_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					set_init_arg( AGGREGATIONS_PO_SWITCH, ENABLED_AGGREGATIONS_PO, MIN_AGGREGATIONS_PO, MAX_AGGREGATIONS_PO, &aggregations_po );
 					set_init_arg( REBRC_DELAY_SWITCH, "0", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
 					found_args += 1;
 					break;
 					
+				
 				} else if ( strcmp( ASOCIAL_SWITCH, long_options[option_index].name ) == 0 ) {
 
 					printf ("--%s \\ \n", long_options[option_index].name);
@@ -708,11 +718,10 @@ void apply_init_args( int argc, char *argv[] ) {
 					set_init_arg( BASE_PORT_SWITCH,       "14305", MIN_BASE_PORT,       MAX_BASE_PORT,       &base_port ); 
 					set_init_arg( RT_TABLE_OFFSET_SWITCH, "165",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset ); 
 					set_init_arg( RT_PRIO_DEFAULT_SWITCH, "16600", MIN_RT_PRIO_DEFAULT, MAX_RT_PRIO_DEFAULT, &rt_prio_default ); 
-					set_init_arg( NBRFSIZE_SWITCH,        "10",    MIN_SEQ_RANGE,       MAX_SEQ_RANGE,       &sequence_range ); 
+					set_init_arg( NBRFSIZE_SWITCH,        "100",   MIN_SEQ_RANGE,       MAX_SEQ_RANGE,       &sequence_range ); 
 					set_gw_network( "169.254.16.0/22" );
 					
-					packet_aggregation = YES;
-					printf ("--%s \\ \n", PACKET_AGGREGATION_SWITCH );
+					set_init_arg( AGGREGATIONS_PO_SWITCH, ENABLED_AGGREGATIONS_PO, MIN_AGGREGATIONS_PO, MAX_AGGREGATIONS_PO, &aggregations_po );
 					set_init_arg( REBRC_DELAY_SWITCH, "0", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
 
 					found_args += 1;

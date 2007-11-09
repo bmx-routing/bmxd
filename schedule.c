@@ -85,10 +85,11 @@ void schedule_own_packet( struct batman_if *batman_if ) {
 
 
 
-void schedule_forward_packet( struct bat_packet *in, uint8_t unidirectional, uint8_t directlink, uint8_t cloned, struct hna_packet *hna_array, int16_t hna_array_len, struct batman_if *if_outgoing ) {
+void schedule_forward_packet( struct bat_packet *in, uint8_t unidirectional, uint8_t directlink, uint8_t cloned, struct hna_packet *hna_array, int16_t hna_array_len, struct batman_if *if_outgoing, uint32_t curr_time ) {
 
 	prof_start( PROF_schedule_forward_packet );
-	struct forw_node *forw_node_new;
+	struct forw_node *forw_node_new, *forw_packet_tmp = NULL;
+	struct list_head *list_pos, *prev_list_head;
 
 	debug_output( 4, "schedule_forward_packet():  \n" );
 
@@ -119,7 +120,7 @@ void schedule_forward_packet( struct bat_packet *in, uint8_t unidirectional, uin
 
 
 		((struct bat_packet *)forw_node_new->pack_buff)->ttl--;
-		forw_node_new->send_time = get_time() + rand_num( rebrc_delay );
+		forw_node_new->send_time = curr_time + rand_num( rebrc_delay );
 		forw_node_new->own = 0;
 
 		forw_node_new->if_outgoing = if_outgoing;
@@ -143,8 +144,29 @@ void schedule_forward_packet( struct bat_packet *in, uint8_t unidirectional, uin
 					((struct bat_packet *)forw_node_new->pack_buff)->flags | CLONED_FLAG;
 		}			
 
-		list_add( &forw_node_new->list, &forw_list );
+//		list_add( &forw_node_new->list, &forw_list );
 
+		prev_list_head = (struct list_head *)&forw_list;
+
+		list_for_each( list_pos, &forw_list ) {
+
+			forw_packet_tmp = list_entry( list_pos, struct forw_node, list );
+
+			if ( forw_packet_tmp->send_time > forw_node_new->send_time ) {
+
+				list_add_before( prev_list_head, list_pos, &forw_node_new->list );
+				break;
+
+			}
+
+			prev_list_head = &forw_packet_tmp->list;
+
+		}
+
+		if ( ( forw_packet_tmp == NULL ) || ( forw_packet_tmp->send_time <= forw_node_new->send_time ) )
+			list_add_tail( &forw_node_new->list, &forw_list );
+
+		
 	}
 
 	prof_stop( PROF_schedule_forward_packet );
@@ -157,7 +179,8 @@ void send_outstanding_packets() {
 
 	prof_start( PROF_send_outstanding_packets );
 	struct forw_node *forw_node;
-	struct list_head *forw_pos, *if_pos, *temp;
+	struct list_head *forw_pos, *if_pos, *forw_temp;
+
 	struct batman_if *batman_if;
 	static char orig_str[ADDR_STR_LEN];
 	uint8_t directlink, unidirectional, ttl, send_ogm_only_via_owning_if;
@@ -190,13 +213,14 @@ void send_outstanding_packets() {
 			aggregated_packets = 0;
 			aggregated_size = 0;
 			
-			list_for_each_safe( forw_pos, temp, &forw_list ) {
+			list_for_each( forw_pos, &forw_list ) {
 	
 				forw_node = list_entry( forw_pos, struct forw_node, list );
 	
 				if ( forw_node->send_time <= start_time && (aggregated_size + forw_node->pack_buff_len) <= MAX_PACKET_OUT_SIZE ) {
 					
-					if ( packet_aggregation )
+					// keep care to not aggregate more packets than would fit into max packet size
+					if ( aggregations_po )
 						aggregated_size+= forw_node->pack_buff_len;
 					
 					addr_to_string( ((struct bat_packet *)forw_node->pack_buff)->orig, orig_str, ADDR_STR_LEN );
@@ -206,9 +230,15 @@ void send_outstanding_packets() {
 					ttl = ((struct bat_packet *)forw_node->pack_buff)->ttl;
 					send_ogm_only_via_owning_if = ( (forw_node->own && forw_node->if_outgoing->send_ogm_only_via_owning_if) ? 1 : 0 );
 					
-					/* change sequence number to network order */
-					if ( iteration == 1 )
+					if ( iteration == 1 ) {
+						
+						/* change sequence number to network order */
 						((struct bat_packet *)forw_node->pack_buff)->seqno = htons( ((struct bat_packet *)forw_node->pack_buff)->seqno );
+						
+						if ( forw_node->own )
+							forw_node->if_outgoing->send_own = 1;
+					
+					}
 		
 					/* rebroadcast only to allow neighbor to detect bidirectional link */
 					if ( unidirectional || ( directlink && ttl == 0 ) ) {
@@ -219,7 +249,7 @@ void send_outstanding_packets() {
 			
 								debug_output( 4, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s, len %d\n", orig_str, ntohs( ((struct bat_packet *)forw_node->pack_buff)->seqno ), ((struct bat_packet *)forw_node->pack_buff)->ttl, forw_node->if_outgoing->dev, forw_node->pack_buff_len );
 			
-								if ( packet_aggregation ) {
+								if ( aggregations_po ) {
 									
 									memcpy( (forw_node->if_outgoing->packet_out + forw_node->if_outgoing->packet_out_len), forw_node->pack_buff, forw_node->pack_buff_len );
 									
@@ -275,7 +305,7 @@ void send_outstanding_packets() {
 		
 									debug_output( 4, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s, len %d\n", orig_str, ntohs( ((struct bat_packet *)forw_node->pack_buff)->seqno ), ((struct bat_packet *)forw_node->pack_buff)->ttl, batman_if->dev, sizeof(struct bat_packet) );
 									
-									if ( packet_aggregation ) {
+									if ( aggregations_po ) {
 										
 										memcpy( (batman_if->packet_out + batman_if->packet_out_len), forw_node->pack_buff, sizeof(struct bat_packet) );
 									
@@ -285,8 +315,8 @@ void send_outstanding_packets() {
 										
 									} else {
 										
-									if ( send_udp_packet( forw_node->pack_buff, sizeof(struct bat_packet), &batman_if->broad, batman_if->udp_send_sock ) < 0 )
-										restore_and_exit(0);
+										if ( send_udp_packet( forw_node->pack_buff, sizeof(struct bat_packet), &batman_if->broad, batman_if->udp_send_sock ) < 0 )
+											restore_and_exit(0);
 									
 									}
 	
@@ -294,7 +324,7 @@ void send_outstanding_packets() {
 									
 									debug_output( 4, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s, len %d\n", orig_str, ntohs( ((struct bat_packet *)forw_node->pack_buff)->seqno ), ((struct bat_packet *)forw_node->pack_buff)->ttl, batman_if->dev, forw_node->pack_buff_len );
 	
-									if ( packet_aggregation ) {
+									if ( aggregations_po ) {
 										
 										memcpy( (batman_if->packet_out + batman_if->packet_out_len), forw_node->pack_buff, forw_node->pack_buff_len );
 									
@@ -318,19 +348,7 @@ void send_outstanding_packets() {
 		
 					}
 					
-					if ( done ) {
-						
-						list_del( (struct list_head *)&forw_list, forw_pos, &forw_list );
-						
-						if ( forw_node->own )
-							schedule_own_packet( forw_node->if_outgoing );
-						
-						debugFree( forw_node->pack_buff, 1501 );
-						debugFree( forw_node, 1502 );
-					
-					}
-				
-				} else if ( packet_aggregation ) {
+				} else if ( aggregations_po ) {
 					
 					if ( aggregated_packets == 0 ) {
 						
@@ -339,11 +357,16 @@ void send_outstanding_packets() {
 						restore_and_exit(0);
 						
 					}
+					
+					//wo dont want a small but later packet to sneak in here.
+					break;
+					
 				}
 				
 			}
 			
-			if ( packet_aggregation ) {
+			/* send all the aggregated packets (which fit into max packet size) */
+			if ( aggregations_po ) {
 				
 				list_for_each(if_pos, &if_list) {
 			
@@ -368,7 +391,52 @@ void send_outstanding_packets() {
 	
 		}
 		
+		
+		/* remove all the send packets from forw_list */
+		
+		aggregated_size = 0;
+		
+		list_for_each_safe( forw_pos, forw_temp, &forw_list ) {
+	
+			forw_node = list_entry( forw_pos, struct forw_node, list );
+	
+			if ( forw_node->send_time <= start_time && (aggregated_size + forw_node->pack_buff_len) <= MAX_PACKET_OUT_SIZE ) {
+					
+				// keep care to not not remove more packets than have been aggregated 
+				if ( aggregations_po )
+					aggregated_size+= forw_node->pack_buff_len;
+
+				
+				list_del( (struct list_head *)&forw_list, forw_pos, &forw_list );
+				
+				debugFree( forw_node->pack_buff, 1501 );
+				debugFree( forw_node, 1502 );
+				
+			} else {
+				
+				//wo dont want a small, but later packet to be removed.
+				break;
+				
+			}
+				
+		}
+
+		
+		
 	}
+	
+	/* if own OGMs have been send during this call, reschedule them now */
+	list_for_each(if_pos, &if_list) {
+			
+		batman_if = list_entry(if_pos, struct batman_if, list);
+				
+		if ( batman_if->send_own ) 
+			schedule_own_packet( batman_if );
+
+		batman_if->send_own = 0;
+				
+	}
+
 	
 	prof_stop( PROF_send_outstanding_packets );
 
