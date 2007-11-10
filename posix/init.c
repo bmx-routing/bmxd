@@ -293,7 +293,7 @@ void apply_init_args( int argc, char *argv[] ) {
 	memset( &tmp_ip_holder, 0, sizeof (struct in_addr) );
 	stop = 0;
 	prog_name = argv[0];
-	sprintf( unix_path, "%s.%d", DEF_UNIX_PATH, base_port);
+	
 	inet_pton( AF_INET, DEF_GW_TUNNEL_PREFIX_STR, &gw_tunnel_prefix );
 
 
@@ -382,9 +382,6 @@ void apply_init_args( int argc, char *argv[] ) {
 	
 			originator_interval = 1500;
 			printf ("-o %d \\ \n", originator_interval );
-	
-					//set_init_arg( BASE_PORT_SWITCH, "4305", MIN_BASE_PORT, MAX_BASE_PORT, &base_port );
-					//sprintf( unix_path, "%s.%d", DEF_UNIX_PATH, base_port);
 	
 			set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "20", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
 	
@@ -612,16 +609,12 @@ void apply_init_args( int argc, char *argv[] ) {
 				} else if ( strcmp( BASE_PORT_SWITCH, long_options[option_index].name ) == 0 ) {
 
 					set_init_arg( BASE_PORT_SWITCH, optarg, MIN_BASE_PORT, MAX_BASE_PORT, &base_port );
-					
-					sprintf( unix_path, "%s.%d", DEF_UNIX_PATH, base_port);
-
 					found_args += 2;
 					break;
 				
 				} else if ( strcmp( RT_TABLE_OFFSET_SWITCH, long_options[option_index].name ) == 0 ) {
 
 					set_init_arg( RT_TABLE_OFFSET_SWITCH, optarg, MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset );
-					
 					found_args += 2;
 					break;
 					
@@ -718,11 +711,14 @@ void apply_init_args( int argc, char *argv[] ) {
 					set_init_arg( BASE_PORT_SWITCH,       "14305", MIN_BASE_PORT,       MAX_BASE_PORT,       &base_port ); 
 					set_init_arg( RT_TABLE_OFFSET_SWITCH, "165",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset ); 
 					set_init_arg( RT_PRIO_DEFAULT_SWITCH, "16600", MIN_RT_PRIO_DEFAULT, MAX_RT_PRIO_DEFAULT, &rt_prio_default ); 
-					set_init_arg( NBRFSIZE_SWITCH,        "100",   MIN_SEQ_RANGE,       MAX_SEQ_RANGE,       &sequence_range ); 
 					set_gw_network( "169.254.16.0/22" );
 					
+					/* 
+					now already default:
+					set_init_arg( NBRFSIZE_SWITCH,        "100",   MIN_SEQ_RANGE,       MAX_SEQ_RANGE,       &sequence_range ); 
 					set_init_arg( AGGREGATIONS_PO_SWITCH, ENABLED_AGGREGATIONS_PO, MIN_AGGREGATIONS_PO, MAX_AGGREGATIONS_PO, &aggregations_po );
 					set_init_arg( REBRC_DELAY_SWITCH, "0", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
+					*/
 
 					found_args += 1;
 					break;
@@ -954,6 +950,10 @@ void apply_init_args( int argc, char *argv[] ) {
 	if ( ( ( routing_class != 0 ) || ( gateway_class != 0 ) ) && ( !probe_tun(1) ) )
 		exit(EXIT_FAILURE);
 
+	sprintf( unix_path, "%s.%d", DEF_UNIX_PATH, base_port);
+
+	
+	
 	if ( !unix_client ) {
 
 		if ( argc <= found_args ) {
