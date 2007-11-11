@@ -170,12 +170,11 @@ void set_gw_network ( char *optarg_p ) {
 }
 
 
-void add_del_hna_opt ( char *optarg_str, int8_t del ) {
+void add_del_hna_opt ( char *optarg_str, int8_t del, uint8_t atype ) {
 	
 	struct hna_node *hna_node;
 	struct in_addr tmp_ip_holder;
 	uint16_t netmask;
-//	char str1[17];
 	char *slash_ptr;
 	struct list_head *hna_list_pos, *prev_hna_list_head, *hna_pos_tmp;
 	char str[16];
@@ -227,7 +226,7 @@ void add_del_hna_opt ( char *optarg_str, int8_t del ) {
 
 			hna_node = list_entry( hna_list_pos, struct hna_node, list );
 
-			if ( hna_node->addr == tmp_ip_holder.s_addr && hna_node->netmask == netmask ) {
+			if ( hna_node->addr == tmp_ip_holder.s_addr && hna_node->netmask == netmask && hna_node->type == atype ) {
 				
 				addr_to_string( hna_node->addr, str, sizeof (str) );
 				printf( "removing HNA %s/%i \n", str, hna_node->netmask );
@@ -254,9 +253,10 @@ void add_del_hna_opt ( char *optarg_str, int8_t del ) {
 	
 		hna_node->addr = tmp_ip_holder.s_addr;
 		hna_node->netmask = netmask;
+		hna_node->type = atype;
 		
 		addr_to_string( hna_node->addr, str, sizeof (str) );
-		printf( "adding HNA %s/%i \n", str, hna_node->netmask );
+		printf( "adding HNA %s/%i, atype %d \n", str, hna_node->netmask, atype );
 	
 		list_add_tail( &hna_node->list, &hna_list );
 		
@@ -323,7 +323,7 @@ void apply_init_args( int argc, char *argv[] ) {
    {ASOCIAL_SWITCH,             0, 0, 0},
    {NO_UNREACHABLE_RULE_SWITCH, 0, 0, 0},
    {NO_TUNPERSIST_SWITCH,       0, 0, 0},
-   {RT_PRIO_DEFAULT_SWITCH,     1, 0, 0},
+   {RT_PRIO_OFFSET_SWITCH,      1, 0, 0},
    {MORE_RULES_SWITCH,          0, 0, 0},
    {NO_PRIO_RULES_SWITCH,       0, 0, 0},
    {NO_THROW_RULES_SWITCH,      0, 0, 0},
@@ -603,9 +603,9 @@ void apply_init_args( int argc, char *argv[] ) {
 					found_args += 2;
 					break;
 
-				} else if ( strcmp( RT_PRIO_DEFAULT_SWITCH, long_options[option_index].name ) == 0 ) {
+				} else if ( strcmp( RT_PRIO_OFFSET_SWITCH, long_options[option_index].name ) == 0 ) {
 
-					set_init_arg( RT_PRIO_DEFAULT_SWITCH, optarg, MIN_RT_PRIO_DEFAULT, MAX_RT_PRIO_DEFAULT, &rt_prio_default );
+					set_init_arg( RT_PRIO_OFFSET_SWITCH, optarg, MIN_RT_PRIO_OFFSET, MAX_RT_PRIO_OFFSET, &rt_prio_offset );
 					found_args += 2;
 					break;
 					
@@ -720,8 +720,8 @@ void apply_init_args( int argc, char *argv[] ) {
 					errno = 0;
 					
 					set_init_arg( BASE_PORT_SWITCH,       "14305", MIN_BASE_PORT,       MAX_BASE_PORT,       &base_port ); 
-					set_init_arg( RT_TABLE_OFFSET_SWITCH, "145",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset ); 
-					set_init_arg( RT_PRIO_DEFAULT_SWITCH, "14600", MIN_RT_PRIO_DEFAULT, MAX_RT_PRIO_DEFAULT, &rt_prio_default ); 
+					set_init_arg( RT_TABLE_OFFSET_SWITCH, "144",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset ); 
+					set_init_arg( RT_PRIO_OFFSET_SWITCH, "14500", MIN_RT_PRIO_OFFSET, MAX_RT_PRIO_OFFSET, &rt_prio_offset ); 
 					set_gw_network( "169.254.16.0/22" );
 					
 					found_args += 1;
@@ -732,8 +732,8 @@ void apply_init_args( int argc, char *argv[] ) {
 					errno = 0;
 					
 					set_init_arg( BASE_PORT_SWITCH,       "16305", MIN_BASE_PORT,       MAX_BASE_PORT,       &base_port ); 
-					set_init_arg( RT_TABLE_OFFSET_SWITCH, "165",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset ); 
-					set_init_arg( RT_PRIO_DEFAULT_SWITCH, "16600", MIN_RT_PRIO_DEFAULT, MAX_RT_PRIO_DEFAULT, &rt_prio_default ); 
+					set_init_arg( RT_TABLE_OFFSET_SWITCH, "164",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset ); 
+					set_init_arg( RT_PRIO_OFFSET_SWITCH, "16500", MIN_RT_PRIO_OFFSET, MAX_RT_PRIO_OFFSET, &rt_prio_offset ); 
 					set_gw_network( "169.254.32.0/22" );
 					
 					found_args += 1;
@@ -744,8 +744,8 @@ void apply_init_args( int argc, char *argv[] ) {
 					errno = 0;
 					
 					set_init_arg( BASE_PORT_SWITCH,       "18305", MIN_BASE_PORT,       MAX_BASE_PORT,       &base_port ); 
-					set_init_arg( RT_TABLE_OFFSET_SWITCH, "185",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset ); 
-					set_init_arg( RT_PRIO_DEFAULT_SWITCH, "18600", MIN_RT_PRIO_DEFAULT, MAX_RT_PRIO_DEFAULT, &rt_prio_default ); 
+					set_init_arg( RT_TABLE_OFFSET_SWITCH, "184",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset ); 
+					set_init_arg( RT_PRIO_OFFSET_SWITCH, "18500", MIN_RT_PRIO_OFFSET, MAX_RT_PRIO_OFFSET, &rt_prio_offset ); 
 					set_gw_network( "169.254.64.0/22" );
 					
 					found_args += 1;
@@ -772,7 +772,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			case 'a':
 
-				add_del_hna_opt( optarg, NO );
+				add_del_hna_opt( optarg, NO, A_TYPE_NETWORK );
 				
 				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
 				break;
@@ -1069,7 +1069,7 @@ void apply_init_args( int argc, char *argv[] ) {
 						
 					addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
 					sprintf( fake_arg, "%s/32", ifaddr_str);
-					add_del_hna_opt( fake_arg, NO );
+					add_del_hna_opt( fake_arg, NO, A_TYPE_INTERFACE );
 					printf ("Interface %s specific option: /%c \n", batman_if->dev, MAKE_IP_HNA_IF_SWITCH );
 						
 					batman_if->send_ogm_only_via_owning_if = YES;
@@ -1091,7 +1091,7 @@ void apply_init_args( int argc, char *argv[] ) {
 						
 					addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
 					sprintf( fake_arg, "%s/32", ifaddr_str);
-					add_del_hna_opt( fake_arg, NO );
+					add_del_hna_opt( fake_arg, NO, A_TYPE_INTERFACE );
 					printf ("Interface %s specific option: /%c \n", batman_if->dev, MAKE_IP_HNA_IF_SWITCH );
 						
 					batman_if->send_ogm_only_via_owning_if = YES;
@@ -1191,7 +1191,7 @@ void apply_init_args( int argc, char *argv[] ) {
 						
 						addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
 						sprintf( fake_arg, "%s/32", ifaddr_str);
-						add_del_hna_opt( fake_arg, NO );
+						add_del_hna_opt( fake_arg, NO, A_TYPE_INTERFACE );
 						
 						batman_if->send_ogm_only_via_owning_if = YES;
 						batman_if->if_ttl = 1;
@@ -1215,7 +1215,7 @@ void apply_init_args( int argc, char *argv[] ) {
 					
 					addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
 					sprintf( fake_arg, "%s/32", ifaddr_str);
-					add_del_hna_opt( fake_arg, YES );
+					add_del_hna_opt( fake_arg, YES, A_TYPE_INTERFACE );
 						
 					found_args += 1;
 
@@ -1282,7 +1282,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		/* add rule for hna networks */
 		if( !no_prio_rules )
-			add_del_rule( 0, 0, BATMAN_RT_TABLE_NETWORKS, BATMAN_RT_PRIO_DEFAULT - 1, 0, 1, 0 );
+			add_del_rule( 0, 0, BATMAN_RT_TABLE_NETWORKS,   BATMAN_RT_PRIO_NETWORKS,   0, 1, 0 );
 
 		/* add unreachable routing table entry */
 		if( !no_unreachable_rule )
@@ -1561,17 +1561,26 @@ void init_interface ( struct batman_if *batman_if ) {
 	
 	if ( more_rules ) {
 
-		if( !no_prio_rules ) // use 0,0 instead of batman_if->netaddr, batman_if->netmask to find also batman nodes with different netmasks
-			add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_DEFAULT + batman_if->if_num, 0, 1, 0 );
+		if( !no_prio_rules ) {
+			
+			// use 0,0 instead of batman_if->netaddr, batman_if->netmask to find also batman nodes with different netmasks
+			add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_INTERFACES, BATMAN_RT_PRIO_INTERFACES + batman_if->if_num, 0, 1, 0 );
+			add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_HOSTS + batman_if->if_num, 0, 1, 0 );
+		}
 		
 		if ( !no_unreachable_rule )
 			add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_UNREACH, BATMAN_RT_PRIO_UNREACH + batman_if->if_num, 0, 1, 0 );
 			
 	} else {
 
-		if( !no_prio_rules && batman_if->if_num == 0) // use 0,0 instead of netaddr, netmask to find also batman nodes with different netmasks
-			add_del_rule( 0, 0, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_DEFAULT + batman_if->if_num, 0, 1, 0 );
+		if( !no_prio_rules && batman_if->if_num == 0) { 
+			
+			// use 0,0 instead of netaddr, netmask to find also batman nodes with different netmasks
+			add_del_rule( 0, 0, BATMAN_RT_TABLE_INTERFACES, BATMAN_RT_PRIO_INTERFACES + batman_if->if_num, 0, 1, 0 );
+			add_del_rule( 0, 0, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_HOSTS + batman_if->if_num, 0, 1, 0 );
 
+		}
+		
 	}
 
 	if ( ( batman_if->udp_send_sock = use_kernel_module( batman_if->dev ) ) < 0 ) {

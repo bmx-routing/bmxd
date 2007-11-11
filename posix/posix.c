@@ -262,6 +262,7 @@ int8_t receive_packet( struct bat_packet **ogm, struct hna_packet **hna_array, i
 
 	
 	static char str[ADDR_STR_LEN];
+	static char str2[ADDR_STR_LEN];
 	
 	struct sockaddr_in addr;
 	uint32_t addr_len;
@@ -332,9 +333,12 @@ int8_t receive_packet( struct bat_packet **ogm, struct hna_packet **hna_array, i
 	
 	}
 		
-	if ( ((struct bat_packet *)pos)->version != COMPAT_VERSION || (((struct bat_packet *)&pos)->flags & EXTENSION_MSG) != 0 ) {
+	if ( ((struct bat_packet *)pos)->version != COMPAT_VERSION || (((struct bat_packet *)&pos)->flags & EXTENSION_FLAG) != 0 ) {
 		
-		debug_output( 4, "Drop packet: incompatible batman version: %i, flags. %X, size. %i \n", ((struct bat_packet *)pos)->version, ((struct bat_packet *)pos)->flags, len );
+		addr_to_string( rcvd_neighbor, str, sizeof(str) );
+		addr_to_string( ((struct bat_packet *)pos)->orig, str2, sizeof(str2) );
+		
+		debug_output( 3, "Drop packet: rcvd incompatible batman version: %i, flags. %X, size. %i, via NB %s, originator? %s. My version is %d \n", ((struct bat_packet *)pos)->version, ((struct bat_packet *)pos)->flags, len, str, str2, COMPAT_VERSION );
 		len = 0;
 		*batman_time = rcvd_time;
 		return 0;
@@ -352,7 +356,7 @@ int8_t receive_packet( struct bat_packet **ogm, struct hna_packet **hna_array, i
 	
 	hna_pos = 0;
 	
-	while( hna_pos < (len - sizeof(struct bat_packet)) / sizeof(struct hna_packet)   &&   ((*hna_array)[hna_pos]).type & EXTENSION_MSG ) 
+	while( hna_pos < (len - sizeof(struct bat_packet)) / sizeof(struct hna_packet)   &&   ((*hna_array)[hna_pos]).ext_flag & EXTENSION_FLAG ) 
 		hna_pos++;
 	
 	
@@ -451,8 +455,12 @@ void restore_defaults() {
 
 			if ( ( batman_if->netaddr > 0 ) && ( batman_if->netmask > 0 ) ) {
 	
-				if( !no_prio_rules ) // use 0,0 instead of batman_if->netaddr, batman_if->netmask to find also batman nodes with different netmasks
-					add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_DEFAULT + batman_if->if_num, 0, 1, 1 );
+				if( !no_prio_rules ) {
+					
+					add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_INTERFACES, BATMAN_RT_PRIO_INTERFACES + batman_if->if_num, 0, 1, 1 );
+					add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_HOSTS + batman_if->if_num, 0, 1, 1 );
+					
+				}
 				
 				if ( !no_unreachable_rule )
 					add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_UNREACH, BATMAN_RT_PRIO_UNREACH + batman_if->if_num, 0, 1, 1 );
@@ -461,8 +469,13 @@ void restore_defaults() {
 			
 		} else {
 		
-			if( !no_prio_rules && batman_if->if_num == 0) // use 0,0 instead of netaddr, netmask to find also batman nodes with different netmasks
-				add_del_rule( 0, 0, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_DEFAULT + batman_if->if_num, 0, 1, 1 );
+			if( !no_prio_rules && batman_if->if_num == 0) {
+				
+				// use 0,0 instead of netaddr, netmask to find also batman nodes with different netmasks
+				add_del_rule( 0, 0, BATMAN_RT_TABLE_INTERFACES, BATMAN_RT_PRIO_INTERFACES + batman_if->if_num, 0, 1, 1 );
+				add_del_rule( 0, 0, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_HOSTS + batman_if->if_num, 0, 1, 1 );
+				
+			}
 		
 		}
 
@@ -473,7 +486,7 @@ void restore_defaults() {
 	
 	/* delete rule for hna networks */
 	if( !no_prio_rules )
-		add_del_rule( 0, 0, BATMAN_RT_TABLE_NETWORKS, BATMAN_RT_PRIO_DEFAULT - 1, 0, 1, 1 );
+		add_del_rule( 0, 0, BATMAN_RT_TABLE_NETWORKS,   BATMAN_RT_PRIO_NETWORKS,   0, 1, 1 );
 
 	/* delete unreachable routing table entry */
 	if ( !no_unreachable_rule )

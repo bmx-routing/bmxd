@@ -743,6 +743,7 @@ void debug_orig() {
 	uint8_t debug_neighbor = NO;
 	uint16_t hna_count = 0;
 	uint32_t hna, netmask;
+	uint8_t atype;
 
 
 	if ( debug_clients.clients_num[1] > 0 ) {
@@ -902,7 +903,7 @@ void debug_orig() {
 			
 		}
 		
-		debug_output( 1, "\nOriginator      HNAs...\n");
+		debug_output( 1, "\nOriginator      Announced HNAs: network/netmask or interface/IF\n");
 		
 		while ( NULL != ( hashit = hash_iterate( orig_hash, hashit ) ) ) {
 
@@ -919,11 +920,17 @@ void debug_orig() {
 			while ( hna_count < orig_node->hna_array_len ) {
 
 				hna =     orig_node->hna_array[hna_count].addr;
-				netmask = orig_node->hna_array[hna_count].netmask;
+				netmask = orig_node->hna_array[hna_count].ANETMASK;
+				atype = orig_node->hna_array[hna_count].ATYPE;
 
 				addr_to_string( hna, str, sizeof (str) );
+						
+				//TODO: check if HNA was blocked
 
-				dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), " %15s/%2d ", str, netmask );
+				if ( atype == A_TYPE_NETWORK )
+					dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), " %15s/%2d ", str, netmask );
+				else if ( atype == A_TYPE_INTERFACE )
+					dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), " %15s/IF ", str );
 
 				hna_count++;
 

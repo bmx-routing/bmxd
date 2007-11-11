@@ -44,7 +44,7 @@
 
 #define ADDR_STR_LEN 16
 
-#define DEF_UNIX_PATH "/var/run/batmand.socket"
+#define DEF_UNIX_PATH "/var/run/batmand.socket" //extended by .port where port is the base-port used by the daemon
 extern char unix_path[]; 
 
 #define VIS_COMPAT_VERSION 20
@@ -243,6 +243,7 @@ extern int32_t base_port;
  *
  * Things you should leave as is unless your know what you are doing !
  *
+ * BATMAN_RT_TABLE_INTERFACES	routing table for announced (non-primary) interfaces IPs and other unique IP addresses
  * BATMAN_RT_TABLE_NETWORKS	routing table for announced networks
  * BATMAN_RT_TABLE_HOSTS	routing table for routes towards originators
  * BATMAN_RT_TABLE_UNREACH	routing table for unreachable routing entry
@@ -254,33 +255,31 @@ extern int32_t base_port;
  ***/
 
 
-#define RT_TABLE_NETWORKS_OFFSET 0 /* 65 */
-#define RT_TABLE_HOSTS_OFFSET    1 /* 66 */
-#define RT_TABLE_UNREACH_OFFSET  2 /* 67 */
-#define RT_TABLE_TUNNEL_OFFSET   3 /* 68 */
 
 extern int32_t rt_table_offset;
 #define RT_TABLE_OFFSET_SWITCH "rt-table-offset"
-#define DEF_RT_TABLE_OFFSET 65
+#define DEF_RT_TABLE_OFFSET 64
 #define MIN_RT_TABLE_OFFSET 2
-#define MAX_RT_TABLE_OFFSET 250
+#define MAX_RT_TABLE_OFFSET 240
+
+#define BATMAN_RT_TABLE_INTERFACES (rt_table_offset + 0)
+#define BATMAN_RT_TABLE_NETWORKS   (rt_table_offset + 1)
+#define BATMAN_RT_TABLE_HOSTS      (rt_table_offset + 2)
+#define BATMAN_RT_TABLE_UNREACH    (rt_table_offset + 3)
+#define BATMAN_RT_TABLE_TUNNEL     (rt_table_offset + 4)
 
 
-#define BATMAN_RT_TABLE_NETWORKS (rt_table_offset + RT_TABLE_NETWORKS_OFFSET)
-#define BATMAN_RT_TABLE_HOSTS    (rt_table_offset + RT_TABLE_HOSTS_OFFSET)
-#define BATMAN_RT_TABLE_UNREACH  (rt_table_offset + RT_TABLE_UNREACH_OFFSET)
-#define BATMAN_RT_TABLE_TUNNEL   (rt_table_offset + RT_TABLE_TUNNEL_OFFSET)
+extern int32_t rt_prio_offset;
+#define RT_PRIO_OFFSET_SWITCH "prio-rules-offset"
+#define MIN_RT_PRIO_OFFSET 3
+#define MAX_RT_PRIO_OFFSET 32765
+#define DEF_RT_PRIO_OFFSET 6500
 
-
-extern int32_t rt_prio_default;
-#define RT_PRIO_DEFAULT_SWITCH "prio-rules-offset"
-#define DEF_RT_PRIO_DEFAULT 6600
-#define MIN_RT_PRIO_DEFAULT 3
-#define MAX_RT_PRIO_DEFAULT 32765
-
-#define BATMAN_RT_PRIO_DEFAULT rt_prio_default
-#define BATMAN_RT_PRIO_UNREACH BATMAN_RT_PRIO_DEFAULT + 100
-#define BATMAN_RT_PRIO_TUNNEL  BATMAN_RT_PRIO_UNREACH + 100
+#define BATMAN_RT_PRIO_INTERFACES (rt_prio_offset + 0  )
+#define BATMAN_RT_PRIO_HOSTS      (rt_prio_offset + 100)
+#define BATMAN_RT_PRIO_NETWORKS   (rt_prio_offset + 199)
+#define BATMAN_RT_PRIO_UNREACH    (rt_prio_offset + 200)
+#define BATMAN_RT_PRIO_TUNNEL     (rt_prio_offset + 300)
 
 extern int32_t more_rules;
 #define MORE_RULES_SWITCH "more-rules"
@@ -393,7 +392,10 @@ extern struct debug_clients debug_clients;
 #define UNIDIRECTIONAL_FLAG 0x08 /* set when re-broadcasting a received OGM via a curretnly not bi-directional link and only together with IDF */
 #define DIRECTLINK_FLAG     0x04 /* set when re-broadcasting a received OGM with identical OG IP and NB IP on the interface link as received */
 #define CLONED_FLAG         0x02 /* set when (re-)broadcasting a OGM not-for-the-first time or re-broadcasting a OGM with this flag */
-#define EXTENSION_MSG       0x01 /* unset for OGM, set for OGM related extensions like HNA,... */
+
+#define EXTENSION_FLAG       0x01 /* unset for OGM, set for OGM related extensions like HNA,... */
+
+
 
 /* the flags for bat_packet gwtypes: */
 #define TWO_WAY_TUNNEL_FLAG   0x01
@@ -433,7 +435,7 @@ struct bat_packet
 
 struct orig_node                 /* structure for orig_list maintaining nodes of mesh */
 {
-	uint32_t orig;
+	uint32_t orig;          /* this must be the first four bytes! otherwise the hash functionality does not work */
 	struct neigh_node *router;
 	struct batman_if *batman_if;
 	uint16_t *bidirect_link;    /* if node is a bidrectional neighbour, when my originator packet was broadcasted (replied) by this node and received by me */
@@ -474,18 +476,48 @@ struct neigh_node
 	struct batman_if *if_incoming;
 };
 
-struct hna_packet
+#define A_TYPE_INTERFACE 0x00
+#define A_TYPE_NETWORK   0x01
+#define A_TYPE_MAX       0x01
+
+struct hna_netmask_type
 {
-	uint8_t type;
 #if __BYTE_ORDER == __LITTLE_ENDIAN
-	unsigned int netmask:6;
+	unsigned int anetmask:6;
 	unsigned int atype:2;
 #elif __BYTE_ORDER == __BIG_ENDIAN
 	unsigned int atype:2;
-	unsigned int netmask:6;
+	unsigned int anetmask:6;
 #else
 # error "Please fix <bits/endian.h>"
 #endif
+} __attribute__((packed));
+
+
+#define ATYPE    hnt.nt.atype
+#define ANETMASK hnt.nt.anetmask
+
+struct hna_packet
+{
+//	uint8_t type;
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+	unsigned int ext_flag:1;
+	unsigned int ext_type:3;
+	unsigned int ext_reserved:4;
+#elif __BYTE_ORDER == __BIG_ENDIAN
+	unsigned int ext_reserved:4;
+	unsigned int ext_type:3;
+	unsigned int ext_flag:1;
+#else
+# error "Please fix <bits/endian.h>"
+#endif
+
+	union
+	{
+		uint8_t key_begin;
+		struct hna_netmask_type nt;
+	}hnt;
+
 	uint32_t addr;
 } __attribute__((packed));
 
@@ -493,6 +525,11 @@ struct hna_packet
 struct hna_node
 {
 	struct list_head list;
+//	union
+//	{
+//		uint8_t key_begin;
+//		struct hna_netmask_type nt;
+//	}hnt;
 	uint8_t type;
 	uint8_t netmask;
 	uint32_t addr;

@@ -120,7 +120,7 @@ int32_t base_port = DEF_BASE_PORT;
 
 int32_t rt_table_offset   = DEF_RT_TABLE_OFFSET;
 
-int32_t rt_prio_default = DEF_RT_PRIO_DEFAULT;
+int32_t rt_prio_offset = DEF_RT_PRIO_OFFSET;
 
 int32_t more_rules = DEF_MORE_RULES;
 
@@ -218,9 +218,9 @@ void print_advanced_opts ( int verbose ) {
 	if ( verbose )
 		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_RT_TABLE_OFFSET, MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET  );
 	
-	fprintf( stderr, "\n       --%s <value> : set base ip-rules priority used by batmand.\n", RT_PRIO_DEFAULT_SWITCH );
+	fprintf( stderr, "\n       --%s <value> : set base ip-rules priority used by batmand.\n", RT_PRIO_OFFSET_SWITCH );
 	if ( verbose )
-		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_RT_PRIO_DEFAULT, MIN_RT_PRIO_DEFAULT, MAX_RT_PRIO_DEFAULT  );
+		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_RT_PRIO_OFFSET, MIN_RT_PRIO_OFFSET, MAX_RT_PRIO_OFFSET  );
 	
 	
 	fprintf( stderr, "\n       --%s <value> : set preference for %s mode.\n", ONE_WAY_TUNNEL_SWITCH, ONE_WAY_TUNNEL_SWITCH );
@@ -430,15 +430,23 @@ void add_del_hna( struct orig_node *orig_node, int8_t del ) {
 	uint16_t hna_count = 0;
 	uint32_t hna;
  	uint8_t  netmask;
+	uint8_t  type;
+	uint8_t  rt_table;
 
+	
 	while ( hna_count < orig_node->hna_array_len ) {
 
 		hna =     orig_node->hna_array[hna_count].addr;
-		netmask = orig_node->hna_array[hna_count].netmask;
+		netmask = orig_node->hna_array[hna_count].ANETMASK;
+		type    = orig_node->hna_array[hna_count].ATYPE;
 		
-		if ( ( netmask > 0 ) && ( netmask <= 32 ) ) {
+		//TODO: check if del==0 and HNA is not blocked by other OG  or   if del==1 and HNA has been accepted during assignement
+		
+		rt_table = ( type == A_TYPE_INTERFACE ? BATMAN_RT_TABLE_INTERFACES : (type == A_TYPE_NETWORK ? BATMAN_RT_TABLE_NETWORKS : 0 ) );
+		
+		if ( ( netmask > 0 ) && ( netmask <= 32 ) && rt_table ) {
 			
-			add_del_route( hna, netmask, orig_node->router->addr, orig_node->router->if_incoming->addr.sin_addr.s_addr, orig_node->batman_if->if_index, orig_node->batman_if->dev, BATMAN_RT_TABLE_NETWORKS, 0, del );
+			add_del_route( hna, netmask, orig_node->router->addr, orig_node->router->if_incoming->addr.sin_addr.s_addr, orig_node->batman_if->if_index, orig_node->batman_if->dev, rt_table, 0, del );
 			
 		}
 
@@ -1030,7 +1038,8 @@ int8_t batman() {
 	struct neigh_node *neigh_node;
 	struct hna_node *hna_node;
 	struct forw_node *forw_node;
-	uint32_t neigh, hna, netmask, debug_timeout, vis_timeout, select_timeout, aggregation_time = 0, curr_time;
+	uint32_t neigh, hna, debug_timeout, vis_timeout, select_timeout, aggregation_time = 0, curr_time;
+	uint8_t netmask, atype;
 	struct bat_packet *ogm;
 	struct hna_packet *hna_array;
 	uint16_t aggr_interval;
@@ -1068,20 +1077,24 @@ int8_t batman() {
 		memset( my_hna_array, 0, hna_list_size * sizeof(struct hna_packet) );
 
 		list_for_each( list_pos, &hna_list ) {
+			
+			//TODO: add own HNA to list of blocked HNAs !!
 
 			hna_node = list_entry( list_pos, struct hna_node, list );
 
-			my_hna_array[my_hna_array_len].addr    = hna_node->addr;
-			my_hna_array[my_hna_array_len].netmask = hna_node->netmask;
-			my_hna_array[my_hna_array_len].type    = EXTENSION_MSG;
+			my_hna_array[my_hna_array_len].addr     = hna_node->addr;
+			my_hna_array[my_hna_array_len].ANETMASK = hna_node->netmask;
+			my_hna_array[my_hna_array_len].ATYPE    = hna_node->type;
+			my_hna_array[my_hna_array_len].ext_flag = EXTENSION_FLAG;
 			
 			my_hna_array_len++;
 			
 			/* add throw routing entries for own hna */  
-			add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS, 1, 0 );
-			add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS, 1, 0 );
-			add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH, 1, 0 ); 
-			add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL, 1, 0 );
+			add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_INTERFACES, 1, 0 );
+			add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS,   1, 0 );
+			add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS,      1, 0 );
+			add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH,    1, 0 ); 
+			add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL,     1, 0 );
 				
 		}
 		
@@ -1200,14 +1213,16 @@ int8_t batman() {
 				while ( hna_count < hna_array_len ) {
 
 					hna =     (hna_array[hna_count]).addr;
-					netmask = (hna_array[hna_count]).netmask;
+					netmask = (hna_array[hna_count]).ANETMASK;
+					atype   = (hna_array[hna_count]).ATYPE;
+
 
 					addr_to_string( hna, orig_str, sizeof(orig_str) );
 
-					if ( ( netmask > 0 ) && ( netmask <= 32 ) )
-						debug_output( 4, "hna: %s/%i\n", orig_str, netmask );
+					if (  netmask > 0  &&  netmask <= 32  &&  atype <= A_TYPE_MAX )
+						debug_output( 4, "hna: %s/%i, type %d\n", orig_str, netmask, atype );
 					else
-						debug_output( 4, "hna: %s/%i -> ignoring (invalid netmask) \n", orig_str, netmask );
+						debug_output( 4, "hna: %s/%i, type %d -> ignoring (invalid netmask or type) \n", orig_str, netmask, atype );
 
 					hna_count++;
 
@@ -1505,10 +1520,11 @@ int8_t batman() {
 		hna_node = list_entry( list_pos, struct hna_node, list );
 		
 		/* del throw routing entries for own hna */
-		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS, 1, 1 );
-		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS,    1, 1 );
-		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH,  1, 1 );
-		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL,   1, 1 );
+		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_INTERFACES, 1, 1 );
+		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS,   1, 1 );
+		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS,      1, 1 );
+		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH,    1, 1 );
+		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL,     1, 1 );
 		
 		debugFree( hna_node, 1103 );
 
