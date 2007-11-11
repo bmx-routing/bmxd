@@ -122,6 +122,8 @@ int32_t rt_table_offset   = DEF_RT_TABLE_OFFSET;
 
 int32_t rt_prio_default = DEF_RT_PRIO_DEFAULT;
 
+int32_t more_rules = DEF_MORE_RULES;
+
 int32_t no_prio_rules = DEF_NO_PRIO_RULES;
 
 int32_t no_throw_rules = DEF_NO_THROW_RULES;
@@ -183,6 +185,18 @@ void print_advanced_opts ( int verbose ) {
 	fprintf( stderr, "\n       --%s : does not set the default priority rules.\n", NO_PRIO_RULES_SWITCH );
 	
 	fprintf( stderr, "\n       --%s : does not set the default throw rules.\n", NO_THROW_RULES_SWITCH );
+	
+	fprintf( stderr, "\n       --%s : Set unreachable rule. Limits scope of batman routing table. \n", MORE_RULES_SWITCH);
+	
+	
+	fprintf( stderr, "\n       --%s : Disable OGM aggregation \n", NO_AGGREGATIONS_SWITCH);
+	
+	fprintf( stderr, "\n       --%s : Send aggregated OGMs every 1/%sth of the originator inteval. \n", AGGREGATIONS_SWITCH, ENABLED_AGGREGATIONS_PO);
+
+	fprintf( stderr, "\n       --%s <value>: Set number of aggregations per originator interval manually.\n", AGGREGATIONS_PO_SWITCH );
+	if ( verbose )
+		fprintf( stderr, "          default: %s, allowed values: %d <= value <= %d \n", ENABLED_AGGREGATIONS_PO, MIN_AGGREGATIONS_PO, MAX_AGGREGATIONS_PO  );
+
 	
 	fprintf( stderr, "\n       --%s : disables the unresponsive-GW check.\n", NO_UNRESP_CHECK_SWITCH );
 	
@@ -1064,11 +1078,11 @@ int8_t batman() {
 			my_hna_array_len++;
 			
 			/* add throw routing entries for own hna */  
-		        add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS, 1, 0 );  
-			add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS, 1, 0 );  
-			add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH, 1, 0 );  
-			add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL, 1, 0 );  
-			
+			add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS, 1, 0 );
+			add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS, 1, 0 );
+			add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH, 1, 0 ); 
+			add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL, 1, 0 );
+				
 		}
 		
 	}
@@ -1490,12 +1504,12 @@ int8_t batman() {
 
 		hna_node = list_entry( list_pos, struct hna_node, list );
 		
-		/* add throw routing entries for own hna */
+		/* del throw routing entries for own hna */
 		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS, 1, 1 );
-		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS, 1, 1 );
-		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH, 1, 1 );
-		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL, 1, 1 );
-
+		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS,    1, 1 );
+		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH,  1, 1 );
+		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL,   1, 1 );
+		
 		debugFree( hna_node, 1103 );
 
 	}

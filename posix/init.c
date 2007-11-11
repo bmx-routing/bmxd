@@ -324,6 +324,7 @@ void apply_init_args( int argc, char *argv[] ) {
    {NO_UNREACHABLE_RULE_SWITCH, 0, 0, 0},
    {NO_TUNPERSIST_SWITCH,       0, 0, 0},
    {RT_PRIO_DEFAULT_SWITCH,     1, 0, 0},
+   {MORE_RULES_SWITCH,          0, 0, 0},
    {NO_PRIO_RULES_SWITCH,       0, 0, 0},
    {NO_THROW_RULES_SWITCH,      0, 0, 0},
    {NO_UNRESP_CHECK_SWITCH,     0, 0, 0},
@@ -339,7 +340,9 @@ void apply_init_args( int argc, char *argv[] ) {
    {REBRC_DELAY_SWITCH,         1, 0, 0},
    {PENALTY_MIN_SWITCH,         1, 0, 0},
    {PENALTY_EXCEED_SWITCH,      1, 0, 0},
-   {PARALLEL_BAT_NET1_SWITCH,   0, 0, 0},
+   {PARALLEL_BAT_NETA_SWITCH,   0, 0, 0},
+   {PARALLEL_BAT_NETB_SWITCH,   0, 0, 0},
+   {PARALLEL_BAT_NETC_SWITCH,   0, 0, 0},
    {0, 0, 0, 0}
 		};
 
@@ -672,6 +675,14 @@ void apply_init_args( int argc, char *argv[] ) {
 					found_args += 1;
 					break;
 				
+				} else if ( strcmp( MORE_RULES_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					printf ("--%s \\ \n", long_options[option_index].name);
+					errno = 0;
+					more_rules = YES;
+					found_args += 1;
+					break;
+
 				} else if ( strcmp( NO_PRIO_RULES_SWITCH, long_options[option_index].name ) == 0 ) {
 
 					printf ("--%s \\ \n", long_options[option_index].name);
@@ -704,22 +715,39 @@ void apply_init_args( int argc, char *argv[] ) {
 					found_args += 1;
 					break;
 							
-				} else if ( strcmp( PARALLEL_BAT_NET1_SWITCH, long_options[option_index].name ) == 0 ) {
+				} else if ( strcmp( PARALLEL_BAT_NETA_SWITCH, long_options[option_index].name ) == 0 ) {
 
 					errno = 0;
 					
 					set_init_arg( BASE_PORT_SWITCH,       "14305", MIN_BASE_PORT,       MAX_BASE_PORT,       &base_port ); 
-					set_init_arg( RT_TABLE_OFFSET_SWITCH, "165",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset ); 
-					set_init_arg( RT_PRIO_DEFAULT_SWITCH, "16600", MIN_RT_PRIO_DEFAULT, MAX_RT_PRIO_DEFAULT, &rt_prio_default ); 
+					set_init_arg( RT_TABLE_OFFSET_SWITCH, "145",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset ); 
+					set_init_arg( RT_PRIO_DEFAULT_SWITCH, "14600", MIN_RT_PRIO_DEFAULT, MAX_RT_PRIO_DEFAULT, &rt_prio_default ); 
 					set_gw_network( "169.254.16.0/22" );
 					
-					/* 
-					now already default:
-					set_init_arg( NBRFSIZE_SWITCH,        "100",   MIN_SEQ_RANGE,       MAX_SEQ_RANGE,       &sequence_range ); 
-					set_init_arg( AGGREGATIONS_PO_SWITCH, ENABLED_AGGREGATIONS_PO, MIN_AGGREGATIONS_PO, MAX_AGGREGATIONS_PO, &aggregations_po );
-					set_init_arg( REBRC_DELAY_SWITCH, "0", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
-					*/
+					found_args += 1;
+					break;
+					
+				} else if ( strcmp( PARALLEL_BAT_NETB_SWITCH, long_options[option_index].name ) == 0 ) {
 
+					errno = 0;
+					
+					set_init_arg( BASE_PORT_SWITCH,       "16305", MIN_BASE_PORT,       MAX_BASE_PORT,       &base_port ); 
+					set_init_arg( RT_TABLE_OFFSET_SWITCH, "165",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset ); 
+					set_init_arg( RT_PRIO_DEFAULT_SWITCH, "16600", MIN_RT_PRIO_DEFAULT, MAX_RT_PRIO_DEFAULT, &rt_prio_default ); 
+					set_gw_network( "169.254.32.0/22" );
+					
+					found_args += 1;
+					break;
+					
+				} else if ( strcmp( PARALLEL_BAT_NETC_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					errno = 0;
+					
+					set_init_arg( BASE_PORT_SWITCH,       "18305", MIN_BASE_PORT,       MAX_BASE_PORT,       &base_port ); 
+					set_init_arg( RT_TABLE_OFFSET_SWITCH, "185",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset ); 
+					set_init_arg( RT_PRIO_DEFAULT_SWITCH, "18600", MIN_RT_PRIO_DEFAULT, MAX_RT_PRIO_DEFAULT, &rt_prio_default ); 
+					set_gw_network( "169.254.64.0/22" );
+					
 					found_args += 1;
 					break;
 					
@@ -1530,12 +1558,21 @@ void init_interface ( struct batman_if *batman_if ) {
 
 	batman_if->netaddr = ( ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr & batman_if->addr.sin_addr.s_addr );
 	batman_if->netmask = bit_count( ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr );
-	if( !no_prio_rules )
-		add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_DEFAULT + batman_if->if_num, 0, 1, 0 );
 	
-	if ( !no_unreachable_rule )
-		add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_UNREACH, BATMAN_RT_PRIO_UNREACH + batman_if->if_num, 0, 1, 0 );
+	if ( more_rules ) {
 
+		if( !no_prio_rules ) // use 0,0 instead of batman_if->netaddr, batman_if->netmask to find also batman nodes with different netmasks
+			add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_DEFAULT + batman_if->if_num, 0, 1, 0 );
+		
+		if ( !no_unreachable_rule )
+			add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_UNREACH, BATMAN_RT_PRIO_UNREACH + batman_if->if_num, 0, 1, 0 );
+			
+	} else {
+
+		if( !no_prio_rules && batman_if->if_num == 0) // use 0,0 instead of netaddr, netmask to find also batman nodes with different netmasks
+			add_del_rule( 0, 0, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_DEFAULT + batman_if->if_num, 0, 1, 0 );
+
+	}
 
 	if ( ( batman_if->udp_send_sock = use_kernel_module( batman_if->dev ) ) < 0 ) {
 

@@ -439,6 +439,7 @@ void restore_defaults() {
 
 	}
 
+	
 	list_for_each_safe( if_pos, if_pos_tmp, &if_list ) {
 		
 		batman_if = list_entry( if_pos, struct batman_if, list );
@@ -446,21 +447,30 @@ void restore_defaults() {
 		close( batman_if->udp_recv_sock );
 		close( batman_if->udp_send_sock );
 
-		if ( ( batman_if->netaddr > 0 ) && ( batman_if->netmask > 0 ) ) {
+		if ( more_rules ) {
 
-			if( !no_prio_rules )
-				add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_DEFAULT + batman_if->if_num, 0, 1, 1 );
+			if ( ( batman_if->netaddr > 0 ) && ( batman_if->netmask > 0 ) ) {
+	
+				if( !no_prio_rules ) // use 0,0 instead of batman_if->netaddr, batman_if->netmask to find also batman nodes with different netmasks
+					add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_DEFAULT + batman_if->if_num, 0, 1, 1 );
+				
+				if ( !no_unreachable_rule )
+					add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_UNREACH, BATMAN_RT_PRIO_UNREACH + batman_if->if_num, 0, 1, 1 );
+				
+			}
 			
-			if ( !no_unreachable_rule )
-				add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_UNREACH, BATMAN_RT_PRIO_UNREACH + batman_if->if_num, 0, 1, 1 );
-			
+		} else {
+		
+			if( !no_prio_rules && batman_if->if_num == 0) // use 0,0 instead of netaddr, netmask to find also batman nodes with different netmasks
+				add_del_rule( 0, 0, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_DEFAULT + batman_if->if_num, 0, 1, 1 );
+		
 		}
 
 		list_del( (struct list_head *)&if_list, if_pos, &if_list );
 		debugFree( if_pos, 1214 );
 
 	}
-
+	
 	/* delete rule for hna networks */
 	if( !no_prio_rules )
 		add_del_rule( 0, 0, BATMAN_RT_TABLE_NETWORKS, BATMAN_RT_PRIO_DEFAULT - 1, 0, 1, 1 );

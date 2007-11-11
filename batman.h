@@ -101,8 +101,8 @@ extern int32_t aggregations_po;
 
 #define AGGREGATIONS_SWITCH    "ogm-aggregation"
 #define NO_AGGREGATIONS_SWITCH "no-ogm-aggregation"
-#define AGGREGATIONS_PO_SWITCH "api" /*"aggregations-per-interval"*/
-#define MIN_AGGREGATIONS_PO 1
+#define AGGREGATIONS_PO_SWITCH "aggregations-per-interval"
+#define MIN_AGGREGATIONS_PO 2
 #define MAX_AGGREGATIONS_PO 20
 #define DEF_AGGREGATIONS_PO NO
 #define ENABLED_AGGREGATIONS_PO "4"
@@ -282,6 +282,10 @@ extern int32_t rt_prio_default;
 #define BATMAN_RT_PRIO_UNREACH BATMAN_RT_PRIO_DEFAULT + 100
 #define BATMAN_RT_PRIO_TUNNEL  BATMAN_RT_PRIO_UNREACH + 100
 
+extern int32_t more_rules;
+#define MORE_RULES_SWITCH "more-rules"
+#define DEF_MORE_RULES NO
+
 extern int32_t no_prio_rules;
 #define NO_PRIO_RULES_SWITCH "no-prio-rules"
 #define DEF_NO_PRIO_RULES NO
@@ -326,7 +330,9 @@ extern int32_t tunnel_ip_lease_time;
 #define DEF_TUNNEL_IP_LEASE_TIME 60
 #define TUNNEL_IP_LEASE_TIME_SWITCH "tunnel-lease-time"
 
-#define PARALLEL_BAT_NET1_SWITCH "pbn1"
+#define PARALLEL_BAT_NETA_SWITCH "neta"
+#define PARALLEL_BAT_NETB_SWITCH "netb"
+#define PARALLEL_BAT_NETC_SWITCH "netc"
 
 extern uint8_t routing_class;
 
