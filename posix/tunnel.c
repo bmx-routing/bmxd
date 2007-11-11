@@ -70,12 +70,13 @@ uint32_t request_tun_ip( struct curr_gw_data *curr_gw_data, struct sockaddr_in *
 	debug_output( 3, "send ip request to gateway: %s, preferred IP: %s \n", gw_str, pref_str );
 	
 	memset( &tp->tt, 0, sizeof(tp->tt) );
-	tp->type = TUNNEL_IP_REQUEST;
+	tp->tpversion = COMPAT_VERSION;
+	tp->tptype = TUNNEL_IP_REQUEST;
 
 	if( *pref_addr )
 		tp->lease_ip = *pref_addr;
 	
-	if ( sendto( udp_sock, &tp->type, tx_rp_size, 0, (struct sockaddr *)gw_addr, sizeof(struct sockaddr_in) ) < 0 ) {
+	if ( sendto( udp_sock, &tp->start, tx_rp_size, 0, (struct sockaddr *)gw_addr, sizeof(struct sockaddr_in) ) < 0 ) {
 
 		debug_output( 0, "Error - can't send ip request to gateway: %s \n", strerror(errno) );
 	
@@ -97,7 +98,7 @@ uint32_t handle_tun_ip_reply( struct curr_gw_data *curr_gw_data, struct sockaddr
 	
 	addr_to_string( gw_addr->sin_addr.s_addr, gw_str, sizeof(gw_str) );
 
-	if ( sender_addr->sin_addr.s_addr == gw_addr->sin_addr.s_addr && rcv_buff_len == tx_rp_size && tp->type == TUNNEL_IP_REPLY ) {
+	if ( sender_addr->sin_addr.s_addr == gw_addr->sin_addr.s_addr && rcv_buff_len == tx_rp_size && tp->tptype == TUNNEL_IP_REPLY ) {
 
 		tp->lease_lt = ntohs( tp->lease_lt );
 		
@@ -169,7 +170,7 @@ void *client_to_gw_tun( void *arg ) {
 	int32_t res, max_sock, udp_sock=0, tun_fd=0, tun_ifi, sock_opts;
 	uint32_t addr_len, current_time, ip_lease_stamp = 0, ip_lease_duration = 0, gw_state_stamp = 0, new_ip_stamp = 0, my_tun_addr = 0;
 	uint32_t last_invalidip_warning = 0, tun_ip_request_stamp = 0;
-	char tun_if[IFNAMSIZ], my_str[ADDR_STR_LEN], is_str[ADDR_STR_LEN], gw_str[ADDR_STR_LEN];
+	char tun_if[IFNAMSIZ], my_str[ADDR_STR_LEN], is_str[ADDR_STR_LEN], gw_str[ADDR_STR_LEN], str2[ADDR_STR_LEN];
  	uint8_t gw_state = GW_STATE_UNKNOWN, prev_gw_state = GW_STATE_UNKNOWN;
 	int32_t tp_data_len, tp_len, send_tun_ip_requests = 0, invalid_tun_ip = 1;
 	struct tun_packet tp;
@@ -298,17 +299,33 @@ void *client_to_gw_tun( void *arg ) {
 
 		if ( res > 0 ) {
 
-			// udp message from gateway (to be entunnelled)
+			// udp tunnel message from gateway (to be detunnelled)
 			if ( udp_sock && FD_ISSET( udp_sock, &wait_sockets ) ) {
 		
-				while ( ( tp_len = recvfrom( udp_sock, (unsigned char*)&tp.type, tx_dp_size, 0, (struct sockaddr *)&sender_addr, &addr_len ) ) > 0 ) {
-		
-					tp_data_len = tp_len - sizeof(tp.type);
+				while ( ( tp_len = recvfrom( udp_sock, (unsigned char*)&tp.start, tx_dp_size, 0, (struct sockaddr *)&sender_addr, &addr_len ) ) > 0 ) {
 					
-					if ( (which_tunnel & TWO_WAY_TUNNEL_FLAG) &&  ( tp_len >= tx_rp_size ) && ( sender_addr.sin_addr.s_addr == gw_addr.sin_addr.s_addr ) ) {
+					if ( tp_len < tx_rp_size ) {
+						
+						addr_to_string( sender_addr.sin_addr.s_addr, str2, sizeof(str2) );
+						debug_output( 0, "Client node - Received Invalid packet size (%d) via tunnel, from %s ! \n", tp_len, str2 );
+						continue;
+						
+					}
+
+					if ( tp.tpversion != COMPAT_VERSION ) {
+						
+						addr_to_string( sender_addr.sin_addr.s_addr, str2, sizeof(str2) );
+						debug_output( 0, "Client node - Received Invalid compat version (%d) via tunnel, from %s ! \n", tp.tpversion, str2 );
+						continue;
+						
+					}
+		
+					tp_data_len = tp_len - sizeof(tp.start);
+					
+					if ( (which_tunnel & TWO_WAY_TUNNEL_FLAG) && ( sender_addr.sin_addr.s_addr == gw_addr.sin_addr.s_addr ) ) {
 		
 						// got data from gateway
-						if ( tp.type == TUNNEL_DATA ) {
+						if ( tp.tptype == TUNNEL_DATA ) {
 							
 							if ( tp_data_len >= sizeof(struct iphdr) && ((struct iphdr *)(tp.ip_packet))->version == 4 ) {
 		
@@ -337,7 +354,7 @@ void *client_to_gw_tun( void *arg ) {
 								
 							}
 							
-						} else if ( tp.type == TUNNEL_IP_REPLY ) {
+						} else if ( tp.tptype == TUNNEL_IP_REPLY ) {
 							
 							debug_output( 3, "Gateway client - gateway (%s) replyed with virtual IP \n", gw_str );
 		
@@ -357,7 +374,7 @@ void *client_to_gw_tun( void *arg ) {
 							
 								
 						// gateway told us that we have no valid IP
-						} else if ( tp.type == TUNNEL_IP_INVALID ) {
+						} else if ( tp.tptype == TUNNEL_IP_INVALID ) {
 		
 							addr_to_string( my_tun_addr, my_str, sizeof(my_str) );
 							debug_output( 3, "Gateway client - gateway (%s) says: IP (%s) is expired \n", gw_str, my_str );
@@ -396,7 +413,7 @@ void *client_to_gw_tun( void *arg ) {
 		
 				while ( ( tp_data_len = read( tun_fd, tp.ip_packet, sizeof(tp.ip_packet) /*TBD: why -2 here? */ ) ) > 0 ) {
 					
-					tp_len = tp_data_len + sizeof(tp.type);
+					tp_len = tp_data_len + sizeof(tp.start);
 					
 					if ( tp_data_len < sizeof(struct iphdr) || ((struct iphdr *)(tp.ip_packet))->version != 4 ) {
 						
@@ -405,7 +422,8 @@ void *client_to_gw_tun( void *arg ) {
 						
 					}
 					
-					tp.type = TUNNEL_DATA;
+					tp.tpversion = COMPAT_VERSION;
+					tp.tptype = TUNNEL_DATA;
 		
 					iphdr = (struct iphdr *)(tp.ip_packet);
 		
@@ -423,7 +441,7 @@ void *client_to_gw_tun( void *arg ) {
 					if ( (which_tunnel & ONE_WAY_TUNNEL_FLAG) || 
 					     ((which_tunnel & TWO_WAY_TUNNEL_FLAG) && !invalid_tun_ip && iphdr->saddr == my_tun_addr) ) {
 						
-						if ( sendto( udp_sock, (unsigned char*) &tp.type, tp_len, 0, (struct sockaddr *)&gw_addr, sizeof (struct sockaddr_in) ) < 0 )
+						if ( sendto( udp_sock, (unsigned char*) &tp.start, tp_len, 0, (struct sockaddr *)&gw_addr, sizeof (struct sockaddr_in) ) < 0 )
 							debug_output( 0, "Error - can't send data to gateway: %s\n", strerror(errno) );
 					
 						// activate unresponsive GW check only based on TCP and DNS data
@@ -709,18 +727,27 @@ void *gw_listen( void *arg ) {
 			/* is udp packet from GW-Client*/
 			if ( FD_ISSET( batman_if->udp_tunnel_sock, &tmp_wait_sockets ) ) {
 
-				while ( ( tp_len = recvfrom( batman_if->udp_tunnel_sock, (unsigned char*)&tp.type, tx_dp_size, 0, (struct sockaddr *)&addr, &addr_len ) ) > 0 ) {
+				while ( ( tp_len = recvfrom( batman_if->udp_tunnel_sock, (unsigned char*)&tp.start, tx_dp_size, 0, (struct sockaddr *)&addr, &addr_len ) ) > 0 ) {
 
 					if ( tp_len < tx_rp_size ) {
 						
-						debug_output( 0, "Gateway node - Received Invalid packet size via tunnel ! \n" );
+						addr_to_string( addr.sin_addr.s_addr, str2, sizeof(str2) );
+						debug_output( 0, "Gateway node - Received Invalid packet size (%d) via tunnel, from %s ! \n", tp_len, str2 );
 						continue;
 						
 					}
 
-					tp_data_len = tp_len - sizeof(tp.type);
+					if ( tp.tpversion != COMPAT_VERSION ) {
+						
+						addr_to_string( addr.sin_addr.s_addr, str2, sizeof(str2) );
+						debug_output( 0, "Gateway node - Received Invalid compat version (%d) via tunnel, from %s ! \n", tp.tpversion, str2 );
+						continue;
+						
+					}
+
+					tp_data_len = tp_len - sizeof(tp.start);
 				
-					if ( tp.type == TUNNEL_DATA ) {
+					if ( tp.tptype == TUNNEL_DATA ) {
 						
 						if ( !(tp_data_len >= sizeof(struct iphdr) && ((struct iphdr *)(tp.ip_packet))->version == 4 ) ) {
 				
@@ -756,14 +783,15 @@ void *gw_listen( void *arg ) {
 									gw_client_list[ iph_addr_suffix_h ]->addr == addr.sin_addr.s_addr) ) {
 									
 								memset( &tp.tt.trt, 0, sizeof(tp.tt.trt));
-								tp.type = TUNNEL_IP_INVALID;
+								tp.tpversion = COMPAT_VERSION;
+								tp.tptype = TUNNEL_IP_INVALID;
 								
 								addr_to_string( addr.sin_addr.s_addr, str, sizeof(str) );
 								addr_to_string( iphdr->saddr, vstr, sizeof(vstr) );
 	
 								debug_output( 0, "Error - got packet from unknown client: %s (virtual ip %s) \n", str, vstr); 
 								
-								if ( sendto( batman_if->udp_tunnel_sock, (unsigned char*)&tp.type, tx_rp_size, 0, (struct sockaddr *)&addr, sizeof(struct sockaddr_in) ) < 0 )
+								if ( sendto( batman_if->udp_tunnel_sock, (unsigned char*)&tp.start, tx_rp_size, 0, (struct sockaddr *)&addr, sizeof(struct sockaddr_in) ) < 0 )
 									debug_output( 0, "Error - can't send invalid ip information to client (%s): %s \n", str, strerror(errno) );
 	
 								continue;
@@ -775,15 +803,17 @@ void *gw_listen( void *arg ) {
 							
 						}
 					
-					} else if ( tp.type == TUNNEL_IP_REQUEST && two_way_tunnel ) {
+					} else if ( tp.tptype == TUNNEL_IP_REQUEST && two_way_tunnel ) {
 						
 						tp.lease_lt = get_ip_addr( addr.sin_addr.s_addr, &tp.lease_ip, gw_client_list, my_tun_ip, my_tun_netmask );
 						
 						tp.lease_lt = htons( tp.lease_lt );
-							
-						tp.type = TUNNEL_IP_REPLY;
 						
-						if ( sendto( batman_if->udp_tunnel_sock, &tp.type, tx_rp_size, 0, (struct sockaddr *)&addr, sizeof(struct sockaddr_in) ) < 0 ) {
+						tp.tpversion = COMPAT_VERSION;
+	
+						tp.tptype = TUNNEL_IP_REPLY;
+						
+						if ( sendto( batman_if->udp_tunnel_sock, &tp.start, tx_rp_size, 0, (struct sockaddr *)&addr, sizeof(struct sockaddr_in) ) < 0 ) {
 
 							addr_to_string( addr.sin_addr.s_addr, str, sizeof (str) );
 							debug_output( 0, "Error - can't send requested ip to client (%s): %s \n", str, strerror(errno) );
@@ -812,7 +842,7 @@ void *gw_listen( void *arg ) {
 
 				while ( ( tp_data_len = read( tun_fd, tp.ip_packet, sizeof(tp.ip_packet) ) ) > 0 ) {
 					
-					tp_len = tp_data_len + sizeof(tp.type);
+					tp_len = tp_data_len + sizeof(tp.start);
 					
 					if ( !two_way_tunnel || tp_data_len < sizeof(struct iphdr) || ((struct iphdr *)(tp.ip_packet))->version != 4 ) {
 					
@@ -840,9 +870,11 @@ void *gw_listen( void *arg ) {
 					
 					client_addr.sin_addr.s_addr = gw_client_list[ iph_addr_suffix_h ]->addr;
 
-					tp.type = TUNNEL_DATA;
+					tp.tpversion = COMPAT_VERSION;
+					
+					tp.tptype = TUNNEL_DATA;
 
-					if ( sendto( batman_if->udp_tunnel_sock, &tp.type, tp_len, 0, (struct sockaddr *)&client_addr, sizeof(struct sockaddr_in) ) < 0 )
+					if ( sendto( batman_if->udp_tunnel_sock, &tp.start, tp_len, 0, (struct sockaddr *)&client_addr, sizeof(struct sockaddr_in) ) < 0 )
 						debug_output( 0, "Error - can't send data to client (%s): %s \n", str, strerror(errno) );
 
 				}

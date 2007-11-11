@@ -88,8 +88,8 @@ void *client_to_gw_tun( void *arg );
 #define TUNNEL_DATA 0x01
 #define TUNNEL_IP_REQUEST 0x02
 #define TUNNEL_IP_INVALID 0x03
-#define TUNNEL_KEEPALIVE_REQUEST 0x04
-#define TUNNEL_KEEPALIVE_REPLY 0x05
+#define TUNNEL_KEEPALIVE_REQUEST 0x04 /* unused */
+#define TUNNEL_KEEPALIVE_REPLY 0x05   /* unused */
 #define TUNNEL_IP_REPLY 0x06
 
 #define GW_STATE_UNKNOWN  0x01
@@ -115,12 +115,28 @@ struct tun_data_type {
 	unsigned char ip_packet[MAX_MTU];
 } __attribute__((packed));
 
+struct tun_packet_start {
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+	unsigned int type:4;
+	unsigned int version:4;  /* should be the first field in the packet in network byte order */
+#elif __BYTE_ORDER == __BIG_ENDIAN
+	unsigned int version:4;
+	unsigned int type:4;
+#else
+# error "Please fix <bits/endian.h>"
+#endif
+} __attribute__((packed));
+
 struct tun_packet
 {
 	uint8_t  reserved1;
 	uint8_t  reserved2;
 	uint8_t  reserved3;
-	uint8_t  type;
+
+	struct tun_packet_start start;
+#define tptype    start.type
+#define tpversion start.version	
+
 	union
 	{
 		struct tun_request_type trt;
@@ -132,8 +148,8 @@ struct tun_packet
 } __attribute__((packed));
 
 
-#define tx_rp_size (sizeof(uint8_t) + sizeof(struct tun_request_type))
-#define tx_dp_size (sizeof(uint8_t) + sizeof(struct tun_data_type))
+#define tx_rp_size (sizeof(struct tun_packet_start) + sizeof(struct tun_request_type))
+#define tx_dp_size (sizeof(struct tun_packet_start) + sizeof(struct tun_data_type))
 
 
 /* unix_sokcet.c */
