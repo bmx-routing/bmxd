@@ -999,7 +999,7 @@ void generate_vis_packet() {
 			//TBD: why not simply assign: vis_data->ip = hna_node->addr; ???
 			memcpy( &vis_data->ip, (unsigned char *)&hna_node->addr, 4 );
 			
-			vis_data->data = hna_node->netmask;
+			vis_data->data = hna_node->ANETMASK;
 			vis_data->type = DATA_TYPE_HNA;
 
 		}
@@ -1059,6 +1059,7 @@ int8_t batman() {
 	if ( NULL == ( orig_hash = hash_new( 128, compare_orig, choose_orig ) ) )
 		return(-1);
 	
+	
 	/* for profiling the functions */
 	prof_init( PROF_choose_gw, "choose_gw" );
 	prof_init( PROF_update_routes, "update_routes" );
@@ -1083,18 +1084,18 @@ int8_t batman() {
 			hna_node = list_entry( list_pos, struct hna_node, list );
 
 			my_hna_array[my_hna_array_len].addr     = hna_node->addr;
-			my_hna_array[my_hna_array_len].ANETMASK = hna_node->netmask;
-			my_hna_array[my_hna_array_len].ATYPE    = hna_node->type;
+			my_hna_array[my_hna_array_len].ANETMASK = hna_node->ANETMASK;
+			my_hna_array[my_hna_array_len].ATYPE    = hna_node->ATYPE;
 			my_hna_array[my_hna_array_len].ext_flag = EXTENSION_FLAG;
 			
 			my_hna_array_len++;
 			
 			/* add throw routing entries for own hna */  
-			add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_INTERFACES, 1, 0 );
-			add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS,   1, 0 );
-			add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS,      1, 0 );
-			add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH,    1, 0 ); 
-			add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL,     1, 0 );
+			add_del_route( hna_node->addr, hna_node->ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_INTERFACES, 1, 0 );
+			add_del_route( hna_node->addr, hna_node->ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS,   1, 0 );
+			add_del_route( hna_node->addr, hna_node->ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS,      1, 0 );
+			add_del_route( hna_node->addr, hna_node->ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH,    1, 0 ); 
+			add_del_route( hna_node->addr, hna_node->ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL,     1, 0 );
 				
 		}
 		
@@ -1520,11 +1521,11 @@ int8_t batman() {
 		hna_node = list_entry( list_pos, struct hna_node, list );
 		
 		/* del throw routing entries for own hna */
-		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_INTERFACES, 1, 1 );
-		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS,   1, 1 );
-		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS,      1, 1 );
-		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH,    1, 1 );
-		add_del_route( hna_node->addr, hna_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL,     1, 1 );
+		add_del_route( hna_node->addr, hna_node->ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_INTERFACES, 1, 1 );
+		add_del_route( hna_node->addr, hna_node->ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS,   1, 1 );
+		add_del_route( hna_node->addr, hna_node->ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS,      1, 1 );
+		add_del_route( hna_node->addr, hna_node->ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH,    1, 1 );
+		add_del_route( hna_node->addr, hna_node->ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL,     1, 1 );
 		
 		debugFree( hna_node, 1103 );
 

@@ -760,8 +760,8 @@ void *gw_listen( void *arg ) {
 						
 						
 						if ( one_way_tunnel &&
-						   /*  (iphdr->saddr & my_bat_netmask) == my_bat_iprange && */
-						      iphdr->saddr == addr.sin_addr.s_addr ) {
+						     ( (iphdr->saddr & my_tun_netmask) != my_tun_ip ||
+						       iphdr->saddr == addr.sin_addr.s_addr ) ) {
 							
 							if ( write( tun_fd, tp.ip_packet, tp_data_len ) < 0 )  
 								debug_output( 0, "Error - can't write packet: %s\n", strerror(errno) );

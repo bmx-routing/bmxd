@@ -226,10 +226,10 @@ void add_del_hna_opt ( char *optarg_str, int8_t del, uint8_t atype ) {
 
 			hna_node = list_entry( hna_list_pos, struct hna_node, list );
 
-			if ( hna_node->addr == tmp_ip_holder.s_addr && hna_node->netmask == netmask && hna_node->type == atype ) {
+			if ( hna_node->addr == tmp_ip_holder.s_addr && hna_node->ANETMASK == netmask && hna_node->ATYPE == atype ) {
 				
 				addr_to_string( hna_node->addr, str, sizeof (str) );
-				printf( "removing HNA %s/%i \n", str, hna_node->netmask );
+				printf( "removing HNA %s/%i \n", str, hna_node->ANETMASK );
 				
 				list_del( prev_hna_list_head, hna_list_pos, &hna_list );
 				debugFree( hna_node, 1103 );
@@ -252,11 +252,11 @@ void add_del_hna_opt ( char *optarg_str, int8_t del, uint8_t atype ) {
 		INIT_LIST_HEAD( &hna_node->list );
 	
 		hna_node->addr = tmp_ip_holder.s_addr;
-		hna_node->netmask = netmask;
-		hna_node->type = atype;
+		hna_node->ANETMASK = netmask;
+		hna_node->ATYPE = atype;
 		
 		addr_to_string( hna_node->addr, str, sizeof (str) );
-		printf( "adding HNA %s/%i, atype %d \n", str, hna_node->netmask, atype );
+		printf( "adding HNA %s/%i, atype %d \n", str, netmask, atype );
 	
 		list_add_tail( &hna_node->list, &hna_list );
 		
@@ -748,6 +748,9 @@ void apply_init_args( int argc, char *argv[] ) {
 					set_init_arg( RT_PRIO_OFFSET_SWITCH, "18500", MIN_RT_PRIO_OFFSET, MAX_RT_PRIO_OFFSET, &rt_prio_offset ); 
 					set_gw_network( "169.254.64.0/22" );
 					
+					set_init_arg( NBRFSIZE_SWITCH, "10", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &sequence_range );
+					num_words = ( sequence_range / WORD_BIT_SIZE ) + ( ( sequence_range % WORD_BIT_SIZE > 0)? 1 : 0 );
+
 					found_args += 1;
 					break;
 					
@@ -1290,7 +1293,8 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		
 		
-		if ( routing_class > 0 ) {
+//		if ( routing_class > 0 ) {
+		if ( gateway_class == 0 ) {
 
 			if ( add_del_interface_rules( 0 ) < 0 ) {
 

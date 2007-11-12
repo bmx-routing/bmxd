@@ -514,7 +514,7 @@ struct hna_packet
 
 	union
 	{
-		uint8_t key_begin;
+		//uint8_t key_begin;
 		struct hna_netmask_type nt;
 	}hnt;
 
@@ -525,13 +525,12 @@ struct hna_packet
 struct hna_node
 {
 	struct list_head list;
-//	union
-//	{
-//		uint8_t key_begin;
-//		struct hna_netmask_type nt;
-//	}hnt;
-	uint8_t type;
-	uint8_t netmask;
+	union
+	{
+		struct hna_netmask_type nt;
+	}hnt;
+//	uint8_t type;
+//	uint8_t netmask;
 	uint32_t addr;
 };
 
