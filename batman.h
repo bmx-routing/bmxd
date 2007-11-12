@@ -47,7 +47,7 @@
 #define DEF_UNIX_PATH "/var/run/batmand.socket" //extended by .port where port is the base-port used by the daemon
 extern char unix_path[]; 
 
-#define VIS_COMPAT_VERSION 20
+#define VIS_COMPAT_VERSION 21
 
 
 #define MAX_DBG_STR_SIZE 1023
