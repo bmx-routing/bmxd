@@ -336,7 +336,7 @@ void *unix_listen( void *arg ) {
 
 									addr_to_string( hna_node->addr, str, sizeof (str) );
 
-									dprintf( unix_client->sock, " -a %s/%i", str, hna_node->netmask );
+									dprintf( unix_client->sock, " -a %s/%i", str, hna_node->ANETMASK );
 
 								}
 

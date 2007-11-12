@@ -18,8 +18,8 @@
  */
 
 
-typedef int (*hashdata_compare_cb)(void *, void *);
-typedef int (*hashdata_choose_cb)(void *, int);
+typedef int (*hashdata_compare_cb)(void *, void *, int);
+typedef int (*hashdata_choose_cb)(void *, int, int);
 typedef void (*hashdata_free_cb)(void *);
 
 struct element_t {
@@ -38,6 +38,7 @@ struct hashtable_t {
 	struct element_t **table;					/* the hashtable itself, with the buckets */
 	int elements;								/* number of elements registered */
 	int size;									/* size of hashtable */
+	int key_size;
 	hashdata_compare_cb compare;			    /* callback to a compare function.
 												 * should compare 2 element datas for their keys,
 												 * return 0 if same and not 0 if not same */
@@ -46,11 +47,15 @@ struct hashtable_t {
 												 * and the size the second */
 };
 
+int compare_key( void *data1, void *data2, int key_size );
+int choose_key( void *data, int size, int key_size );
+
+
 /* clears the hash */
 void 				 hash_init(struct hashtable_t *hash);
 
 /* allocates and clears the hash */
-struct hashtable_t	*hash_new(int size, hashdata_compare_cb compare, hashdata_choose_cb choose);
+struct hashtable_t	*hash_new(int size, hashdata_compare_cb compare, hashdata_choose_cb choose, size_t key_size);
 
 /* remove bucket (this might be used in hash_iterate() if you already found the bucket
  * you want to delete and don't need the overhead to find it again with hash_remove().

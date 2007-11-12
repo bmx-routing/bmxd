@@ -379,6 +379,7 @@ extern fd_set receive_wait_set;
 extern uint8_t unix_client;
 
 extern struct hashtable_t *orig_hash;
+extern struct hashtable_t *hna_hash;
 
 extern struct list_head_first if_list;
 extern struct list_head_first hna_list;

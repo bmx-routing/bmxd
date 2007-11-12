@@ -19,8 +19,41 @@
 
 
 #include <stdio.h>		/* NULL */
+#include <string.h>
 #include "hash.h"
 #include "allocate.h"
+
+/* needed for hash, compares 2 struct orig_node, but only their ip-addresses. assumes that
+ * the ip address is the first field in the struct */
+int compare_key( void *data1, void *data2, int key_size ) {
+
+	return ( memcmp( data1, data2, key_size ) );
+
+}
+
+
+
+/* hashfunction to choose an entry in a hash table of given size */
+/* hash algorithm from http://en.wikipedia.org/wiki/Hash_table */
+int choose_key( void *data, int size, int key_size ) {
+
+	unsigned char *key= data;
+	uint32_t hash = 0;
+	size_t i;
+
+	for (i = 0; i < key_size; i++) {
+		hash += key[i];
+		hash += (hash << 10);
+		hash ^= (hash >> 6);
+	}
+
+	hash += (hash << 3);
+	hash ^= (hash >> 11);
+	hash += (hash << 15);
+
+	return (hash%size);
+
+}
 
 
 /* clears the hash */
@@ -143,7 +176,7 @@ struct hash_it_t *hash_iterate(struct hashtable_t *hash, struct hash_it_t *iter_
 
 
 /* allocates and clears the hash */
-struct hashtable_t *hash_new(int size, hashdata_compare_cb compare, hashdata_choose_cb choose) {
+struct hashtable_t *hash_new(int size, hashdata_compare_cb compare, hashdata_choose_cb choose, size_t key_size) {
 	struct hashtable_t *hash;
 
 	hash= debugMalloc( sizeof(struct hashtable_t) , 302);
@@ -159,6 +192,7 @@ struct hashtable_t *hash_new(int size, hashdata_compare_cb compare, hashdata_cho
 	hash_init(hash);
 	hash->compare= compare;
 	hash->choose= choose;
+	hash->key_size= key_size;
 	return(hash);
 }
 
@@ -168,11 +202,11 @@ int hash_add(struct hashtable_t *hash, void *data) {
 	int index;
 	struct element_t *bucket, *prev_bucket = NULL;
 
-	index = hash->choose( data, hash->size );
+	index = hash->choose( data, hash->size, hash->key_size );
 	bucket = hash->table[index];
 
 	while ( bucket!=NULL ) {
-		if (0 == hash->compare( bucket->data, data ))
+		if (0 == hash->compare( bucket->data, data, hash->key_size ))
 			return(-1);
 
 		prev_bucket = bucket;
@@ -202,11 +236,11 @@ void *hash_find(struct hashtable_t *hash, void *keydata) {
 	int index;
 	struct element_t *bucket;
 
-	index = hash->choose( keydata , hash->size );
+	index = hash->choose( keydata , hash->size, hash->key_size );
 	bucket = hash->table[index];
 
 	while ( bucket!=NULL ) {
-		if (0 == hash->compare( bucket->data, keydata ))
+		if (0 == hash->compare( bucket->data, keydata, hash->key_size ))
 			return( bucket->data );
 
 		bucket= bucket->next;
@@ -245,12 +279,12 @@ void *hash_remove_bucket(struct hashtable_t *hash, struct hash_it_t *hash_it_t) 
 void *hash_remove(struct hashtable_t *hash, void *data) {
 	struct hash_it_t hash_it_t;
 
-	hash_it_t.index = hash->choose( data, hash->size );
+	hash_it_t.index = hash->choose( data, hash->size, hash->key_size );
 	hash_it_t.bucket = hash->table[hash_it_t.index];
 	hash_it_t.prev_bucket = NULL;
 
 	while ( hash_it_t.bucket!=NULL ) {
-		if (0 == hash->compare( hash_it_t.bucket->data, data )) {
+		if (0 == hash->compare( hash_it_t.bucket->data, data, hash->key_size )) {
 			hash_it_t.first_bucket = (hash_it_t.bucket == hash->table[hash_it_t.index] ? &hash->table[ hash_it_t.index ] : NULL);
 			return( hash_remove_bucket(hash, &hash_it_t) );
 		}
@@ -271,7 +305,7 @@ struct hashtable_t *hash_resize(struct hashtable_t *hash, int size) {
 	int i;
 
 	/* initialize a new hash with the new size */
-	if (NULL == (new_hash= hash_new(size, hash->compare, hash->choose)))
+	if (NULL == (new_hash= hash_new(size, hash->compare, hash->choose, hash->key_size)))
 		return(NULL);
 
 	/* copy the elements */

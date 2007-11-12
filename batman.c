@@ -159,6 +159,7 @@ fd_set receive_wait_set;
 uint8_t unix_client = 0;
 
 struct hashtable_t *orig_hash;
+struct hashtable_t *hna_hash;
 
 struct list_head_first forw_list;
 struct list_head_first gw_list;
@@ -1056,9 +1057,12 @@ int8_t batman() {
 	if ( aggregations_po )
 		aggregation_time = get_time() + 50 + rand_num( 100 );
 
-	if ( NULL == ( orig_hash = hash_new( 128, compare_orig, choose_orig ) ) )
+	if ( NULL == ( orig_hash = hash_new( 128, compare_key, choose_key, 4 ) ) )
 		return(-1);
 	
+	if ( NULL == ( hna_hash = hash_new( 128, compare_key, choose_key, 5 ) ) )
+		return(-1);
+
 	
 	/* for profiling the functions */
 	prof_init( PROF_choose_gw, "choose_gw" );
@@ -1513,6 +1517,8 @@ int8_t batman() {
 
 	purge_orig( get_time() + ( 5 * PURGE_TIMEOUT ) + originator_interval );
 
+	hash_destroy( hna_hash );
+	
 	hash_destroy( orig_hash );
 
 

@@ -21,7 +21,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <stdio.h>
 #include "os.h"
 #include "batman.h"
 #include "originator.h"
@@ -30,16 +29,18 @@
 
 /* needed for hash, compares 2 struct orig_node, but only their ip-addresses. assumes that
  * the ip address is the first field in the struct */
+/*
 int compare_orig( void *data1, void *data2 ) {
 
 	return ( memcmp( data1, data2, 4 ) );
 
 }
-
+*/
 
 
 /* hashfunction to choose an entry in a hash table of given size */
 /* hash algorithm from http://en.wikipedia.org/wiki/Hash_table */
+/*
 int choose_orig( void *data, int32_t size ) {
 
 	unsigned char *key= data;
@@ -59,7 +60,7 @@ int choose_orig( void *data, int32_t size ) {
 	return (hash%size);
 
 }
-
+*/
 
 
 /* this function finds or creates an originator entry for the given address if it does not exits */
