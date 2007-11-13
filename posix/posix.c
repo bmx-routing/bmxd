@@ -418,8 +418,7 @@ void restore_defaults() {
 
 	stop = 1;
 
-	if ( routing_class > 0 )
-		add_del_interface_rules( 1 );
+	add_del_interface_rules( 1, (routing_class > 0 ? YES : NO) );
 
 
 	batman_if = list_entry( (&if_list)->next, struct batman_if, list );

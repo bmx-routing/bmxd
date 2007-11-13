@@ -1297,18 +1297,14 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		
 		
-//		if ( routing_class > 0 ) {
-		if ( gateway_class == 0 ) {
+		if ( add_del_interface_rules( 0, (routing_class > 0 ? YES : NO) ) < 0 ) {
 
-			if ( add_del_interface_rules( 0 ) < 0 ) {
-
-				restore_defaults();
-				exit(EXIT_FAILURE);
-
-			}
+			restore_defaults();
+			exit(EXIT_FAILURE);
 
 		}
 
+		
 		memset( &vis_if, 0, sizeof(vis_if) );
 
 		if ( vis_server ) {

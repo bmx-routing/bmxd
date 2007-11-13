@@ -361,7 +361,7 @@ void add_del_rule( uint32_t network, uint8_t netmask, uint8_t rt_table, uint32_t
 
 
 
-int add_del_interface_rules( int8_t del ) {
+int add_del_interface_rules( int8_t del, uint8_t setup_tunnel ) {
 
 	int32_t tmp_fd;
 	uint32_t len, addr, netaddr;
@@ -456,7 +456,7 @@ int add_del_interface_rules( int8_t del ) {
 		netaddr = ( ((struct sockaddr_in *)&ifr_tmp.ifr_addr)->sin_addr.s_addr & addr );
 		netmask = bit_count( ((struct sockaddr_in *)&ifr_tmp.ifr_addr)->sin_addr.s_addr );
 
-		if( !no_throw_rules )
+		if( !no_throw_rules && setup_tunnel )
 			add_del_route( netaddr, netmask, 0, 0, 0, ifr->ifr_name, BATMAN_RT_TABLE_TUNNEL,   1, del );
 
 		if ( is_batman_if( ifr->ifr_name, &batman_if ) )
@@ -467,7 +467,7 @@ int add_del_interface_rules( int8_t del ) {
 			add_del_route( netaddr, netmask, 0, 0, 0, ifr->ifr_name, BATMAN_RT_TABLE_NETWORKS, 1, del );
 
 		
-		if( !no_prio_rules ) {
+		if( !no_prio_rules && setup_tunnel ) {
 			
 			add_del_rule( netaddr, netmask, BATMAN_RT_TABLE_TUNNEL, ( del ? 0 : BATMAN_RT_PRIO_TUNNEL + if_count ), 0, 0, del );
 
