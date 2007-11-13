@@ -177,9 +177,11 @@ void *client_to_gw_tun( void *arg ) {
 	fd_set wait_sockets;
 	uint16_t dns_port = htons( 53 );
 	uint8_t disconnect = NO, which_tunnel = 0, which_tunnel_max = 0;
-
+	
 	current_time = get_time();
 
+	
+	
 	memset( &tp, 0, sizeof( tp ) );
 	
 	addr_len = sizeof (struct sockaddr_in);

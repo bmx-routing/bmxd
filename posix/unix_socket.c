@@ -334,9 +334,9 @@ void *unix_listen( void *arg ) {
 
 									hna_node = list_entry( i_list_pos, struct hna_node, list );
 
-									addr_to_string( hna_node->addr, str, sizeof (str) );
+									addr_to_string( hna_node->key.addr, str, sizeof (str) );
 
-									dprintf( unix_client->sock, " -a %s/%i", str, hna_node->ANETMASK );
+									dprintf( unix_client->sock, " -a %s/%i", str, hna_node->key.ANETMASK );
 
 								}
 

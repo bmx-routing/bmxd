@@ -226,10 +226,12 @@ void add_del_hna_opt ( char *optarg_str, int8_t del, uint8_t atype ) {
 
 			hna_node = list_entry( hna_list_pos, struct hna_node, list );
 
-			if ( hna_node->addr == tmp_ip_holder.s_addr && hna_node->ANETMASK == netmask && hna_node->ATYPE == atype ) {
+			if ( hna_node->key.addr == tmp_ip_holder.s_addr && hna_node->key.ANETMASK == netmask && hna_node->key.ATYPE == atype ) {
 				
-				addr_to_string( hna_node->addr, str, sizeof (str) );
-				printf( "removing HNA %s/%i \n", str, hna_node->ANETMASK );
+				addr_to_string( hna_node->key.addr, str, sizeof (str) );
+				printf( "removing HNA %s/%i \n", str, hna_node->key.ANETMASK );
+				
+
 				
 				list_del( prev_hna_list_head, hna_list_pos, &hna_list );
 				debugFree( hna_node, 1103 );
@@ -251,11 +253,12 @@ void add_del_hna_opt ( char *optarg_str, int8_t del, uint8_t atype ) {
 		memset( hna_node, 0, sizeof(struct hna_node) );
 		INIT_LIST_HEAD( &hna_node->list );
 	
-		hna_node->addr = tmp_ip_holder.s_addr;
-		hna_node->ANETMASK = netmask;
-		hna_node->ATYPE = atype;
+		hna_node->key.addr = tmp_ip_holder.s_addr;
+		hna_node->key.ANETMASK = netmask;
+		hna_node->key.ATYPE = atype;
 		
-		addr_to_string( hna_node->addr, str, sizeof (str) );
+		
+		addr_to_string( hna_node->key.addr, str, sizeof (str) );
 		printf( "adding HNA %s/%i, atype %d \n", str, netmask, atype );
 	
 		list_add_tail( &hna_node->list, &hna_list );
@@ -296,6 +299,7 @@ void apply_init_args( int argc, char *argv[] ) {
 	
 	inet_pton( AF_INET, DEF_GW_TUNNEL_PREFIX_STR, &gw_tunnel_prefix );
 
+	
 
 
 	printf( "WARNING: You are using the experimental batman branch!\n" );

@@ -310,8 +310,6 @@ void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t n
 
 }
 
-
-
 void purge_orig( uint32_t curr_time ) {
 
 	prof_start( PROF_purge_originator );
@@ -473,7 +471,7 @@ void purge_orig( uint32_t curr_time ) {
 
 						/* remove old announced network(s) */
 						if ( orig_node->hna_array_len > 0 )
-							add_del_hna( orig_node, 1 );
+							add_del_hna( orig_node, NULL, 0 );
 
 						add_del_route( orig_node->orig, 32, orig_node->router->addr, 0, orig_node->batman_if->if_index, orig_node->batman_if->dev, BATMAN_RT_TABLE_HOSTS, 0, 1 );
 
@@ -741,10 +739,12 @@ void debug_orig() {
 	static char str[ADDR_STR_LEN], str2[ADDR_STR_LEN], orig_str[ADDR_STR_LEN];
 	int dbg_ogm_out = 0, lq, nlq, l2q;
 	static char dbg_ogm_str[MAX_DBG_STR_SIZE + 1]; // TBD: must be checked for overflow when using with sprintf
-	uint8_t debug_neighbor = NO;
+	uint8_t debug_neighbor = NO, blocked;
 	uint16_t hna_count = 0;
-	uint32_t hna, netmask;
-	uint8_t atype;
+//	uint32_t hna, netmask;
+//	uint8_t atype;
+	struct hna_key key;
+	struct hna_hash_node *hash_node;
 
 
 	if ( debug_clients.clients_num[1] > 0 ) {
@@ -904,7 +904,7 @@ void debug_orig() {
 			
 		}
 		
-		debug_output( 1, "\nOriginator      Announced HNAs: network/netmask or interface/IF\n");
+		debug_output( 1, "\nOriginator      Announced networks HNAs:  network/netmask or interface/IF (B:blocked)...\n");
 		
 		while ( NULL != ( hashit = hash_iterate( orig_hash, hashit ) ) ) {
 
@@ -920,18 +920,29 @@ void debug_orig() {
 			
 			while ( hna_count < orig_node->hna_array_len ) {
 
-				hna =     orig_node->hna_array[hna_count].addr;
-				netmask = orig_node->hna_array[hna_count].ANETMASK;
-				atype = orig_node->hna_array[hna_count].ATYPE;
 
-				addr_to_string( hna, str, sizeof (str) );
+				key.addr     = orig_node->hna_array[hna_count].addr;
+				key.ANETMASK = orig_node->hna_array[hna_count].ANETMASK;
+				key.ATYPE    = orig_node->hna_array[hna_count].ATYPE;
+
+				
+				addr_to_string( key.addr, str, sizeof (str) );
 						
-				//TODO: check if HNA was blocked
+				// check if HNA was blocked
+				hash_node = get_hna_node( &key );
+				
+				if ( hash_node->status == HNA_HASH_NODE_OTHER && hash_node->orig == orig_node )
+					blocked = NO;
+				else
+					blocked = YES;
 
-				if ( atype == A_TYPE_NETWORK )
-					dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), " %15s/%2d ", str, netmask );
-				else if ( atype == A_TYPE_INTERFACE )
-					dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), " %15s/IF ", str );
+
+				if ( key.ATYPE == A_TYPE_NETWORK )
+					dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), " %15s/%2d %c ", 
+						str, key.ANETMASK, (blocked?'B':' ') );
+				else if ( key.ATYPE == A_TYPE_INTERFACE )
+					dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), " %15s/IF %c ", 
+						str, (blocked?'B':' ') );
 
 				hna_count++;
 

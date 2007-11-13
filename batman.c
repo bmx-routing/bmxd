@@ -426,28 +426,149 @@ int is_batman_if( char *dev, struct batman_if **batman_if ) {
 
 
 
-void add_del_hna( struct orig_node *orig_node, int8_t del ) {
+void purge_empty_hna_nodes( void ) {
+	
+//	prof_start( PROF_purge_empty_hna_nodes );
+	struct hash_it_t *hashit = NULL;
+	struct hna_hash_node *hash_node;
+	
+
+	/* for all hna_hash_nodes... */
+	while ( NULL != ( hashit = hash_iterate( hna_hash, hashit ) ) ) {
+
+		hash_node = hashit->bucket->data;
+		
+		if ( hash_node->status == HNA_HASH_NODE_EMPTY ) {
+			
+			hash_remove_bucket( hna_hash, hashit );
+			debugFree( hash_node, 1401 );
+			
+		}
+
+		
+	}
+
+//	prof_stop( PROF_purge_empty_hna_nodes );
+	
+}
+
+
+/* this function finds or, if it does not exits, creates an hna entry for the given hna address, anetmask, and atype */
+struct hna_hash_node *get_hna_node( struct hna_key *hk /*, struct orig_node *orig_node*/ ) {
+
+//	prof_start( PROF_get_hna_node );
+	struct hna_hash_node *hash_node;
+	struct hashtable_t *swaphash;
+	static char hna_str[ADDR_STR_LEN];
+
+	hash_node = ((struct hna_hash_node *)hash_find( hna_hash, hk ));
+
+	if ( hash_node != NULL ) {
+
+//		prof_stop( PROF_get_hna_node );
+		return hash_node;
+
+	}
+
+
+	addr_to_string( hk->addr, hna_str, ADDR_STR_LEN );
+	debug_output( 4, "  creating new and empty hna_hash_node: %s/%d, type %d \n", hna_str, hk->ANETMASK, hk->ATYPE );
+
+	hash_node = debugMalloc( sizeof(struct hna_hash_node), 401 );
+	memset(hash_node, 0, sizeof(struct hna_hash_node));
+
+	hash_node->key.addr = hk->addr;
+	hash_node->key.ATYPE = hk->ATYPE;
+	hash_node->key.ANETMASK = hk->ANETMASK;
+	hash_node->orig = NULL; //orig_node;
+	hash_node->status = HNA_HASH_NODE_EMPTY;
+	
+	hash_add( hna_hash, hash_node );
+
+	if ( hna_hash->elements * 4 > hna_hash->size ) {
+
+		swaphash = hash_resize( hna_hash, hna_hash->size * 2 );
+
+		if ( swaphash == NULL ) {
+
+			debug_output( 0, "Couldn't resize hna hash table \n" );
+			restore_and_exit(0);
+
+		}
+
+		hna_hash = swaphash;
+
+	}
+
+//	prof_stop( PROF_get_hna_node );
+	return hash_node;
+
+}
+
+/*
+ * updates hna information maintained for a orig_node
+ * updates are made according to given hna_array and hna_array_len arguments
+ */
+void add_del_hna( struct orig_node *orig_node, struct hna_packet *hna_array, int16_t hna_array_len /*int8_t del*/ ) {
 
 	uint16_t hna_count = 0;
-	uint32_t hna;
- 	uint8_t  netmask;
-	uint8_t  type;
-	uint8_t  rt_table;
-
+	struct hna_key key;
+	struct hna_hash_node *hash_node;
+	uint8_t rt_table;
+	int8_t del = (hna_array_len == 0 ? 1 : 0);
+	static char hna_str[ADDR_STR_LEN];
+	
+	if ( orig_node == NULL || 
+		    (hna_array_len != 0 && (hna_array == NULL || orig_node->hna_array_len != 0 )) || 
+		    (hna_array_len == 0 && (hna_array != NULL || orig_node->hna_array_len == 0 || orig_node->hna_array == NULL  ) ) ) {
+		debug_output( 0, "Error - add_del_hna(): invalid hna information !\n");
+		restore_and_exit(0);
+	}
+	
+	if ( hna_array_len > 0 ) {
+		
+		orig_node->hna_array = debugMalloc( hna_array_len * sizeof(struct hna_packet), 101 );
+		orig_node->hna_array_len = hna_array_len;
+	
+		memcpy( orig_node->hna_array, hna_array, hna_array_len * sizeof(struct hna_packet) );
+		
+	}
 	
 	while ( hna_count < orig_node->hna_array_len ) {
-
-		hna =     orig_node->hna_array[hna_count].addr;
-		netmask = orig_node->hna_array[hna_count].ANETMASK;
-		type    = orig_node->hna_array[hna_count].ATYPE;
 		
-		//TODO: check if del==0 and HNA is not blocked by other OG  or   if del==1 and HNA has been accepted during assignement
+		key.addr     = orig_node->hna_array[hna_count].addr;
+		key.ANETMASK = orig_node->hna_array[hna_count].ANETMASK;
+		key.ATYPE    = orig_node->hna_array[hna_count].ATYPE;
 		
-		rt_table = ( type == A_TYPE_INTERFACE ? BATMAN_RT_TABLE_INTERFACES : (type == A_TYPE_NETWORK ? BATMAN_RT_TABLE_NETWORKS : 0 ) );
+		rt_table = ( key.ATYPE == A_TYPE_INTERFACE ? BATMAN_RT_TABLE_INTERFACES : (key.ATYPE == A_TYPE_NETWORK ? BATMAN_RT_TABLE_NETWORKS : 0 ) );
 		
-		if ( ( netmask > 0 ) && ( netmask <= 32 ) && rt_table ) {
+		hash_node = get_hna_node( &key );
+		
+		if ( ( key.ANETMASK > 0 ) && ( key.ANETMASK <= 32 ) && rt_table ) {
 			
-			add_del_route( hna, netmask, orig_node->router->addr, orig_node->router->if_incoming->addr.sin_addr.s_addr, orig_node->batman_if->if_index, orig_node->batman_if->dev, rt_table, 0, del );
+			/* when to be deleted check if HNA has been accepted during assignement 
+			 * when to be created check if HNA is not blocked by other OG */
+			if ( del && hash_node->status == HNA_HASH_NODE_OTHER && hash_node->orig == orig_node ) {
+				
+				add_del_route( key.addr, key.ANETMASK, orig_node->router->addr, orig_node->router->if_incoming->addr.sin_addr.s_addr, orig_node->batman_if->if_index, orig_node->batman_if->dev, rt_table, 0, del );
+				
+				hash_node->status = HNA_HASH_NODE_EMPTY;
+				hash_node->orig = NULL;
+				
+			} else if ( !del && hash_node->status == HNA_HASH_NODE_EMPTY && hash_node->orig == NULL ) {
+				
+				add_del_route( key.addr, key.ANETMASK, orig_node->router->addr, orig_node->router->if_incoming->addr.sin_addr.s_addr, orig_node->batman_if->if_index, orig_node->batman_if->dev, rt_table, 0, del );
+				
+				hash_node->status = HNA_HASH_NODE_OTHER;
+				hash_node->orig = orig_node;
+				
+			} else {
+				
+				addr_to_string( key.addr, hna_str, ADDR_STR_LEN );
+				debug_output( 3, "add_del_hna(): NOT %s HNA %s/%d type %d ! HNA %s blocked \n",
+					    (del?"removing":"adding"), hna_str, key.ANETMASK, key.ATYPE, (del?"was":"is") );
+				
+			}
 			
 		}
 
@@ -455,11 +576,12 @@ void add_del_hna( struct orig_node *orig_node, int8_t del ) {
 
 	}
 
-	if ( del ) {
+	if ( hna_array_len == 0 ) {
 
 		debugFree( orig_node->hna_array, 1101 );
 		orig_node->hna_array_len = 0;
-
+		orig_node->hna_array = NULL;
+		
 	}
 
 }
@@ -631,7 +753,7 @@ void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, 
 
 			/* remove old announced network(s) */
 			if ( orig_node->hna_array_len > 0 )
-				add_del_hna( orig_node, 1 );
+				add_del_hna( orig_node, NULL, 0 );
 
 			add_del_route( orig_node->orig, 32, orig_node->router->addr, 0, orig_node->batman_if->if_index, orig_node->batman_if->dev, BATMAN_RT_TABLE_HOSTS, 0, 1 );
 
@@ -654,12 +776,7 @@ void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, 
 			/* add new announced network(s) */
 			if ( ( hna_array_len > 0 ) && ( hna_array != NULL ) ) {
 
-				orig_node->hna_array = debugMalloc( hna_array_len * sizeof(struct hna_packet), 101 );
-				orig_node->hna_array_len = hna_array_len;
-
-				memmove( orig_node->hna_array, hna_array, hna_array_len * sizeof(struct hna_packet) );
-
-				add_del_hna( orig_node, 0 );
+				add_del_hna( orig_node, hna_array, hna_array_len );
 
 			}
 
@@ -673,18 +790,10 @@ void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, 
 		if ( ( hna_array_len != orig_node->hna_array_len ) || ( ( hna_array_len > 0 ) && ( orig_node->hna_array_len > 0 ) && ( memcmp( orig_node->hna_array, hna_array, hna_array_len * sizeof(struct hna_packet) ) != 0 ) ) ) {
 
 			if ( orig_node->hna_array_len > 0 )
-				add_del_hna( orig_node, 1 );
+				add_del_hna( orig_node, NULL, 0 );
 
-			if ( ( hna_array_len > 0 ) && ( hna_array != NULL ) ) {
-
-				orig_node->hna_array = debugMalloc( hna_array_len * sizeof(struct hna_packet), 102 );
-				orig_node->hna_array_len = hna_array_len;
-
-				memcpy( orig_node->hna_array, hna_array, hna_array_len * sizeof(struct hna_packet) );
-
-				add_del_hna( orig_node, 0 );
-
-			}
+			if ( ( hna_array_len > 0 ) && ( hna_array != NULL ) )
+				add_del_hna( orig_node, hna_array, hna_array_len );
 
 		}
 
@@ -998,9 +1107,9 @@ void generate_vis_packet() {
 			vis_data = (struct vis_data *)(vis_packet + vis_packet_size - sizeof(struct vis_data));
 
 			//TBD: why not simply assign: vis_data->ip = hna_node->addr; ???
-			memcpy( &vis_data->ip, (unsigned char *)&hna_node->addr, 4 );
+			memcpy( &vis_data->ip, (unsigned char *)&hna_node->key.addr, 4 );
 			
-			vis_data->data = hna_node->ANETMASK;
+			vis_data->data = hna_node->key.ANETMASK;
 			vis_data->type = DATA_TYPE_HNA;
 
 		}
@@ -1039,13 +1148,18 @@ int8_t batman() {
 	struct neigh_node *neigh_node;
 	struct hna_node *hna_node;
 	struct forw_node *forw_node;
-	uint32_t neigh, hna, debug_timeout, vis_timeout, select_timeout, aggregation_time = 0, curr_time;
-	uint8_t netmask, atype;
+	uint32_t neigh, debug_timeout, vis_timeout, select_timeout, aggregation_time = 0, curr_time;
+	//uint32_t hna;
+	//uint8_t netmask, atype, 
+	struct hna_key key;
+	uint8_t drop_it;
 	struct bat_packet *ogm;
 	struct hna_packet *hna_array;
-	uint16_t aggr_interval;
+	struct hna_hash_node *hash_node;
 
-	static char orig_str[ADDR_STR_LEN], neigh_str[ADDR_STR_LEN], ifaddr_str[ADDR_STR_LEN];
+	uint16_t aggr_interval;
+	
+	static char orig_str[ADDR_STR_LEN], blocker_str[ADDR_STR_LEN], hna_str[ADDR_STR_LEN], neigh_str[ADDR_STR_LEN], ifaddr_str[ADDR_STR_LEN];
 	int16_t hna_count, hna_array_len;
 	uint8_t forward_old, if_rp_filter_all_old, if_rp_filter_default_old, if_send_redirects_all_old, if_send_redirects_default_old;
 	uint8_t is_my_addr, is_my_orig, is_broadcast, is_duplicate, is_bidirectional, is_accepted, is_direct_neigh, is_bntog, forward_duplicate_packet, has_unidirectional_flag, has_directlink_flag, has_duplicated_flag, has_version;
@@ -1062,7 +1176,7 @@ int8_t batman() {
 	
 	if ( NULL == ( hna_hash = hash_new( 128, compare_key, choose_key, 5 ) ) )
 		return(-1);
-
+	
 	
 	/* for profiling the functions */
 	prof_init( PROF_choose_gw, "choose_gw" );
@@ -1083,23 +1197,25 @@ int8_t batman() {
 
 		list_for_each( list_pos, &hna_list ) {
 			
-			//TODO: add own HNA to list of blocked HNAs !!
 
 			hna_node = list_entry( list_pos, struct hna_node, list );
 
-			my_hna_array[my_hna_array_len].addr     = hna_node->addr;
-			my_hna_array[my_hna_array_len].ANETMASK = hna_node->ANETMASK;
-			my_hna_array[my_hna_array_len].ATYPE    = hna_node->ATYPE;
+			// create a corresponding hna_hash entry so that its blocked for others
+			(*get_hna_node( &hna_node->key )).status = HNA_HASH_NODE_MYONE;
+			
+			my_hna_array[my_hna_array_len].addr     = hna_node->key.addr;
+			my_hna_array[my_hna_array_len].ANETMASK = hna_node->key.ANETMASK;
+			my_hna_array[my_hna_array_len].ATYPE    = hna_node->key.ATYPE;
 			my_hna_array[my_hna_array_len].ext_flag = EXTENSION_FLAG;
 			
 			my_hna_array_len++;
 			
 			/* add throw routing entries for own hna */  
-			add_del_route( hna_node->addr, hna_node->ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_INTERFACES, 1, 0 );
-			add_del_route( hna_node->addr, hna_node->ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS,   1, 0 );
-			add_del_route( hna_node->addr, hna_node->ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS,      1, 0 );
-			add_del_route( hna_node->addr, hna_node->ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH,    1, 0 ); 
-			add_del_route( hna_node->addr, hna_node->ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL,     1, 0 );
+			add_del_route( hna_node->key.addr, hna_node->key.ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_INTERFACES, 1, 0 );
+			add_del_route( hna_node->key.addr, hna_node->key.ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS,   1, 0 );
+			add_del_route( hna_node->key.addr, hna_node->key.ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS,      1, 0 );
+			add_del_route( hna_node->key.addr, hna_node->key.ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH,    1, 0 ); 
+			add_del_route( hna_node->key.addr, hna_node->key.ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL,     1, 0 );
 				
 		}
 		
@@ -1210,30 +1326,6 @@ int8_t batman() {
 			if ( ogm->gwflags != 0 && ogm->gwtypes != 0 )
 				debug_output( 4, "Is an internet gateway (class %i, types %i) \n", ogm->gwflags, ogm->gwtypes );
 
-			if ( hna_array_len > 0 ) {
-
-				debug_output( 4, "HNA information received (%i HNA network%s): \n", hna_array_len, ( hna_array_len > 1 ? "s": "" ) );
-				hna_count = 0;
-
-				while ( hna_count < hna_array_len ) {
-
-					hna =     (hna_array[hna_count]).addr;
-					netmask = (hna_array[hna_count]).ANETMASK;
-					atype   = (hna_array[hna_count]).ATYPE;
-
-
-					addr_to_string( hna, orig_str, sizeof(orig_str) );
-
-					if (  netmask > 0  &&  netmask <= 32  &&  atype <= A_TYPE_MAX )
-						debug_output( 4, "hna: %s/%i, type %d\n", orig_str, netmask, atype );
-					else
-						debug_output( 4, "hna: %s/%i, type %d -> ignoring (invalid netmask or type) \n", orig_str, netmask, atype );
-
-					hna_count++;
-
-				}
-
-			}
 
 			if ( is_my_addr ) {
 
@@ -1291,25 +1383,81 @@ int8_t batman() {
 
 				/* if sender is a direct neighbor the sender ip equals originator ip */
 				orig_neigh_node = ( is_direct_neigh ? orig_node : get_orig_node( neigh ) );
-
+				
+				drop_it = NO;
+					
 				/* drop packet if sender is not a direct neighbor and if we have no route towards the rebroadcasting neighbor */
 				if ( ( ogm->orig != neigh ) && ( orig_neigh_node->router == NULL ) ) {
 
 					debug_output( 4, "Drop packet: OGM via unkown neighbor! \n" );
+					drop_it = YES;
 
 				} else if ( ogm->ttl == 0 ) {
 
 					debug_output( 4, "Drop packet: TTL of zero! \n" );
+					drop_it = YES;
 
 				} else if ( ((uint16_t)( ogm->seqno - orig_node->last_seqno )) > ((uint16_t)( FULL_SEQ_RANGE - ((uint16_t)sequence_range ))) ) {
 
-					debug_output( 3, "Drop packet: OGM from %s, via NB %s, with old seqno! rcvd sqno %i, previos rcvd: %i! OGM-aggregation might be to radical!?\n", neigh_str, orig_str, ogm->seqno, orig_node->last_seqno );
+					debug_output( 3, "Drop packet: OGM from %s, via NB %s, with old seqno! rcvd sqno %i, last valid seqno: %i! Maybe OGM-aggregation is to radical!?\n", orig_str, neigh_str, ogm->seqno, orig_node->last_seqno );
+					drop_it = YES;
+
+				} else if ( ((uint16_t)( ogm->seqno - orig_node->last_seqno )) > ((uint16_t)(2*sequence_range)) && orig_node->last_valid != 0 && ((orig_node->last_valid + (2000*sequence_range)) > curr_time ) ) {
+
+					debug_output( 3, "Drop packet: OGM from %s via NB %s with out of range seqno! rcvd sqno %i, last valid seqno: %i at %d!\n              Maybe two nodes are using this IP!? Waiting %d more seconds before reinitialization...\n", orig_str, neigh_str, ogm->seqno, orig_node->last_seqno, orig_node->last_valid, (orig_node->last_valid + (2000*sequence_range) - curr_time)/1000 );
+					drop_it = YES;
 
 				} else if ( alreadyConsidered( orig_node, ogm->seqno, neigh, if_incoming ) ) {
 
 					debug_output( 4, "Drop packet: Already considered this OGM and SEQNO via this link neighbor ! \n" );
+					drop_it = YES;
 
 				} else {
+				
+					/* check if received HNA information is already blocked by other node */
+					if ( hna_array_len > 0 ) {
+	
+						debug_output( 4, "HNA information received (%i HNA network%s): \n", hna_array_len, ( hna_array_len > 1 ? "s": "" ) );
+						hna_count = 0;
+	
+						while ( hna_count < hna_array_len ) {
+							
+							key.addr     = (hna_array[hna_count]).addr;
+							key.ANETMASK = (hna_array[hna_count]).ANETMASK;
+							key.ATYPE    = (hna_array[hna_count]).ATYPE;
+			
+							hash_node = get_hna_node( &key );
+			
+							addr_to_string( key.addr, hna_str, ADDR_STR_LEN );
+	
+							if ( hash_node->status == HNA_HASH_NODE_MYONE || 
+								(hash_node->status == HNA_HASH_NODE_OTHER && hash_node->orig != orig_node) ) {
+				
+								drop_it = YES;
+								
+								if ( hash_node->orig != NULL )
+									addr_to_string( hash_node->orig->orig, blocker_str, ADDR_STR_LEN );
+								else 
+									sprintf( blocker_str, "myself");
+									
+								debug_output( 3, "Dropping packet: hna: %s/%d type %d, announced by %s is blocked by %s !\n",
+										hna_str, key.ANETMASK, key.ATYPE, orig_str, blocker_str );
+				
+							} else {
+	
+								if (  key.ANETMASK > 0  &&  key.ANETMASK <= 32  &&  key.ATYPE <= A_TYPE_MAX )
+									debug_output( 4, "  hna: %s/%i, type %d\n", hna_str, key.ANETMASK, key.ATYPE );
+								else
+									debug_output( 4, "  hna: %s/%i, type %d -> ignoring (invalid netmask or type) \n", hna_str, key.ANETMASK, key.ATYPE );
+	
+							}
+							
+							hna_count++;
+						}
+					}
+				}
+				
+				if ( ! drop_it ) {
 					
 //					is_alreadyConsidered = alreadyConsidered( orig_node, ogm->seqno, neigh, if_incoming );
 
@@ -1489,6 +1637,8 @@ int8_t batman() {
 			debug_timeout = curr_time;
 
 			purge_orig( curr_time );
+			
+			purge_empty_hna_nodes( );
 
 			debug_orig();
 
@@ -1516,6 +1666,8 @@ int8_t batman() {
 		printf( "Deleting all BATMAN routes\n" );
 
 	purge_orig( get_time() + ( 5 * PURGE_TIMEOUT ) + originator_interval );
+	
+	purge_empty_hna_nodes( );
 
 	hash_destroy( hna_hash );
 	
@@ -1526,12 +1678,19 @@ int8_t batman() {
 
 		hna_node = list_entry( list_pos, struct hna_node, list );
 		
+		//remove the corresponding hna_hash entry so that its not blocked for others
+		hash_node = get_hna_node( &hna_node->key );
+		hash_remove( hna_hash, hash_node );
+		debugFree( hash_node, 1401 );
+			
+
+		
 		/* del throw routing entries for own hna */
-		add_del_route( hna_node->addr, hna_node->ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_INTERFACES, 1, 1 );
-		add_del_route( hna_node->addr, hna_node->ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS,   1, 1 );
-		add_del_route( hna_node->addr, hna_node->ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS,      1, 1 );
-		add_del_route( hna_node->addr, hna_node->ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH,    1, 1 );
-		add_del_route( hna_node->addr, hna_node->ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL,     1, 1 );
+		add_del_route( hna_node->key.addr, hna_node->key.ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_INTERFACES, 1, 1 );
+		add_del_route( hna_node->key.addr, hna_node->key.ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS,   1, 1 );
+		add_del_route( hna_node->key.addr, hna_node->key.ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS,      1, 1 );
+		add_del_route( hna_node->key.addr, hna_node->key.ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH,    1, 1 );
+		add_del_route( hna_node->key.addr, hna_node->key.ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL,     1, 1 );
 		
 		debugFree( hna_node, 1103 );
 

@@ -495,12 +495,11 @@ struct hna_netmask_type
 } __attribute__((packed));
 
 
-#define ATYPE    hnt.nt.atype
-#define ANETMASK hnt.nt.anetmask
+#define ATYPE    nt.atype
+#define ANETMASK nt.anetmask
 
 struct hna_packet
 {
-//	uint8_t type;
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 	unsigned int ext_flag:1;
 	unsigned int ext_type:3;
@@ -513,26 +512,37 @@ struct hna_packet
 # error "Please fix <bits/endian.h>"
 #endif
 
-	union
-	{
-		//uint8_t key_begin;
-		struct hna_netmask_type nt;
-	}hnt;
+	struct hna_netmask_type nt;
 
 	uint32_t addr;
+
 } __attribute__((packed));
 
+struct hna_key
+{
+	uint32_t addr;
+	struct hna_netmask_type nt;
+} __attribute__((packed));	
 
 struct hna_node
 {
 	struct list_head list;
-	union
-	{
-		struct hna_netmask_type nt;
-	}hnt;
-//	uint8_t type;
-//	uint8_t netmask;
-	uint32_t addr;
+	
+	struct hna_key key;
+};
+
+
+#define  HNA_HASH_NODE_EMPTY 0x00
+#define  HNA_HASH_NODE_MYONE 0x01
+#define  HNA_HASH_NODE_OTHER 0x02
+
+struct hna_hash_node
+{
+	struct hna_key key;
+
+	struct orig_node *orig;
+	uint8_t status;
+
 };
 
 struct forw_node                 /* structure for forw_list maintaining packets to be send/forwarded */
@@ -645,6 +655,7 @@ void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags, uint8_t n
 void get_gw_speeds( unsigned char class, int *down, int *up );
 unsigned char get_gw_class( int down, int up );
 void choose_gw();
+struct hna_hash_node *get_hna_node( struct hna_key *hk );
 
 
 #endif
