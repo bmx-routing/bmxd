@@ -136,7 +136,7 @@ struct orig_node *get_orig_node( uint32_t addr ) {
 
 
 
-void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t neigh, struct batman_if *if_incoming, struct hna_packet *hna_array, int16_t hna_array_len, uint32_t rcvd_time ) {
+void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t neigh, struct batman_if *if_incoming, struct ext_packet *gw_array, int16_t gw_array_len, struct ext_packet *hna_array, int16_t hna_array_len, uint32_t rcvd_time ) {
 
 	prof_start( PROF_update_originator );
 	struct list_head *neigh_pos;
@@ -287,9 +287,20 @@ void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t n
 	update_routes( orig_node, best_neigh_node, hna_array, hna_array_len );
 
 	
-	if ( orig_node->gwflags != in->gwflags || orig_node->gwtypes != in->gwtypes )
-		update_gw_list( orig_node, in->gwflags, in->gwtypes );
-
+	if (orig_node->gwflags > 0 && gw_array_len == 0) {
+		
+		update_gw_list( orig_node, 0, 0 );
+		
+	} else if (orig_node->gwflags == 0 && gw_array_len > 0 && gw_array != NULL) {
+		
+		update_gw_list( orig_node, gw_array[0].EXT_GW_FLAGS, gw_array[0].EXT_GW_TYPES );
+		 
+	} else if ( orig_node->gwflags > 0  &&  gw_array_len > 0  &&  gw_array != NULL  && 
+			   ( (orig_node->gwflags != gw_array[0].EXT_GW_FLAGS) || (orig_node->gwtypes != gw_array[0].EXT_GW_TYPES) ) ) {
+		
+		update_gw_list( orig_node, gw_array[0].EXT_GW_FLAGS, gw_array[0].EXT_GW_TYPES );
+	}
+	
 	/* restart gateway selection if we have more packets and routing class 3 */
 	if ( routing_class == 3  &&  curr_gateway != NULL  &&  orig_node->gwflags  && (orig_node->gwtypes & ((two_way_tunnel?TWO_WAY_TUNNEL_FLAG:0) | (one_way_tunnel?ONE_WAY_TUNNEL_FLAG:0)))  ) {
 
@@ -793,7 +804,7 @@ void debug_orig() {
 
 		debug_output( 1, "BOD \n" );
 		
-		debug_output( 1, "BatMan-eXperimental %s%s, IF: %s %s, WindSize: %i, BLT: %i, OGI: %i, UT: %id%2ih%2im \n",
+		debug_output( 1, "BatMan-eXp %s%s, IF: %s %s, WindSize: %i, BLT: %i, OGI: %i, UT: %id%2ih%2im \n",
 			SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), 
 			((struct batman_if *)if_list.next)->dev, orig_str, sequence_range, bidirect_link_to, originator_interval,
 			uptime_sec/86400, ((uptime_sec%86400)/3600), ((uptime_sec)%3600)/60  );
@@ -921,9 +932,9 @@ void debug_orig() {
 			while ( hna_count < orig_node->hna_array_len ) {
 
 
-				key.addr     = orig_node->hna_array[hna_count].addr;
-				key.ANETMASK = orig_node->hna_array[hna_count].ANETMASK;
-				key.ATYPE    = orig_node->hna_array[hna_count].ATYPE;
+				key.addr     = orig_node->hna_array[hna_count].EXT_HNA_ADDR;
+				key.KEY_ANETMASK = orig_node->hna_array[hna_count].EXT_HNA_NETMASK;
+				key.KEY_ATYPE    = orig_node->hna_array[hna_count].EXT_HNA_TYPE;
 
 				
 				addr_to_string( key.addr, str, sizeof (str) );
@@ -937,10 +948,10 @@ void debug_orig() {
 					blocked = YES;
 
 
-				if ( key.ATYPE == A_TYPE_NETWORK )
+				if ( key.KEY_ATYPE == A_TYPE_NETWORK )
 					dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), " %15s/%2d %c ", 
-						str, key.ANETMASK, (blocked?'B':' ') );
-				else if ( key.ATYPE == A_TYPE_INTERFACE )
+						str, key.KEY_ANETMASK, (blocked?'B':' ') );
+				else if ( key.KEY_ATYPE == A_TYPE_INTERFACE )
 					dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), " %15s/IF %c ", 
 						str, (blocked?'B':' ') );
 

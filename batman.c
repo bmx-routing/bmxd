@@ -149,8 +149,12 @@ pthread_t curr_gateway_thread_id = 0;
 
 uint32_t pref_gateway = 0;
 
-struct hna_packet *my_hna_array = NULL;
-uint16_t my_hna_array_len = 0;
+struct ext_packet *my_hna_ext_array = NULL;
+uint16_t my_hna_ext_array_len = 0;
+
+struct ext_packet my_gw_extension_packet; //currently only one gw_extension_packet considered
+struct ext_packet *my_gw_ext_array = &my_gw_extension_packet;
+uint16_t my_gw_ext_array_len = 0;
 
 uint8_t found_ifs = 0;
 int32_t receive_max_sock = 0;
@@ -472,14 +476,14 @@ struct hna_hash_node *get_hna_node( struct hna_key *hk /*, struct orig_node *ori
 
 
 	addr_to_string( hk->addr, hna_str, ADDR_STR_LEN );
-	debug_output( 4, "  creating new and empty hna_hash_node: %s/%d, type %d \n", hna_str, hk->ANETMASK, hk->ATYPE );
+	debug_output( 4, "  creating new and empty hna_hash_node: %s/%d, type %d \n", hna_str, hk->KEY_ANETMASK, hk->KEY_ATYPE );
 
 	hash_node = debugMalloc( sizeof(struct hna_hash_node), 401 );
 	memset(hash_node, 0, sizeof(struct hna_hash_node));
 
 	hash_node->key.addr = hk->addr;
-	hash_node->key.ATYPE = hk->ATYPE;
-	hash_node->key.ANETMASK = hk->ANETMASK;
+	hash_node->key.KEY_ATYPE = hk->KEY_ATYPE;
+	hash_node->key.KEY_ANETMASK = hk->KEY_ANETMASK;
 	hash_node->orig = NULL; //orig_node;
 	hash_node->status = HNA_HASH_NODE_EMPTY;
 	
@@ -509,7 +513,7 @@ struct hna_hash_node *get_hna_node( struct hna_key *hk /*, struct orig_node *ori
  * updates hna information maintained for a orig_node
  * updates are made according to given hna_array and hna_array_len arguments
  */
-void add_del_hna( struct orig_node *orig_node, struct hna_packet *hna_array, int16_t hna_array_len /*int8_t del*/ ) {
+void add_del_hna( struct orig_node *orig_node, struct ext_packet *hna_array, int16_t hna_array_len /*int8_t del*/ ) {
 
 	uint16_t hna_count = 0;
 	struct hna_key key;
@@ -527,37 +531,37 @@ void add_del_hna( struct orig_node *orig_node, struct hna_packet *hna_array, int
 	
 	if ( hna_array_len > 0 ) {
 		
-		orig_node->hna_array = debugMalloc( hna_array_len * sizeof(struct hna_packet), 101 );
+		orig_node->hna_array = debugMalloc( hna_array_len * sizeof(struct ext_packet), 101 );
 		orig_node->hna_array_len = hna_array_len;
 	
-		memcpy( orig_node->hna_array, hna_array, hna_array_len * sizeof(struct hna_packet) );
+		memcpy( orig_node->hna_array, hna_array, hna_array_len * sizeof(struct ext_packet) );
 		
 	}
 	
 	while ( hna_count < orig_node->hna_array_len ) {
 		
-		key.addr     = orig_node->hna_array[hna_count].addr;
-		key.ANETMASK = orig_node->hna_array[hna_count].ANETMASK;
-		key.ATYPE    = orig_node->hna_array[hna_count].ATYPE;
+		key.addr     = orig_node->hna_array[hna_count].EXT_HNA_ADDR;
+		key.KEY_ANETMASK = orig_node->hna_array[hna_count].EXT_HNA_NETMASK;
+		key.KEY_ATYPE    = orig_node->hna_array[hna_count].EXT_HNA_TYPE;
 		
-		rt_table = ( key.ATYPE == A_TYPE_INTERFACE ? BATMAN_RT_TABLE_INTERFACES : (key.ATYPE == A_TYPE_NETWORK ? BATMAN_RT_TABLE_NETWORKS : 0 ) );
+		rt_table = ( key.KEY_ATYPE == A_TYPE_INTERFACE ? BATMAN_RT_TABLE_INTERFACES : (key.KEY_ATYPE == A_TYPE_NETWORK ? BATMAN_RT_TABLE_NETWORKS : 0 ) );
 		
 		hash_node = get_hna_node( &key );
 		
-		if ( ( key.ANETMASK > 0 ) && ( key.ANETMASK <= 32 ) && rt_table ) {
+		if ( ( key.KEY_ANETMASK > 0 ) && ( key.KEY_ANETMASK <= 32 ) && rt_table ) {
 			
 			/* when to be deleted check if HNA has been accepted during assignement 
 			 * when to be created check if HNA is not blocked by other OG */
 			if ( del && hash_node->status == HNA_HASH_NODE_OTHER && hash_node->orig == orig_node ) {
 				
-				add_del_route( key.addr, key.ANETMASK, orig_node->router->addr, orig_node->router->if_incoming->addr.sin_addr.s_addr, orig_node->batman_if->if_index, orig_node->batman_if->dev, rt_table, 0, del );
+				add_del_route( key.addr, key.KEY_ANETMASK, orig_node->router->addr, orig_node->router->if_incoming->addr.sin_addr.s_addr, orig_node->batman_if->if_index, orig_node->batman_if->dev, rt_table, 0, del );
 				
 				hash_node->status = HNA_HASH_NODE_EMPTY;
 				hash_node->orig = NULL;
 				
 			} else if ( !del && hash_node->status == HNA_HASH_NODE_EMPTY && hash_node->orig == NULL ) {
 				
-				add_del_route( key.addr, key.ANETMASK, orig_node->router->addr, orig_node->router->if_incoming->addr.sin_addr.s_addr, orig_node->batman_if->if_index, orig_node->batman_if->dev, rt_table, 0, del );
+				add_del_route( key.addr, key.KEY_ANETMASK, orig_node->router->addr, orig_node->router->if_incoming->addr.sin_addr.s_addr, orig_node->batman_if->if_index, orig_node->batman_if->dev, rt_table, 0, del );
 				
 				hash_node->status = HNA_HASH_NODE_OTHER;
 				hash_node->orig = orig_node;
@@ -566,7 +570,7 @@ void add_del_hna( struct orig_node *orig_node, struct hna_packet *hna_array, int
 				
 				addr_to_string( key.addr, hna_str, ADDR_STR_LEN );
 				debug_output( 3, "add_del_hna(): NOT %s HNA %s/%d type %d ! HNA %s blocked \n",
-					    (del?"removing":"adding"), hna_str, key.ANETMASK, key.ATYPE, (del?"was":"is") );
+					    (del?"removing":"adding"), hna_str, key.KEY_ANETMASK, key.KEY_ATYPE, (del?"was":"is") );
 				
 			}
 			
@@ -725,7 +729,7 @@ void choose_gw() {
 
 
 
-void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, struct hna_packet *hna_array, int16_t hna_array_len ) {
+void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, struct ext_packet *hna_array, int16_t hna_array_len ) {
 
 	prof_start( PROF_update_routes );
 	static char orig_str[ADDR_STR_LEN], next_str[ADDR_STR_LEN];
@@ -787,7 +791,7 @@ void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, 
 	} else if ( orig_node != NULL ) {
 
 		/* may be just HNA changed */
-		if ( ( hna_array_len != orig_node->hna_array_len ) || ( ( hna_array_len > 0 ) && ( orig_node->hna_array_len > 0 ) && ( memcmp( orig_node->hna_array, hna_array, hna_array_len * sizeof(struct hna_packet) ) != 0 ) ) ) {
+		if ( ( hna_array_len != orig_node->hna_array_len ) || ( ( hna_array_len > 0 ) && ( orig_node->hna_array_len > 0 ) && ( memcmp( orig_node->hna_array, hna_array, hna_array_len * sizeof(struct ext_packet) ) != 0 ) ) ) {
 
 			if ( orig_node->hna_array_len > 0 )
 				add_del_hna( orig_node, NULL, 0 );
@@ -1109,7 +1113,7 @@ void generate_vis_packet() {
 			//TBD: why not simply assign: vis_data->ip = hna_node->addr; ???
 			memcpy( &vis_data->ip, (unsigned char *)&hna_node->key.addr, 4 );
 			
-			vis_data->data = hna_node->key.ANETMASK;
+			vis_data->data = hna_node->key.KEY_ANETMASK;
 			vis_data->type = DATA_TYPE_HNA;
 
 		}
@@ -1154,15 +1158,15 @@ int8_t batman() {
 	struct hna_key key;
 	uint8_t drop_it;
 	struct bat_packet *ogm;
-	struct hna_packet *hna_array;
+	struct ext_packet *hna_array, *gw_array;
+	int16_t hna_count, hna_array_len, /*gw_count,*/ gw_array_len;
 	struct hna_hash_node *hash_node;
 
 	uint16_t aggr_interval;
 	
 	static char orig_str[ADDR_STR_LEN], blocker_str[ADDR_STR_LEN], hna_str[ADDR_STR_LEN], neigh_str[ADDR_STR_LEN], ifaddr_str[ADDR_STR_LEN];
-	int16_t hna_count, hna_array_len;
 	uint8_t forward_old, if_rp_filter_all_old, if_rp_filter_default_old, if_send_redirects_all_old, if_send_redirects_default_old;
-	uint8_t is_my_addr, is_my_orig, is_broadcast, is_duplicate, is_bidirectional, is_accepted, is_direct_neigh, is_bntog, forward_duplicate_packet, has_unidirectional_flag, has_directlink_flag, has_duplicated_flag, has_version;
+	uint8_t is_my_addr, is_my_orig, is_broadcast, is_my_path, is_duplicate, is_bidirectional, is_accepted, is_direct_neigh, is_bntog, forward_duplicate_packet, has_unidirectional_flag, has_directlink_flag, has_duplicated_flag, has_version;
 	int nlq_rate_value, rand_num_value, acceptance_rate_value;
 	int res;
 	
@@ -1192,8 +1196,8 @@ int8_t batman() {
 		
 	if ( !( list_empty( &hna_list ) ) ) {
 		
-		my_hna_array = debugMalloc( hna_list_size * sizeof(struct hna_packet), 15 );
-		memset( my_hna_array, 0, hna_list_size * sizeof(struct hna_packet) );
+		my_hna_ext_array = debugMalloc( hna_list_size * sizeof(struct ext_packet), 15 );
+		memset( my_hna_ext_array, 0, hna_list_size * sizeof(struct ext_packet) );
 
 		list_for_each( list_pos, &hna_list ) {
 			
@@ -1203,19 +1207,21 @@ int8_t batman() {
 			// create a corresponding hna_hash entry so that its blocked for others
 			(*get_hna_node( &hna_node->key )).status = HNA_HASH_NODE_MYONE;
 			
-			my_hna_array[my_hna_array_len].addr     = hna_node->key.addr;
-			my_hna_array[my_hna_array_len].ANETMASK = hna_node->key.ANETMASK;
-			my_hna_array[my_hna_array_len].ATYPE    = hna_node->key.ATYPE;
-			my_hna_array[my_hna_array_len].ext_flag = EXTENSION_FLAG;
+			my_hna_ext_array[my_hna_ext_array_len].ext_flag = EXTENSION_FLAG;
+			my_hna_ext_array[my_hna_ext_array_len].ext_type = EXT_TYPE_HNA;
+
+			my_hna_ext_array[my_hna_ext_array_len].EXT_HNA_ADDR    = hna_node->key.addr;
+			my_hna_ext_array[my_hna_ext_array_len].EXT_HNA_NETMASK = hna_node->key.KEY_ANETMASK;
+			my_hna_ext_array[my_hna_ext_array_len].EXT_HNA_TYPE    = hna_node->key.KEY_ATYPE;
 			
-			my_hna_array_len++;
+			my_hna_ext_array_len++;
 			
 			/* add throw routing entries for own hna */  
-			add_del_route( hna_node->key.addr, hna_node->key.ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_INTERFACES, 1, 0 );
-			add_del_route( hna_node->key.addr, hna_node->key.ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS,   1, 0 );
-			add_del_route( hna_node->key.addr, hna_node->key.ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS,      1, 0 );
-			add_del_route( hna_node->key.addr, hna_node->key.ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH,    1, 0 ); 
-			add_del_route( hna_node->key.addr, hna_node->key.ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL,     1, 0 );
+			add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_INTERFACES, 1, 0 );
+			add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS,   1, 0 );
+			add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS,      1, 0 );
+			add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH,    1, 0 ); 
+			add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL,     1, 0 );
 				
 		}
 		
@@ -1225,13 +1231,12 @@ int8_t batman() {
 
 		batman_if = list_entry( list_pos, struct batman_if, list );
 		
-		batman_if->out.orig = batman_if->addr.sin_addr.s_addr;
+		batman_if->out.version = COMPAT_VERSION;
 		batman_if->out.flags = 0x00;
 		batman_if->out.ttl = batman_if->if_ttl;
 		batman_if->out.seqno = 1;
-		batman_if->out.gwflags = ( (( two_way_tunnel || one_way_tunnel ) & (batman_if->if_num == 0)) ? gateway_class : 0 );
-		batman_if->out.gwtypes = gateway_class ? ( (two_way_tunnel?TWO_WAY_TUNNEL_FLAG:0) | (one_way_tunnel?ONE_WAY_TUNNEL_FLAG:0) ) : 0;
-		batman_if->out.version = COMPAT_VERSION;
+		batman_if->out.orig = batman_if->addr.sin_addr.s_addr;
+		batman_if->out.prev_hop = 0x00;
 
 		batman_if->if_rp_filter_old = get_rp_filter( batman_if->dev );
 		set_rp_filter( 0 , batman_if->dev );
@@ -1242,7 +1247,20 @@ int8_t batman() {
 		schedule_own_packet( batman_if );
 
 	}
-
+	
+	memset( my_gw_ext_array, 0, sizeof(struct ext_packet) );
+	my_gw_ext_array_len = 0;
+	
+	if ( gateway_class && ( two_way_tunnel || one_way_tunnel ) ) {
+		
+		my_gw_ext_array->ext_flag = EXTENSION_FLAG;
+		my_gw_ext_array->ext_type = EXT_TYPE_GW;
+		
+		my_gw_ext_array->EXT_GW_FLAGS = ( ( two_way_tunnel || one_way_tunnel ) ? gateway_class : 0 );
+		my_gw_ext_array->EXT_GW_TYPES = ( gateway_class ? ( (two_way_tunnel?TWO_WAY_TUNNEL_FLAG:0) | (one_way_tunnel?ONE_WAY_TUNNEL_FLAG:0) ) : 0 );
+		my_gw_ext_array_len = 1;
+	}
+	
 	if_rp_filter_all_old = get_rp_filter( "all" );
 	if_rp_filter_default_old = get_rp_filter( "default" );
 
@@ -1272,13 +1290,13 @@ int8_t batman() {
 		
 			select_timeout = ((struct forw_node *)forw_list.next)->send_time - curr_time ;
 			
-			res = receive_packet( &ogm, &hna_array, &hna_array_len, &neigh, select_timeout, &if_incoming, &curr_time );
+			res = receive_packet( &ogm, &gw_array, &gw_array_len, &hna_array, &hna_array_len, &neigh, select_timeout, &if_incoming, &curr_time );
 			
 		} else if ( aggregations_po  &&  curr_time < aggregation_time ) { 
 		
 			select_timeout = aggregation_time - curr_time ;
 			
-			res = receive_packet( &ogm, &hna_array, &hna_array_len, &neigh, select_timeout, &if_incoming, &curr_time );
+			res = receive_packet( &ogm, &gw_array, &gw_array_len, &hna_array, &hna_array_len, &neigh, select_timeout, &if_incoming, &curr_time );
 		
 		} else {
 			
@@ -1296,7 +1314,7 @@ int8_t batman() {
 			addr_to_string( neigh, neigh_str, sizeof(neigh_str) );
 			addr_to_string( if_incoming->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
 
-			is_my_addr = is_my_orig = is_broadcast = is_duplicate = is_bidirectional = is_accepted = is_direct_neigh = is_bntog = forward_duplicate_packet = 0;
+			is_my_addr = is_my_orig = is_broadcast = is_my_path = is_duplicate = is_bidirectional = is_accepted = is_direct_neigh = is_bntog = forward_duplicate_packet = 0;
 
 			has_unidirectional_flag = ogm->flags & UNIDIRECTIONAL_FLAG ? 1 : 0;
 			has_directlink_flag     = ogm->flags & DIRECTLINK_FLAG ? 1 : 0;
@@ -1320,11 +1338,14 @@ int8_t batman() {
 				if ( neigh == batman_if->broad.sin_addr.s_addr )
 					is_broadcast = 1;
 
+				if ( ogm->prev_hop == batman_if->addr.sin_addr.s_addr )
+					is_my_path = 1;
+
 			}
 
 
-			if ( ogm->gwflags != 0 && ogm->gwtypes != 0 )
-				debug_output( 4, "Is an internet gateway (class %i, types %i) \n", ogm->gwflags, ogm->gwtypes );
+			if ( gw_array_len > 0 && gw_array != NULL && gw_array[0].EXT_GW_FLAGS != 0 && gw_array[0].EXT_GW_TYPES != 0 )
+				debug_output( 4, "Is an internet gateway (class %i, types %i) \n", gw_array[0].EXT_GW_FLAGS, gw_array[0].EXT_GW_TYPES );
 
 
 			if ( is_my_addr ) {
@@ -1372,6 +1393,10 @@ int8_t batman() {
 				}
 
 				debug_output( 4, "Drop packet: originator packet from myself (via neighbour) \n" );
+
+			} else if ( is_my_path ) {
+
+				debug_output( 4, "Drop packet: received packet which already passed along here (two-hops ago) \n" );
 
 			} else if ( ogm->flags & UNIDIRECTIONAL_FLAG ) {
 
@@ -1422,9 +1447,9 @@ int8_t batman() {
 	
 						while ( hna_count < hna_array_len ) {
 							
-							key.addr     = (hna_array[hna_count]).addr;
-							key.ANETMASK = (hna_array[hna_count]).ANETMASK;
-							key.ATYPE    = (hna_array[hna_count]).ATYPE;
+							key.addr     = (hna_array[hna_count]).EXT_HNA_ADDR;
+							key.KEY_ANETMASK = (hna_array[hna_count]).EXT_HNA_NETMASK;
+							key.KEY_ATYPE    = (hna_array[hna_count]).EXT_HNA_TYPE;
 			
 							hash_node = get_hna_node( &key );
 			
@@ -1441,14 +1466,14 @@ int8_t batman() {
 									sprintf( blocker_str, "myself");
 									
 								debug_output( 3, "Dropping packet: hna: %s/%d type %d, announced by %s is blocked by %s !\n",
-										hna_str, key.ANETMASK, key.ATYPE, orig_str, blocker_str );
+										hna_str, key.KEY_ANETMASK, key.KEY_ATYPE, orig_str, blocker_str );
 				
 							} else {
 	
-								if (  key.ANETMASK > 0  &&  key.ANETMASK <= 32  &&  key.ATYPE <= A_TYPE_MAX )
-									debug_output( 4, "  hna: %s/%i, type %d\n", hna_str, key.ANETMASK, key.ATYPE );
+								if (  key.KEY_ANETMASK > 0  &&  key.KEY_ANETMASK <= 32  &&  key.KEY_ATYPE <= A_TYPE_MAX )
+									debug_output( 4, "  hna: %s/%i, type %d\n", hna_str, key.KEY_ANETMASK, key.KEY_ATYPE );
 								else
-									debug_output( 4, "  hna: %s/%i, type %d -> ignoring (invalid netmask or type) \n", hna_str, key.ANETMASK, key.ATYPE );
+									debug_output( 4, "  hna: %s/%i, type %d -> ignoring (invalid netmask or type) \n", hna_str, key.KEY_ANETMASK, key.KEY_ATYPE );
 	
 							}
 							
@@ -1492,7 +1517,7 @@ int8_t batman() {
 						  )
 						) ) {
 						
-						update_orig( orig_node, ogm , neigh, if_incoming, hna_array, hna_array_len, curr_time );
+						update_orig( orig_node, ogm , neigh, if_incoming, gw_array, gw_array_len, hna_array, hna_array_len, curr_time );
 					
 					}
 								 
@@ -1517,7 +1542,7 @@ int8_t batman() {
 						/* we are an asocial mobile device and dont want to forward other nodes packet */
 						if( mobile_device ) {
 
-							schedule_forward_packet( ogm, 1, 1, has_duplicated_flag, hna_array, hna_array_len, if_incoming, curr_time );
+							schedule_forward_packet( ogm, 1, 1, has_duplicated_flag, gw_array, gw_array_len, hna_array, hna_array_len, if_incoming, curr_time, neigh );
 
 							debug_output( 4, "Forward packet: with mobile device policy: rebroadcast neighbour packet with direct link and unidirectional flag \n" );
 
@@ -1525,7 +1550,7 @@ int8_t batman() {
 						} else if ( is_accepted && is_bntog ) {
 
 							/* mark direct link on incoming interface */
-							schedule_forward_packet( ogm, 0, 1, has_duplicated_flag, hna_array, hna_array_len, if_incoming, curr_time );
+							schedule_forward_packet( ogm, 0, 1, has_duplicated_flag, gw_array, gw_array_len, hna_array, hna_array_len, if_incoming, curr_time, neigh );
 
 							debug_output( 4, "Forward packet: rebroadcast neighbour packet with direct link flag \n" );
 /*
@@ -1539,7 +1564,7 @@ int8_t batman() {
 						/* if a bidirectional neighbour sends us a packet who is not our best link to him- retransmit it with unidirectional flag in order to prevent routing problems */
 						} else if ( ( is_accepted && !is_bntog ) || ( !is_accepted ) ) {
 
-							schedule_forward_packet( ogm, 1, 1, has_duplicated_flag, hna_array, hna_array_len, if_incoming, curr_time );
+							schedule_forward_packet( ogm, 1, 1, has_duplicated_flag, gw_array, gw_array_len, hna_array, hna_array_len, if_incoming, curr_time, neigh );
 
 							debug_output( 4, "Forward packet: rebroadcast neighbour packet with direct link and unidirectional flag \n" );
 
@@ -1552,7 +1577,7 @@ int8_t batman() {
 
 							if ( !is_duplicate ) {
 
-								schedule_forward_packet( ogm, 0, 0, has_duplicated_flag, hna_array, hna_array_len, if_incoming, curr_time );
+								schedule_forward_packet( ogm, 0, 0, has_duplicated_flag, gw_array, gw_array_len, hna_array, hna_array_len, if_incoming, curr_time, neigh );
 
 								debug_output( 4, "Forward packet: rebroadcast originator packet \n" );
 
@@ -1583,7 +1608,7 @@ int8_t batman() {
 								/* we are forwarding duplicate o-packets if they come via our best neighbour and ttl is valid */
 								if ( forward_duplicate_packet ) {
 
-									schedule_forward_packet( ogm, 0, 0, has_duplicated_flag, hna_array, hna_array_len, if_incoming, curr_time );
+									schedule_forward_packet( ogm, 0, 0, has_duplicated_flag, gw_array, gw_array_len, hna_array, hna_array_len, if_incoming, curr_time, neigh );
 
 									debug_output( 4, "Forward packet: duplicate packet received via best neighbour with best ttl \n" );
 /*
@@ -1686,18 +1711,18 @@ int8_t batman() {
 
 		
 		/* del throw routing entries for own hna */
-		add_del_route( hna_node->key.addr, hna_node->key.ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_INTERFACES, 1, 1 );
-		add_del_route( hna_node->key.addr, hna_node->key.ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS,   1, 1 );
-		add_del_route( hna_node->key.addr, hna_node->key.ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS,      1, 1 );
-		add_del_route( hna_node->key.addr, hna_node->key.ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH,    1, 1 );
-		add_del_route( hna_node->key.addr, hna_node->key.ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL,     1, 1 );
+		add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_INTERFACES, 1, 1 );
+		add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS,   1, 1 );
+		add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS,      1, 1 );
+		add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH,    1, 1 );
+		add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL,     1, 1 );
 		
 		debugFree( hna_node, 1103 );
 
 	}
 
-	if ( my_hna_array != NULL )
-		debugFree( my_hna_array, 1104 );
+	if ( my_hna_ext_array != NULL )
+		debugFree( my_hna_ext_array, 1104 );
 
 
 	list_for_each_safe( list_pos, forw_pos_tmp, &forw_list ) {

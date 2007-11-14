@@ -41,19 +41,28 @@ void schedule_own_packet( struct batman_if *batman_if ) {
 	forw_node_new->if_outgoing = batman_if;
 	forw_node_new->own = 1;
 
-	/* non-primary interfaces do not send hna information */
-	if ( ( my_hna_array_len > 0 ) && ( batman_if->if_num == 0 ) ) {
+	/* only primary interfaces send extension packets */
+	if (  batman_if->if_num == 0  ) {
 		
 		//TBD: Do we really need sizeof(unsigned char) ???
-		forw_node_new->pack_buff = debugMalloc( sizeof(struct bat_packet) + my_hna_array_len * sizeof(struct hna_packet) * sizeof(unsigned char) , 502 );
+		
+		forw_node_new->pack_buff_len = sizeof(struct bat_packet) + ((my_gw_ext_array_len + my_hna_ext_array_len) * sizeof(struct ext_packet));
+		
+		forw_node_new->pack_buff = debugMalloc( forw_node_new->pack_buff_len , 502 );
+		
 		memcpy( forw_node_new->pack_buff, (unsigned char *)&batman_if->out, sizeof(struct bat_packet) );
-		memcpy( forw_node_new->pack_buff + sizeof(struct bat_packet), my_hna_array, my_hna_array_len * sizeof(struct hna_packet) * sizeof(unsigned char) );
-		forw_node_new->pack_buff_len = sizeof(struct bat_packet) + my_hna_array_len * sizeof(struct hna_packet) * sizeof(unsigned char);
+		
+		if ( my_gw_ext_array_len > 0 )
+			memcpy( forw_node_new->pack_buff + sizeof(struct bat_packet), (unsigned char *)my_gw_ext_array, my_gw_ext_array_len * sizeof(struct ext_packet) );
+		
+		if ( my_hna_ext_array_len > 0 )
+			memcpy( forw_node_new->pack_buff + sizeof(struct bat_packet) + (my_gw_ext_array_len * sizeof(struct ext_packet)), (unsigned char *)my_hna_ext_array, my_hna_ext_array_len * sizeof(struct ext_packet) );
+		
 	
 	} else {
 
 		forw_node_new->pack_buff = debugMalloc( sizeof(struct bat_packet), 503 );
-		memcpy( forw_node_new->pack_buff, &batman_if->out, sizeof(struct bat_packet) );
+		memcpy( forw_node_new->pack_buff, (unsigned char *)&batman_if->out, sizeof(struct bat_packet) );
 		forw_node_new->pack_buff_len = sizeof(struct bat_packet);
 
 	}
@@ -85,7 +94,7 @@ void schedule_own_packet( struct batman_if *batman_if ) {
 
 
 
-void schedule_forward_packet( struct bat_packet *in, uint8_t unidirectional, uint8_t directlink, uint8_t cloned, struct hna_packet *hna_array, int16_t hna_array_len, struct batman_if *if_outgoing, uint32_t curr_time ) {
+void schedule_forward_packet( struct bat_packet *in, uint8_t unidirectional, uint8_t directlink, uint8_t cloned, struct ext_packet *gw_array, int16_t gw_array_len, struct ext_packet *hna_array, int16_t hna_array_len, struct batman_if *if_outgoing, uint32_t curr_time, uint32_t neigh ) {
 
 	prof_start( PROF_schedule_forward_packet );
 	struct forw_node *forw_node_new, *forw_packet_tmp = NULL;
@@ -103,23 +112,23 @@ void schedule_forward_packet( struct bat_packet *in, uint8_t unidirectional, uin
 
 		INIT_LIST_HEAD( &forw_node_new->list );
 
-		if ( ( hna_array_len > 0 ) && ( hna_array != NULL ) ) { 
 
-			forw_node_new->pack_buff = debugMalloc( sizeof(struct bat_packet) + (hna_array_len * sizeof( struct hna_packet)), 505 );
-			memcpy( forw_node_new->pack_buff, in, sizeof(struct bat_packet) );
-			memcpy( forw_node_new->pack_buff + sizeof(struct bat_packet), hna_array, (hna_array_len * sizeof( struct hna_packet)) );
-			forw_node_new->pack_buff_len = sizeof(struct bat_packet) + (hna_array_len * sizeof( struct hna_packet));
+		forw_node_new->pack_buff_len = sizeof(struct bat_packet) + ((gw_array_len + hna_array_len) * sizeof( struct ext_packet));
+		
+		forw_node_new->pack_buff = debugMalloc( forw_node_new->pack_buff_len, 505 );
+		
+		memcpy( forw_node_new->pack_buff, in, sizeof(struct bat_packet) );
+		
+		if ( gw_array_len > 0 )
+			memcpy( forw_node_new->pack_buff + sizeof(struct bat_packet), (unsigned char *)gw_array, (gw_array_len * sizeof( struct ext_packet)) );
 
-		} else {
-
-			forw_node_new->pack_buff = debugMalloc( sizeof(struct bat_packet), 506 );
-			memcpy( forw_node_new->pack_buff, in, sizeof(struct bat_packet) );
-			forw_node_new->pack_buff_len = sizeof(struct bat_packet);
-
-		}
-
+		if ( hna_array_len > 0 )
+			memcpy( forw_node_new->pack_buff + sizeof(struct bat_packet) + (gw_array_len * sizeof( struct ext_packet)), (unsigned char *)hna_array, (hna_array_len * sizeof( struct ext_packet)) );
+		
 
 		((struct bat_packet *)forw_node_new->pack_buff)->ttl--;
+		((struct bat_packet *)forw_node_new->pack_buff)->prev_hop = neigh;
+		
 		forw_node_new->send_time = curr_time + rand_num( rebrc_delay );
 		forw_node_new->own = 0;
 

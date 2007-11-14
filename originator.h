@@ -33,7 +33,7 @@ int update_bi_link_bits ( struct orig_node *orig_neigh_node, struct batman_if * 
 int nlq_rate( struct orig_node *orig_neigh_node, struct batman_if *if_incoming );
 int nlq_power( int nlq_rate_value );
 int acceptance_rate( int nlq_assumption, uint16_t lq_assumtion );
-void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t neigh, struct batman_if *if_incoming, struct hna_packet *hna_array, int16_t hna_array_len, uint32_t rcvd_time );
+void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t neigh, struct batman_if *if_incoming, struct ext_packet *gw_array, int16_t gw_array_len, struct ext_packet *hna_array, int16_t hna_array_len, uint32_t rcvd_time );
 void purge_orig( uint32_t curr_time );
 void debug_orig();
 

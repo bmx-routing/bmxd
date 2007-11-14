@@ -175,7 +175,7 @@ void *unix_listen( void *arg ) {
 	struct in_addr tmp_ip_holder;
 	int32_t status, max_sock, unix_opts, download_speed, upload_speed;
 	int8_t res;
-	char buff[100], str[16], was_gateway, is_gateway, tmp_unix_value;
+	char buff[100], str[16], was_gateway, is_gateway /*, tmp_unix_value*/;
 	fd_set wait_sockets, tmp_wait_sockets;
 	socklen_t sun_size = sizeof(struct sockaddr_un);
 	uint8_t unix_client_deleted = NO;
@@ -336,7 +336,7 @@ void *unix_listen( void *arg ) {
 
 									addr_to_string( hna_node->key.addr, str, sizeof (str) );
 
-									dprintf( unix_client->sock, " -a %s/%i", str, hna_node->key.ANETMASK );
+									dprintf( unix_client->sock, " -a %s/%i", str, hna_node->key.KEY_ANETMASK );
 
 								}
 
@@ -363,10 +363,25 @@ void *unix_listen( void *arg ) {
 										is_gateway = ( (gateway_class  && (one_way_tunnel || two_way_tunnel)) ? 1 : 0 );
 
 										batman_if = list_entry( (&if_list)->next, struct batman_if, list );
-
-										batman_if->out.gwflags = ( is_gateway ? gateway_class : 0 );
-
-										batman_if->out.gwtypes = is_gateway ? ( (two_way_tunnel?TWO_WAY_TUNNEL_FLAG:0) | (one_way_tunnel?ONE_WAY_TUNNEL_FLAG:0) ) : 0;
+										
+										if ( is_gateway ) {
+										
+											my_gw_ext_array->ext_flag = EXTENSION_FLAG;
+											my_gw_ext_array->ext_type = EXT_TYPE_GW;
+										
+											my_gw_ext_array->EXT_GW_FLAGS = ( ( two_way_tunnel || one_way_tunnel ) ? gateway_class : 0 );
+											
+											my_gw_ext_array->EXT_GW_TYPES = ( gateway_class ? ( (two_way_tunnel?TWO_WAY_TUNNEL_FLAG:0) | (one_way_tunnel?ONE_WAY_TUNNEL_FLAG:0) ) : 0 );
+											
+											my_gw_ext_array_len = 1;
+										
+										} else {
+										
+											memset( my_gw_ext_array, 0, sizeof(struct ext_packet) );
+	
+											my_gw_ext_array_len = 0;
+										
+										}
 
 										
 										if ( ( !was_gateway ) && ( is_gateway ) )
@@ -387,10 +402,13 @@ void *unix_listen( void *arg ) {
 
 								dprintf( unix_client->sock, "EOD\n" );
 
+								
+							/* TODO: check this ! and maybe also call add_del_interface_rules()
 							} else if ( buff[0] == 'r' ) {
 
 								if ( status > 2 ) {
 
+									
 									if ((buff[2] == 0) || (probe_tun(0))) {
 
 										tmp_unix_value = buff[2];
@@ -423,7 +441,8 @@ void *unix_listen( void *arg ) {
 								}
 
 								dprintf( unix_client->sock, "EOD\n" );
-
+							*/
+								
 							} else if ( buff[0] == 'p' ) {
 
 								if ( status > 2 ) {

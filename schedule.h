@@ -19,5 +19,7 @@
 
 
 void schedule_own_packet( struct batman_if *batman_if );
-void schedule_forward_packet( struct bat_packet *in, uint8_t unidirectional, uint8_t directlink, uint8_t duplicated, struct hna_packet *hna_array, int16_t hna_array_len, struct batman_if *if_outgoing, uint32_t curr_time );
+
+void schedule_forward_packet( struct bat_packet *in, uint8_t unidirectional, uint8_t directlink, uint8_t cloned, struct ext_packet *gw_array, int16_t gw_array_len, struct ext_packet *hna_array, int16_t hna_array_len, struct batman_if *if_outgoing, uint32_t curr_time, uint32_t neigh );
+
 void send_outstanding_packets();

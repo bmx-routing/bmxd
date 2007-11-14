@@ -252,7 +252,7 @@ int8_t add_default_route() {
 
 
 
-int8_t receive_packet( struct bat_packet **ogm, struct hna_packet **hna_array, int16_t *hna_array_len, uint32_t *neigh, uint32_t timeout, struct batman_if **if_incoming, uint32_t *batman_time ) {
+int8_t receive_packet( struct bat_packet **ogm, struct ext_packet **gw_array, int16_t *gw_array_len, struct ext_packet **hna_array, int16_t *hna_array_len, uint32_t *neigh, uint32_t timeout, struct batman_if **if_incoming, uint32_t *batman_time ) {
 
 	
 	static unsigned char packet_in[2001];
@@ -270,7 +270,7 @@ int8_t receive_packet( struct bat_packet **ogm, struct hna_packet **hna_array, i
 	struct list_head *if_pos;
 	struct batman_if *batman_if;
 	int8_t res;
-	int16_t hna_pos = 0;
+	int16_t hna_pos = 0, gw_pos = 0;
 	fd_set tmp_wait_set;
 	
 	if( ! (len == 0 || len >= sizeof(struct bat_packet)) ) {
@@ -350,15 +350,32 @@ int8_t receive_packet( struct bat_packet **ogm, struct hna_packet **hna_array, i
 
 	*ogm = (struct bat_packet *)pos;
 	
-	*hna_array = (struct hna_packet *) (pos + sizeof(struct bat_packet));
-	
 	*batman_time = rcvd_time;
+	
+	
+	*gw_array = (struct ext_packet *) (pos + sizeof(struct bat_packet));
+	
+	gw_pos = 0;
+	
+	while( gw_pos < (len - sizeof(struct bat_packet)) / sizeof(struct ext_packet)   &&   
+		      ((*gw_array)[gw_pos]).ext_flag & EXTENSION_FLAG    &&   ((*gw_array)[gw_pos]).ext_type == EXT_TYPE_GW  )
+		gw_pos++;
+	
+	*gw_array_len = gw_pos;
+	
+	if ( gw_pos == 0 )
+		*gw_array = NULL;
+
+	
+	
+	
+	*hna_array = (struct ext_packet *) (pos + sizeof(struct bat_packet) + (gw_pos * sizeof(struct ext_packet)) );
 	
 	hna_pos = 0;
 	
-	while( hna_pos < (len - sizeof(struct bat_packet)) / sizeof(struct hna_packet)   &&   ((*hna_array)[hna_pos]).ext_flag & EXTENSION_FLAG ) 
+	while( (hna_pos + gw_pos) < (len - sizeof(struct bat_packet)) / sizeof(struct ext_packet)   &&   
+		       ((*hna_array)[hna_pos]).ext_flag & EXTENSION_FLAG    &&   ((*hna_array)[hna_pos]).ext_type == EXT_TYPE_HNA )
 		hna_pos++;
-	
 	
 	*hna_array_len = hna_pos;
 	
@@ -368,8 +385,8 @@ int8_t receive_packet( struct bat_packet **ogm, struct hna_packet **hna_array, i
 //	debug_output( 4, "Received packet batman version: %i, flags. %X, size. %i, hna_pos: %d, hna_max: %d hna_type: %X \n", ((struct bat_packet *)pos)->version, ((struct bat_packet *)pos)->flags, len, hna_pos, (len - sizeof(struct bat_packet)) / sizeof(struct hna_packet), *hna_array != NULL ? ((*hna_array)[hna_pos]).type : 0 );
 
 	
-	len = len - ( sizeof(struct bat_packet) + (hna_pos * sizeof(struct hna_packet)) );
-	pos = pos + ( sizeof(struct bat_packet) + (hna_pos * sizeof(struct hna_packet)) );
+	len = len - ( sizeof(struct bat_packet) + ((gw_pos+hna_pos) * sizeof(struct ext_packet)) );
+	pos = pos + ( sizeof(struct bat_packet) + ((gw_pos+hna_pos) * sizeof(struct ext_packet)) );
 	
 	return 1;
 

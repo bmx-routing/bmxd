@@ -39,7 +39,7 @@
 
 #define SOURCE_VERSION "0.3-alpha" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
 
-#define COMPAT_VERSION 8
+#define COMPAT_VERSION 9
 
 
 #define ADDR_STR_LEN 16
@@ -355,8 +355,11 @@ extern char *prog_name;
 extern uint8_t debug_level;
 extern uint8_t debug_level_max;
 
-extern struct hna_packet *my_hna_array;
-extern uint16_t my_hna_array_len;
+extern struct ext_packet *my_hna_ext_array;
+extern uint16_t my_hna_ext_array_len;
+
+extern struct ext_packet *my_gw_ext_array;
+extern uint16_t my_gw_ext_array_len;
 
 extern uint16_t hna_list_size;
 
@@ -390,9 +393,9 @@ extern struct unix_if unix_if;
 extern struct debug_clients debug_clients;
 
 /* the bat_packet flags: */
-#define UNIDIRECTIONAL_FLAG 0x08 /* set when re-broadcasting a received OGM via a curretnly not bi-directional link and only together with IDF */
+#define UNIDIRECTIONAL_FLAG 0x02 /* set when re-broadcasting a received OGM via a curretnly not bi-directional link and only together with IDF */
 #define DIRECTLINK_FLAG     0x04 /* set when re-broadcasting a received OGM with identical OG IP and NB IP on the interface link as received */
-#define CLONED_FLAG         0x02 /* set when (re-)broadcasting a OGM not-for-the-first time or re-broadcasting a OGM with this flag */
+#define CLONED_FLAG         0x08 /* set when (re-)broadcasting a OGM not-for-the-first time or re-broadcasting a OGM with this flag */
 
 #define EXTENSION_FLAG       0x01 /* unset for OGM, set for OGM related extensions like HNA,... */
 
@@ -414,24 +417,11 @@ struct bat_packet
 #else
 # error "Please fix <bits/endian.h>"
 #endif
-
-#if __BYTE_ORDER == __LITTLE_ENDIAN
-	unsigned int gwtypes:4;  /* to let a gw announce its offered gateway types */
-	unsigned int reserved:4;
-#elif __BYTE_ORDER == __BIG_ENDIAN
-	unsigned int reserved:4;
-	unsigned int gwtypes:4;
-#else
-# error "Please fix <bits/endian.h>"
-#endif
-			
-	uint8_t  gwflags;     /* flags related to gateway functions: gateway class */
 	uint8_t  ttl;
-	uint32_t orig;
 	uint16_t seqno;
-	uint8_t  reserved2;
-	uint8_t  reserved3;
-
+	uint32_t orig;
+	uint32_t prev_hop;
+	
 } __attribute__((packed));
 
 struct orig_node                 /* structure for orig_list maintaining nodes of mesh */
@@ -443,7 +433,7 @@ struct orig_node                 /* structure for orig_list maintaining nodes of
 	uint32_t last_valid;              /* when last packet from this node was received */
 	uint8_t  gwflags;                 /* flags related to gateway functions: gateway class */
 	uint8_t  gwtypes;                 /* flags related to offered gateway tunnel types */
-	struct hna_packet *hna_array;
+	struct ext_packet *hna_array;
 	int16_t  hna_array_len;
 	uint16_t last_seqno;              /* last and best known squence number */
 	
@@ -495,10 +485,45 @@ struct hna_netmask_type
 } __attribute__((packed));
 
 
-#define ATYPE    nt.atype
-#define ANETMASK nt.anetmask
 
-struct hna_packet
+#define EXT_HNA_TYPE    et.hna.nt.atype
+#define EXT_HNA_NETMASK et.hna.nt.anetmask
+#define EXT_HNA_ADDR    et.hna.addr
+
+struct ext_type_hna
+{
+	struct hna_netmask_type nt;
+	uint32_t addr;
+} __attribute__((packed));
+
+
+#define EXT_GW_TYPES et.gw.gwtypes
+#define EXT_GW_FLAGS et.gw.gwflags
+
+struct ext_type_gw
+{
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+	unsigned int gwtypes:4;  /* to let a gw announce its offered gateway types */
+	unsigned int reserved:4;
+#elif __BYTE_ORDER == __BIG_ENDIAN
+	unsigned int reserved:4;
+	unsigned int gwtypes:4;
+#else
+# error "Please fix <bits/endian.h>"
+#endif
+	
+	uint8_t  gwflags;     /* flags related to gateway functions: gateway class */
+	
+	uint8_t  reserved2;
+	uint8_t  reserved3;
+	uint8_t  reserved4;
+
+} __attribute__((packed));
+
+#define EXT_TYPE_GW  0x00
+#define EXT_TYPE_HNA 0x01
+
+struct ext_packet
 {
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 	unsigned int ext_flag:1;
@@ -512,11 +537,17 @@ struct hna_packet
 # error "Please fix <bits/endian.h>"
 #endif
 
-	struct hna_netmask_type nt;
-
-	uint32_t addr;
+	union
+	{
+		struct ext_type_gw  gw;
+		struct ext_type_hna hna;
+	}et;
 
 } __attribute__((packed));
+
+
+#define KEY_ATYPE    nt.atype
+#define KEY_ANETMASK nt.anetmask
 
 struct hna_key
 {
@@ -527,7 +558,6 @@ struct hna_key
 struct hna_node
 {
 	struct list_head list;
-	
 	struct hna_key key;
 };
 
@@ -650,7 +680,7 @@ void usage( void );
 void verbose_usage( void );
 void print_advanced_opts ( int verbose );
 int is_batman_if( char *dev, struct batman_if **batman_if );
-void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, struct hna_packet *hna_array, int16_t hna_array_len );
+void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, struct ext_packet *hna_array, int16_t hna_array_len );
 void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags, uint8_t new_gwtypes );
 void get_gw_speeds( unsigned char class, int *down, int *up );
 unsigned char get_gw_class( int down, int up );

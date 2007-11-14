@@ -226,12 +226,10 @@ void add_del_hna_opt ( char *optarg_str, int8_t del, uint8_t atype ) {
 
 			hna_node = list_entry( hna_list_pos, struct hna_node, list );
 
-			if ( hna_node->key.addr == tmp_ip_holder.s_addr && hna_node->key.ANETMASK == netmask && hna_node->key.ATYPE == atype ) {
+			if ( hna_node->key.addr == tmp_ip_holder.s_addr && hna_node->key.KEY_ANETMASK == netmask && hna_node->key.KEY_ATYPE == atype ) {
 				
 				addr_to_string( hna_node->key.addr, str, sizeof (str) );
-				printf( "removing HNA %s/%i \n", str, hna_node->key.ANETMASK );
-				
-
+				printf( "removing HNA %s/%i \n", str, hna_node->key.KEY_ANETMASK );
 				
 				list_del( prev_hna_list_head, hna_list_pos, &hna_list );
 				debugFree( hna_node, 1103 );
@@ -254,8 +252,8 @@ void add_del_hna_opt ( char *optarg_str, int8_t del, uint8_t atype ) {
 		INIT_LIST_HEAD( &hna_node->list );
 	
 		hna_node->key.addr = tmp_ip_holder.s_addr;
-		hna_node->key.ANETMASK = netmask;
-		hna_node->key.ATYPE = atype;
+		hna_node->key.KEY_ANETMASK = netmask;
+		hna_node->key.KEY_ATYPE = atype;
 		
 		
 		addr_to_string( hna_node->key.addr, str, sizeof (str) );
@@ -269,7 +267,7 @@ void add_del_hna_opt ( char *optarg_str, int8_t del, uint8_t atype ) {
 	*slash_ptr = '/';
 	
 	// check if umber of HNAs fit into max packet size
-	if ( sizeof(struct bat_packet) + (hna_list_size * sizeof(struct hna_packet)) > MAX_PACKET_OUT_SIZE ) {
+	if ( sizeof(struct bat_packet) + (hna_list_size * sizeof(struct ext_packet)) > MAX_PACKET_OUT_SIZE ) {
 		
 		printf("HNAs do not fit into max packet size \n");
 		exit(EXIT_FAILURE);
@@ -302,7 +300,7 @@ void apply_init_args( int argc, char *argv[] ) {
 	
 
 
-	printf( "WARNING: You are using the experimental batman branch!\n" );
+	printf( "WARNING: You are using BatMan-eXp %s%s (compatibility version %d) !\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
 
 	while ( 1 ) {
 
@@ -931,14 +929,14 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			case 'v':
 
-				printf( "BatMan-eXperimental %s%s (compatibility version %i)\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
+				printf( "BatMan-eXp %s%s (compatibility version %i)\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
 				exit(EXIT_SUCCESS);
 
 			case 'V':
 
 				print_animation();
 
-				printf( "\x1B[0;0HBatMan-eXperimental %s%s (compatibility version %i)\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
+				printf( "\x1B[0;0HBatMan-eXp %s%s (compatibility version %i)\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
 				printf( "\x1B[9;0H \t May the bat guide your path ...\n\n\n" );
 
 				exit(EXIT_SUCCESS);
@@ -1275,7 +1273,7 @@ void apply_init_args( int argc, char *argv[] ) {
 			openlog( "batmand", LOG_PID, LOG_DAEMON );
 
 		} else {
-			printf( "BatMan-eXperimental %s%s (compatibility version %i)\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
+			printf( "BatMan-eXp %s%s (compatibility version %i)\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
 
 			debug_clients.clients_num[ debug_level - 1 ]++;
 			debug_level_info = debugMalloc( sizeof(struct debug_level_info), 205 );

@@ -32,7 +32,7 @@ void addr_to_string( uint32_t addr, char *str, int32_t len );
 
 
 
-void add_del_hna( struct orig_node *orig_node, struct hna_packet *hna_array, int16_t hna_array_len /*int8_t del*/ );
+void add_del_hna( struct orig_node *orig_node, struct ext_packet *hna_array, int16_t hna_array_len /*int8_t del*/ );
 int8_t is_aborted();
 void handler( int32_t sig );
 void segmentation_fault( int32_t sig );
@@ -72,7 +72,7 @@ int8_t use_gateway_module();
 void print_animation( void );
 void   del_default_route();
 int8_t add_default_route();
-int8_t receive_packet( struct bat_packet **ogm, struct hna_packet **hna_array, int16_t *hna_array_len, uint32_t *neigh, uint32_t timeout, struct batman_if **if_incoming, uint32_t *batman_time );
+int8_t receive_packet( struct bat_packet **ogm, struct ext_packet **gw_array, int16_t *gw_array_len, struct ext_packet **hna_array, int16_t *hna_array_len, uint32_t *neigh, uint32_t timeout, struct batman_if **if_incoming, uint32_t *batman_time );
 int8_t send_udp_packet( unsigned char *packet_buff, int packet_buff_len, struct sockaddr_in *broad, int send_sock );
 void restore_defaults();
 void cleanup();
