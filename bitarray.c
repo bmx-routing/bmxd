@@ -161,21 +161,25 @@ char bit_get_packet( TYPE_OF_WORD *seq_bits, int16_t seq_num_diff, int8_t set_ma
 
 	if ( ( seq_num_diff < 0 ) && ( seq_num_diff >= -sequence_range ) ) {  /* we already got a sequence number higher than this one, so we just mark it. this should wrap around the integer just fine */
 
-		if ( set_mark )
-			bit_mark( seq_bits, -seq_num_diff );
+		
+		debug_output( 0, "Error - We do not acceppt old seqno anymore !!!, check this out \n");
+		//if ( set_mark )
+		//	bit_mark( seq_bits, -seq_num_diff );
 
 		return 0;
 
 	}
-
+	
 	if ( ( seq_num_diff > sequence_range ) || ( seq_num_diff < -sequence_range ) ) {        /* it seems we missed a lot of packets or the other host restarted */
 
-		 if ( seq_num_diff > sequence_range )
+		if ( seq_num_diff > sequence_range )
 			debug_output( 4, "It seems we missed a lot of packets (%i) !\n",  seq_num_diff-1 );
 
 		if ( -seq_num_diff > sequence_range )
 			debug_output( 4, "Other host probably restarted !\n" );
 
+		
+		
 		for (i=0; i<MAX_NUM_WORDS; i++)
 			seq_bits[i]= 0;
 

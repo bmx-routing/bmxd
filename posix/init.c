@@ -316,6 +316,8 @@ void apply_init_args( int argc, char *argv[] ) {
    {AGGREGATIONS_SWITCH,        0, 0, 0},
    {BIDIRECT_TIMEOUT_SWITCH,    1, 0, 0},
    {NBRFSIZE_SWITCH,            1, 0, 0},
+   {INITIAL_SEQNO_SWITCH,       1, 0, 0},
+   {DAD_TIMEOUT_SWITCH,         1, 0, 0},
    {GW_CHANGE_HYSTERESIS_SWITCH,1, 0, 0},
    {GW_TUNNEL_NETW_SWITCH,      1, 0, 0},
    {TUNNEL_IP_LEASE_TIME_SWITCH,1, 0, 0},
@@ -372,18 +374,20 @@ void apply_init_args( int argc, char *argv[] ) {
 				   ( optchar == 0 && strcmp( BMX_DEFAULTS_SWITCH, long_options[option_index].name ) == 0 ) ) {
 
 			
-			printf ("Applying %s ! \nThis parametrization expects the first given interface argument to be a wireless interface !\n", BMX_DEFAULTS_SWITCH );
-	
 			errno = 0;
 	
 			if ( found_args == 1 ) {
 				default_para_set = PARA_SET_BMX;
 					
 			} else {
-				printf( "Error - Parametrization set can only be specified once !\n" );
+				printf( "Error - Parametrization set can only be specified once and must be the first given argument !\n" );
 				exit(EXIT_FAILURE);
 			}
 						
+			printf ("Applying %s ! \n", BMX_DEFAULTS_SWITCH); 
+			printf ("ATTENTION!  This parametrization assumes the first given interface argument to be the one and only wireless interface, followed by zero or more lan interfaces ! ");
+			printf ("To change this assumtion mark the interfaces explicitly using /%c to specify the wlan interface(s) and /%c to specify the lan interface(s). Example: batmand eth0 /%c [wlan0 /%c ath1 /%c ...] \n", WLAN_IF_SWITCH, LAN_IF_SWITCH, LAN_IF_SWITCH, WLAN_IF_SWITCH, WLAN_IF_SWITCH);
+	
 	
 			originator_interval = 1500;
 			printf ("-o %d \\ \n", originator_interval );
@@ -414,6 +418,7 @@ void apply_init_args( int argc, char *argv[] ) {
 			set_init_arg( REBRC_DELAY_SWITCH, "0", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
 
 			
+			
 			if ( strcmp( BMX_DEFAULTS_SWITCH, long_options[option_index].name ) == 0 ) {
 				found_args += 1;
 				continue;
@@ -439,7 +444,6 @@ void apply_init_args( int argc, char *argv[] ) {
 
 				} else if ( strcmp( GENIII_DEFAULTS_SWITCH, long_options[option_index].name ) == 0 ) {
 
-					printf ("Applying %s ! \nThis parametrization causes the same behavior as implemented in batmand-0.2 !\n", long_options[option_index].name);
 	
 					errno = 0;
 	
@@ -447,17 +451,17 @@ void apply_init_args( int argc, char *argv[] ) {
 						default_para_set = PARA_SET_GENIII;
 	
 					} else {
-						printf( "Error - Parametrization set can only be specified once !\n" );
+						printf( "Error - Parametrization set can only be specified once and must be the first given argument !\n" );
 						exit(EXIT_FAILURE);
 					}
+
+					printf ("Applying %s ! \nThis parametrization causes the same behavior as implemented in batmand-0.2 !\n", long_options[option_index].name);
 
 					found_args += 1;
 					break;
 
 				} else if ( strcmp( GRAZ07_DEFAULTS_SWITCH, long_options[option_index].name ) == 0 ) {
 
-					printf ("Applying %s ! \nThis parametrization expects the first given interface argument to be a wireless interface !\n", long_options[option_index].name);
-					printf ("Parametrization based on experience gained from the Wireless Community Weekend in Graz 2007!\n");
 					errno = 0;
 	
 					if ( found_args == 1 /*default_para_set == DEF_BMX_PARA_SET || default_para_set == PARA_SET_GRAZ07*/ ) {
@@ -466,6 +470,12 @@ void apply_init_args( int argc, char *argv[] ) {
 						printf( "Error - Parametrization set can only be specified once !\n" );
 						exit(EXIT_FAILURE);
 					}
+					
+					printf ("Applying %s ! \n", long_options[option_index].name); 
+					printf ("ATTENTION!  This parametrization assumes the first given interface argument to be the one and only wireless interface, followed by zero or more lan interfaces ! ");
+					printf ("To change this assumtion mark the interfaces explicitly using /%c to specify the wlan interface(s) and /%c to specify the lan interface(s). Example: batmand eth0 /%c [wlan0 /%c ath1 /%c ...] \n", WLAN_IF_SWITCH, LAN_IF_SWITCH, LAN_IF_SWITCH, WLAN_IF_SWITCH, WLAN_IF_SWITCH);
+					
+					printf ("Parametrization based on experience gained from the Wireless Community Weekend in Graz 2007!\n");
 	
 					originator_interval = 1500;
 					printf ("-o %d \\ \n", originator_interval );
@@ -490,6 +500,7 @@ void apply_init_args( int argc, char *argv[] ) {
 	
 					set_init_arg( REBRC_DELAY_SWITCH, "35", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
 	
+					
 					found_args += 1;
 					break;
 
@@ -504,14 +515,26 @@ void apply_init_args( int argc, char *argv[] ) {
 					set_init_arg( NBRFSIZE_SWITCH, optarg, MIN_SEQ_RANGE, MAX_SEQ_RANGE, &sequence_range );
 					
 					num_words = ( sequence_range / WORD_BIT_SIZE ) + ( ( sequence_range % WORD_BIT_SIZE > 0)? 1 : 0 );
-
+					
 					found_args += 2;
 					break;
 
+				} else if ( strcmp( DAD_TIMEOUT_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					set_init_arg( DAD_TIMEOUT_SWITCH, optarg, MIN_DAD_TIMEOUT, MAX_DAD_TIMEOUT, &dad_timeout );
+					
+					found_args += 2;
+					break;
+
+				} else if ( strcmp( INITIAL_SEQNO_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					set_init_arg( INITIAL_SEQNO_SWITCH, optarg, MIN_INITIAL_SEQNO, MAX_INITIAL_SEQNO, &initial_seqno );
+					found_args += 2;
+					break;
+				
 				} else if ( strcmp( GW_CHANGE_HYSTERESIS_SWITCH, long_options[option_index].name ) == 0 ) {
 
 					set_init_arg( GW_CHANGE_HYSTERESIS_SWITCH, optarg, MIN_GW_CHANGE_HYSTERESIS, MAX_GW_CHANGE_HYSTERESIS, &gw_change_hysteresis );
-					
 					found_args += 2;
 					break;
 
@@ -723,8 +746,8 @@ void apply_init_args( int argc, char *argv[] ) {
 					
 					set_init_arg( BASE_PORT_SWITCH,       "14305", MIN_BASE_PORT,       MAX_BASE_PORT,       &base_port ); 
 					set_init_arg( RT_TABLE_OFFSET_SWITCH, "144",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset ); 
-					set_init_arg( RT_PRIO_OFFSET_SWITCH, "14500", MIN_RT_PRIO_OFFSET, MAX_RT_PRIO_OFFSET, &rt_prio_offset ); 
-					set_gw_network( "169.254.16.0/22" );
+					set_init_arg( RT_PRIO_OFFSET_SWITCH,  "14500", MIN_RT_PRIO_OFFSET, MAX_RT_PRIO_OFFSET, &rt_prio_offset ); 
+					set_gw_network( "169.254.128.0/22" );
 					
 					found_args += 1;
 					break;
@@ -735,8 +758,8 @@ void apply_init_args( int argc, char *argv[] ) {
 					
 					set_init_arg( BASE_PORT_SWITCH,       "16305", MIN_BASE_PORT,       MAX_BASE_PORT,       &base_port ); 
 					set_init_arg( RT_TABLE_OFFSET_SWITCH, "164",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset ); 
-					set_init_arg( RT_PRIO_OFFSET_SWITCH, "16500", MIN_RT_PRIO_OFFSET, MAX_RT_PRIO_OFFSET, &rt_prio_offset ); 
-					set_gw_network( "169.254.32.0/22" );
+					set_init_arg( RT_PRIO_OFFSET_SWITCH,  "16500", MIN_RT_PRIO_OFFSET, MAX_RT_PRIO_OFFSET, &rt_prio_offset ); 
+					set_gw_network( "169.254.160.0/22" );
 					
 					found_args += 1;
 					break;
@@ -747,8 +770,8 @@ void apply_init_args( int argc, char *argv[] ) {
 					
 					set_init_arg( BASE_PORT_SWITCH,       "18305", MIN_BASE_PORT,       MAX_BASE_PORT,       &base_port ); 
 					set_init_arg( RT_TABLE_OFFSET_SWITCH, "184",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset ); 
-					set_init_arg( RT_PRIO_OFFSET_SWITCH, "18500", MIN_RT_PRIO_OFFSET, MAX_RT_PRIO_OFFSET, &rt_prio_offset ); 
-					set_gw_network( "169.254.64.0/22" );
+					set_init_arg( RT_PRIO_OFFSET_SWITCH,  "18500", MIN_RT_PRIO_OFFSET, MAX_RT_PRIO_OFFSET, &rt_prio_offset ); 
+					set_gw_network( "169.254.192.0/22" );
 					
 					set_init_arg( NBRFSIZE_SWITCH, "10", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &sequence_range );
 					num_words = ( sequence_range / WORD_BIT_SIZE ) + ( ( sequence_range % WORD_BIT_SIZE > 0)? 1 : 0 );
@@ -872,6 +895,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 					exit(EXIT_FAILURE);
 				}
+				
 
 				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
 				break;
@@ -1037,6 +1061,10 @@ void apply_init_args( int argc, char *argv[] ) {
 		}
 
 		FD_ZERO( &receive_wait_set );
+		
+		printf ("Using duplicate-address-detection timeout %ds, purge timeout %ds, originator interval %dms, window size %d \n", ((originator_interval*dad_timeout*sequence_range)/100000), (PURGE_TIMEOUT/1000), originator_interval, sequence_range );
+
+		
 
 		while ( argc > found_args ) {
 
@@ -1181,6 +1209,28 @@ void apply_init_args( int argc, char *argv[] ) {
 
 					batman_if->send_ogm_only_via_owning_if = YES;
 					batman_if->if_ttl = 1;
+
+					found_args += 1;
+
+				
+				} else if ( (argv[found_args])[1] == WLAN_IF_SWITCH && argc > (found_args) ) {
+
+					errno = 0;
+					printf ("Interface %s specific option: /%c  \n", batman_if->dev, ((argv[found_args])[1]) );
+					printf (" applying %s specific option: /%c %d \n", batman_if->dev, SEND_CLONES_IF_SWITCH, DEF_WLAN_IF_CLONES );
+
+					batman_if->if_send_clones = DEF_WLAN_IF_CLONES;
+
+					found_args += 1;
+
+				
+				} else if ( (argv[found_args])[1] == LAN_IF_SWITCH && argc > (found_args) ) {
+
+					errno = 0;
+					printf ("Interface %s specific option: /%c  \n", batman_if->dev, ((argv[found_args])[1]) );
+					printf (" applying %s specific option: /%c %d \n", batman_if->dev, SEND_CLONES_IF_SWITCH, DEF_LAN_IF_CLONES );
+
+					batman_if->if_send_clones = DEF_LAN_IF_CLONES;
 
 					found_args += 1;
 

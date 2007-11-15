@@ -76,6 +76,9 @@ uint8_t routing_class = 0;
 
 int16_t originator_interval = DEFAULT_ORIGINATOR_INTERVAL;   /* orginator message interval in miliseconds */
 
+int32_t dad_timeout = DEFAULT_DAD_TIMEOUT;
+
+
 //int8_t advanced_opts = DEF_ADVANCED_SWITCH;
 
 int8_t resist_blocked_send = DEF_RESIST_BLOCKED_SEND;
@@ -89,6 +92,9 @@ int32_t bidirect_link_to = DEFAULT_BIDIRECT_TIMEOUT;
 int32_t aggregations_po = DEF_AGGREGATIONS_PO;
 
 int32_t sequence_range = DEFAULT_SEQ_RANGE;
+
+int32_t initial_seqno = DEF_INITIAL_SEQNO;
+
 int32_t ttl = DEFAULT_TTL;
 
 uint8_t mobile_device = NO;
@@ -279,7 +285,12 @@ void print_advanced_opts ( int verbose ) {
 	if ( verbose )
 		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d\n", DEFAULT_SEQ_RANGE, MIN_SEQ_RANGE, MAX_SEQ_RANGE  );
 	
+	fprintf( stderr, "\n       --%s <value> : set initial seqno for this nodes OGMs\n", INITIAL_SEQNO_SWITCH );
+	if ( verbose )
+		fprintf( stderr, "          default: %d, (0 = random) allowed values: %d <= value <= %d\n", DEF_INITIAL_SEQNO, MIN_INITIAL_SEQNO, MAX_INITIAL_SEQNO  );
+	
 	fprintf( stderr, "\n       --%s <value> : set maximum of random re-broadcast delay \n", REBRC_DELAY_SWITCH );
+	fprintf( stderr, "          only evaluated with %s, otherwhise re-broadcast delay is randomized anyway\n", NO_AGGREGATIONS_SWITCH);
 	if ( verbose )
 		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d\n", DEF_REBRC_DELAY, MIN_REBRC_DELAY, MAX_REBRC_DELAY  );
 	
@@ -1227,6 +1238,9 @@ int8_t batman() {
 		
 	}
 
+	if ( initial_seqno == 0 )
+		initial_seqno = rand_num( FULL_SEQ_RANGE - (10*sequence_range) );
+	
 	list_for_each( list_pos, &if_list ) {
 
 		batman_if = list_entry( list_pos, struct batman_if, list );
@@ -1234,7 +1248,7 @@ int8_t batman() {
 		batman_if->out.version = COMPAT_VERSION;
 		batman_if->out.flags = 0x00;
 		batman_if->out.ttl = batman_if->if_ttl;
-		batman_if->out.seqno = 1;
+		batman_if->out.seqno = initial_seqno;
 		batman_if->out.orig = batman_if->addr.sin_addr.s_addr;
 		batman_if->out.prev_hop = 0x00;
 
@@ -1244,7 +1258,7 @@ int8_t batman() {
 		batman_if->if_send_redirects_old = get_send_redirects( batman_if->dev );
 		set_send_redirects( 0 , batman_if->dev );
 
-		schedule_own_packet( batman_if );
+		schedule_own_packet( batman_if, curr_time );
 
 	}
 	
@@ -1427,9 +1441,16 @@ int8_t batman() {
 					debug_output( 3, "Drop packet: OGM from %s, via NB %s, with old seqno! rcvd sqno %i, last valid seqno: %i! Maybe OGM-aggregation is to radical!?\n", orig_str, neigh_str, ogm->seqno, orig_node->last_seqno );
 					drop_it = YES;
 
-				} else if ( ((uint16_t)( ogm->seqno - orig_node->last_seqno )) > ((uint16_t)(2*sequence_range)) && orig_node->last_valid != 0 && ((orig_node->last_valid + (2000*sequence_range)) > curr_time ) ) {
+				} else if ( /* this originator IP is known and*/ 
+						orig_node->last_valid != 0 && 
+					    /* seqno is out of range and*/
+						((uint16_t)( ogm->seqno - orig_node->last_seqno )) > ((uint16_t)((dad_timeout*sequence_range)/100)) && 
+					    /* we have just recently received an in-range seqno */
+						curr_time < (orig_node->last_valid + ((originator_interval*dad_timeout*sequence_range)/100))  ) 
+					{
 
-					debug_output( 3, "Drop packet: OGM from %s via NB %s with out of range seqno! rcvd sqno %i, last valid seqno: %i at %d!\n              Maybe two nodes are using this IP!? Waiting %d more seconds before reinitialization...\n", orig_str, neigh_str, ogm->seqno, orig_node->last_seqno, orig_node->last_valid, (orig_node->last_valid + (2000*sequence_range) - curr_time)/1000 );
+					debug_output( 3, "Drop packet: DAD alert! OGM from %s via NB %s with out of range seqno! rcvd sqno %i, last valid seqno: %i at %d!\n              Maybe two nodes are using this IP!? Waiting %d more seconds before reinitialization...\n", orig_str, neigh_str, ogm->seqno, orig_node->last_seqno, orig_node->last_valid, ((orig_node->last_valid + ((originator_interval*sequence_range*dad_timeout)/100)) - curr_time)/1000 );
+					
 					drop_it = YES;
 
 				} else if ( alreadyConsidered( orig_node, ogm->seqno, neigh, if_incoming ) ) {

@@ -85,7 +85,8 @@ extern char unix_path[];
 #define MAX_GW_UNAVAIL_TIMEOUT 30000 /* 10000 */
 #define CHOOSE_GW_DELAY_DIVISOR 10 /* 1 */
 
-#define PURGE_TIMEOUT 400000   /* purge originators after time in ms if no valid packet comes in -> TODO: check influence on SEQ_RANGE */
+#define PURGE_SAFETY_PERIOD 10000
+#define PURGE_TIMEOUT (((originator_interval*sequence_range*dad_timeout)/50) + PURGE_SAFETY_PERIOD) /*=2*o*nbrf*dad/100=300s previously 400000*/   /* purge originators after time in ms if no valid packet comes in -> TODO: check influence on SEQ_RANGE */
 
 #define WARNING_PERIOD 20000
 
@@ -116,11 +117,23 @@ extern int32_t sequence_range;
 
 #define MAX_NUM_WORDS (( MAX_SEQ_RANGE / WORD_BIT_SIZE ) + ( ( MAX_SEQ_RANGE % WORD_BIT_SIZE > 0)? 1 : 0 )) 
 
+extern int32_t initial_seqno;
+#define MIN_INITIAL_SEQNO 0
+#define MAX_INITIAL_SEQNO FULL_SEQ_RANGE
+#define DEF_INITIAL_SEQNO 0 /* causes initial_seqno to be randomized */
+#define INITIAL_SEQNO_SWITCH "initial-seqno"
 
 extern int16_t originator_interval;
 #define DEFAULT_ORIGINATOR_INTERVAL 1000
 #define MIN_ORIGINATOR_INTERVAL JITTER
 #define MAX_ORIGINATOR_INTERVAL 10000 
+
+extern int32_t dad_timeout;
+#define DEFAULT_DAD_TIMEOUT 100
+#define MIN_DAD_TIMEOUT 50 /* if this is changed, be careful with PURGE_TIMEOUT */
+#define MAX_DAD_TIMEOUT 400
+#define DAD_TIMEOUT_SWITCH "dad-timeout"
+
 
 extern uint8_t mobile_device;
 #define ASOCIAL_SWITCH           "asocial-device"
@@ -171,6 +184,13 @@ extern int32_t send_clones; // useful for asymmetric-path and backup-path discov
 #define MAX_SEND_CLONES 300
 #define SEND_CLONES_SWITCH   "send-clones"
 #define SEND_CLONES_IF_SWITCH 'c'
+
+#define WLAN_IF_SWITCH 'w'
+#define DEF_WLAN_IF_CLONES 200
+
+#define LAN_IF_SWITCH 'l'
+#define DEF_LAN_IF_CLONES 100
+
 
 extern int32_t asymmetric_weight;
 #define DEF_ASYMMETRIC_WEIGHT 0
@@ -431,6 +451,7 @@ struct orig_node                 /* structure for orig_list maintaining nodes of
 	struct batman_if *batman_if;
 	uint16_t *bidirect_link;    /* if node is a bidrectional neighbour, when my originator packet was broadcasted (replied) by this node and received by me */
 	uint32_t last_valid;              /* when last packet from this node was received */
+	uint32_t first_valid;
 	uint8_t  gwflags;                 /* flags related to gateway functions: gateway class */
 	uint8_t  gwtypes;                 /* flags related to offered gateway tunnel types */
 	struct ext_packet *hna_array;
@@ -445,7 +466,7 @@ struct orig_node                 /* structure for orig_list maintaining nodes of
 	TYPE_OF_WORD *lq_bits;            /* for link-quality (lq) statistics */
 	uint16_t last_lq_seqno;           /* for link-quality (lq) statistics */
 	
-	TYPE_OF_WORD send_old_seq_bits[ MAX_NUM_WORDS ]; /* just for debugging, indicates the re-broadcasted (non-unidirectional and non-quickest) OGMs for this foreign OG */
+//	TYPE_OF_WORD send_old_seq_bits[ MAX_NUM_WORDS ]; /* just for debugging, indicates the re-broadcasted (non-unidirectional and non-quickest) OGMs for this foreign OG */
 	
 	TYPE_OF_WORD *dbg_rcvd_bits;
 	uint16_t last_dbg_rcvd_seqno;

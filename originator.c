@@ -147,7 +147,10 @@ void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t n
 
 	debug_output( 4, "update_originator(): Searching and updating originator entry of received packet,  \n" );
 
-
+	/* it seems we missed a lot of packets or the other host restarted */
+	if (  orig_node->first_valid == 0  ||  ((int16_t)(in->seqno - orig_node->last_seqno)) > sequence_range  ||  ((int16_t)(in->seqno - orig_node->last_seqno)) < -sequence_range  )
+		orig_node->first_valid = rcvd_time;
+	
 	list_for_each( neigh_pos, &orig_node->neigh_list ) {
 
 		tmp_neigh_node = list_entry( neigh_pos, struct neigh_node, list );
@@ -804,9 +807,10 @@ void debug_orig() {
 
 		debug_output( 1, "BOD \n" );
 		
-		debug_output( 1, "BatMan-eXp %s%s, IF: %s %s, WindSize: %i, BLT: %i, OGI: %i, UT: %id%2ih%2im \n",
+		debug_output( 1, "BatMan-eXp %s%s, IF %s %s, WindSize %i, OGI %i, currSeqno %d, UT %id%2ih%2im \n",
 			SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), 
-			((struct batman_if *)if_list.next)->dev, orig_str, sequence_range, bidirect_link_to, originator_interval,
+					  ((struct batman_if *)if_list.next)->dev, orig_str, sequence_range, originator_interval, 
+					    (list_entry( (&if_list)->next, struct batman_if, list ))->out.seqno,
 			uptime_sec/86400, ((uptime_sec%86400)/3600), ((uptime_sec)%3600)/60  );
 		
 		if ( debug_clients.clients_num[3] > 0 ) {
@@ -825,7 +829,7 @@ void debug_orig() {
 
 		}
 		
-		debug_output( 1, "Neighbor        outgoingIF        bestLink (brc rcvd lseq lvld) [     viaIF RTQ  RQ  TQ]..\n");
+		debug_output( 1, "Neighbor        outgoingIF        bestLink (brc rcvd knownSince lseq lvld) [     viaIF RTQ  RQ  TQ]..\n");
 
 		
 		while ( NULL != ( hashit = hash_iterate( orig_hash, hashit ) ) ) {
@@ -849,12 +853,15 @@ void debug_orig() {
 			
 			addr_to_string( orig_node->orig, str, sizeof (str) );
 			addr_to_string( orig_node->router->addr, str2, sizeof (str2) );
-			dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s %10s %15s (%3i %3i %5i %4i)",
+			dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s %10s %15s (%3i %3i %3id%2ih%2im %5i %4i)",
 					str, orig_node->router->if_incoming->dev, str2,
 					orig_node->router->packet_count /* accepted */,
 					get_dbg_rcvd_all_bits( orig_node, orig_node->router->if_incoming, sequence_range ), /* all */
+					((orig_node->first_valid)/86400000), 
+					(((orig_node->first_valid)%86400000)/3600000),
+					(((orig_node->first_valid)%3600000)/60000),
 			    		orig_node->last_seqno,
-					( get_time() - orig_node->last_valid )/1000 ); 
+					( uptime_sec - (orig_node->last_valid/1000) ) ); 
 					
 			list_for_each( neigh_pos, &orig_node->neigh_list ) {
 				neigh_node = list_entry( neigh_pos, struct neigh_node, list );
@@ -877,7 +884,7 @@ void debug_orig() {
 			debug_output( 1, "%s \n", dbg_ogm_str );
 		}
 		
-		debug_output( 1, "\nOriginator      outgoingIF     bestNextHop (brc rcvd lseq lvld) alternative next hops...\n");
+		debug_output( 1, "\nOriginator      outgoingIF     bestNextHop (brc rcvd knownSince lseq lvld) alternative next hops...\n");
 		
 		while ( NULL != ( hashit = hash_iterate( orig_hash, hashit ) ) ) {
 
@@ -890,12 +897,15 @@ void debug_orig() {
 
 			addr_to_string( orig_node->orig, str, sizeof (str) );
 			addr_to_string( orig_node->router->addr, str2, sizeof (str2) );
-			dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s %10s %15s (%3i %3i %5i %4i)", 
+			dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s %10s %15s (%3i %3i %3id%2ih%2im %5i %4i)", 
 					str, orig_node->router->if_incoming->dev, str2,
 					orig_node->router->packet_count /* accepted */,
 					get_dbg_rcvd_all_bits( orig_node, orig_node->router->if_incoming, sequence_range ), /* all */
+					((orig_node->first_valid)/86400000), 
+					(((orig_node->first_valid)%86400000)/3600000),
+					(((orig_node->first_valid)%3600000)/60000),
 					orig_node->last_seqno,
-					( get_time() - orig_node->last_valid )/1000 ); 
+					( uptime_sec - (orig_node->last_valid/1000) ) ); 
 					
 
 			list_for_each( neigh_pos, &orig_node->neigh_list ) {

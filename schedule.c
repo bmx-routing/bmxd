@@ -27,7 +27,7 @@
 
 
 
-void schedule_own_packet( struct batman_if *batman_if ) {
+void schedule_own_packet( struct batman_if *batman_if, uint32_t current_time ) {
 
 	struct forw_node *forw_node_new, *forw_packet_tmp = NULL;
 	struct list_head *list_pos, *prev_list_head;
@@ -37,7 +37,13 @@ void schedule_own_packet( struct batman_if *batman_if ) {
 
 	INIT_LIST_HEAD( &forw_node_new->list );
 
-	forw_node_new->send_time = get_time() + originator_interval - JITTER + rand_num( 2 * JITTER );
+	
+	if ( aggregations_po )
+		forw_node_new->send_time = current_time + originator_interval;
+	else
+		forw_node_new->send_time = current_time + originator_interval + rand_num( 2 * JITTER ) - JITTER;
+	
+	
 	forw_node_new->if_outgoing = batman_if;
 	forw_node_new->own = 1;
 
@@ -197,13 +203,13 @@ void send_outstanding_packets() {
 	int32_t send_bucket;
 	uint8_t done;
 	
-	uint32_t start_time = get_time();
+	uint32_t send_time = get_time();
 
 	while ( ! list_empty( &forw_list ) ) {
 
 		forw_node = list_entry( (&forw_list)->next, struct forw_node, list );
 	
-		if ( forw_node->send_time > start_time )
+		if ( forw_node->send_time > send_time )
 			break;
 	
 		jumbo_packet++;
@@ -226,7 +232,7 @@ void send_outstanding_packets() {
 	
 				forw_node = list_entry( forw_pos, struct forw_node, list );
 	
-				if ( forw_node->send_time <= start_time && (aggregated_size + forw_node->pack_buff_len) <= MAX_PACKET_OUT_SIZE ) {
+				if ( forw_node->send_time <= send_time && (aggregated_size + forw_node->pack_buff_len) <= MAX_PACKET_OUT_SIZE ) {
 					
 					// keep care to not aggregate more packets than would fit into max packet size
 					if ( aggregations_po )
@@ -409,7 +415,7 @@ void send_outstanding_packets() {
 	
 			forw_node = list_entry( forw_pos, struct forw_node, list );
 	
-			if ( forw_node->send_time <= start_time && (aggregated_size + forw_node->pack_buff_len) <= MAX_PACKET_OUT_SIZE ) {
+			if ( forw_node->send_time <= send_time && (aggregated_size + forw_node->pack_buff_len) <= MAX_PACKET_OUT_SIZE ) {
 					
 				// keep care to not not remove more packets than have been aggregated 
 				if ( aggregations_po )
@@ -440,7 +446,7 @@ void send_outstanding_packets() {
 		batman_if = list_entry(if_pos, struct batman_if, list);
 				
 		if ( batman_if->send_own ) 
-			schedule_own_packet( batman_if );
+			schedule_own_packet( batman_if, send_time );
 
 		batman_if->send_own = 0;
 				
