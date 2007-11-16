@@ -148,8 +148,8 @@ void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t n
 	debug_output( 4, "update_originator(): Searching and updating originator entry of received packet,  \n" );
 
 	/* it seems we missed a lot of packets or the other host restarted */
-	if (  orig_node->first_valid == 0  ||  ((int16_t)(in->seqno - orig_node->last_seqno)) > sequence_range  ||  ((int16_t)(in->seqno - orig_node->last_seqno)) < -sequence_range  )
-		orig_node->first_valid = rcvd_time;
+	if (  orig_node->first_valid_sec == 0  ||  ((int16_t)(in->seqno - orig_node->last_seqno)) > sequence_range  ||  ((int16_t)(in->seqno - orig_node->last_seqno)) < -sequence_range  )
+		orig_node->first_valid_sec = rcvd_time/1000;
 	
 	list_for_each( neigh_pos, &orig_node->neigh_list ) {
 
@@ -857,9 +857,9 @@ void debug_orig() {
 					str, orig_node->router->if_incoming->dev, str2,
 					orig_node->router->packet_count /* accepted */,
 					get_dbg_rcvd_all_bits( orig_node, orig_node->router->if_incoming, sequence_range ), /* all */
-					((orig_node->first_valid)/86400000), 
-					(((orig_node->first_valid)%86400000)/3600000),
-					(((orig_node->first_valid)%3600000)/60000),
+					 ((uptime_sec-(orig_node->first_valid_sec))/86400), 
+					(((uptime_sec-(orig_node->first_valid_sec))%86400)/3600),
+					(((uptime_sec-(orig_node->first_valid_sec))%3600)/60),
 			    		orig_node->last_seqno,
 					( uptime_sec - (orig_node->last_valid/1000) ) ); 
 					
@@ -901,9 +901,9 @@ void debug_orig() {
 					str, orig_node->router->if_incoming->dev, str2,
 					orig_node->router->packet_count /* accepted */,
 					get_dbg_rcvd_all_bits( orig_node, orig_node->router->if_incoming, sequence_range ), /* all */
-					((orig_node->first_valid)/86400000), 
-					(((orig_node->first_valid)%86400000)/3600000),
-					(((orig_node->first_valid)%3600000)/60000),
+					 ((uptime_sec-(orig_node->first_valid_sec))/86400), 
+					(((uptime_sec-(orig_node->first_valid_sec))%86400)/3600),
+					(((uptime_sec-(orig_node->first_valid_sec))%3600)/60),
 					orig_node->last_seqno,
 					( uptime_sec - (orig_node->last_valid/1000) ) ); 
 					

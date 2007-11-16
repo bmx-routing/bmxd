@@ -451,7 +451,7 @@ struct orig_node                 /* structure for orig_list maintaining nodes of
 	struct batman_if *batman_if;
 	uint16_t *bidirect_link;    /* if node is a bidrectional neighbour, when my originator packet was broadcasted (replied) by this node and received by me */
 	uint32_t last_valid;              /* when last packet from this node was received */
-	uint32_t first_valid;
+	uint32_t first_valid_sec;
 	uint8_t  gwflags;                 /* flags related to gateway functions: gateway class */
 	uint8_t  gwtypes;                 /* flags related to offered gateway tunnel types */
 	struct ext_packet *hna_array;
