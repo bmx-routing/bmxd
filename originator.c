@@ -829,7 +829,7 @@ void debug_orig() {
 
 		}
 		
-		debug_output( 1, "Neighbor        outgoingIF        bestLink (brc rcvd knownSince lseq lvld) [     viaIF RTQ  RQ  TQ]..\n");
+		debug_output( 1, "Neighbor        outgoingIF     bestNextHop (brc rcvd knownSince lseq lvld) [     viaIF RTQ  RQ  TQ]..\n");
 
 		
 		while ( NULL != ( hashit = hash_iterate( orig_hash, hashit ) ) ) {
@@ -886,6 +886,8 @@ void debug_orig() {
 		
 		debug_output( 1, "\nOriginator      outgoingIF     bestNextHop (brc rcvd knownSince lseq lvld) alternative next hops...\n");
 		
+		int nodes_count = 0, avg_packet_count = 0, avg_rcvd_all_bits = 0, avg_lvld = 0;
+		
 		while ( NULL != ( hashit = hash_iterate( orig_hash, hashit ) ) ) {
 
 			orig_node = hashit->bucket->data;
@@ -893,6 +895,7 @@ void debug_orig() {
 			if ( orig_node->router == NULL )
 				continue;
 
+			nodes_count++;
 			batman_count++;
 
 			addr_to_string( orig_node->orig, str, sizeof (str) );
@@ -907,6 +910,10 @@ void debug_orig() {
 					orig_node->last_seqno,
 					( uptime_sec - (orig_node->last_valid/1000) ) ); 
 					
+			avg_packet_count+=  orig_node->router->packet_count; /* accepted */
+			avg_rcvd_all_bits+= get_dbg_rcvd_all_bits( orig_node, orig_node->router->if_incoming, sequence_range ); /* all */ 
+			avg_lvld+= ( uptime_sec - (orig_node->last_valid/1000) );
+
 
 			list_for_each( neigh_pos, &orig_node->neigh_list ) {
 				neigh_node = list_entry( neigh_pos, struct neigh_node, list );
@@ -923,6 +930,12 @@ void debug_orig() {
 			debug_output( 1, "%s \n", dbg_ogm_str );
 			//debug_output( 4, "%s \n", dbg_ogm_str );
 			
+		}
+		
+		if ( nodes_count > 0 ) {
+			dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%3d %-13s                          (%3i %3i                  %4i)", 
+					nodes_count, "nodes - avg:", avg_packet_count/nodes_count, avg_rcvd_all_bits/nodes_count, avg_lvld/nodes_count ); 
+			debug_output( 1, "%s \n", dbg_ogm_str );
 		}
 		
 		debug_output( 1, "\nOriginator      Announced networks HNAs:  network/netmask or interface/IF (B:blocked)...\n");
