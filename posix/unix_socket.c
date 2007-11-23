@@ -45,119 +45,111 @@ void debug_output( int8_t debug_prio_arg, char *format, ... ) {
 	va_list args;
 	char tmp_string[MAX_DBG_STR_SIZE + 1]; // TBD: must be checked for overflow when using with sprintf
 	
-	int8_t debug_prio;
-	int8_t debug_request[5] = {-1,-1,-1,-1,-1};
 	int i = 0;
+	int8_t debug_prio;
+	int8_t debug_request[debug_level_max];// = {-1,-1,-1,-1,-1};
+	memset( &debug_request, -1, debug_level_max );
 	
-	if ( debug_prio_arg == 0 ) {
+	if ( debug_prio_arg == DBGL_SYSTEM ) {
 		
-		debug_request[i++] = 0;
-		if ( debug_clients.clients_num[2] > 0 ) debug_request[i++] = 3;
-		if ( debug_clients.clients_num[3] > 0 ) debug_request[i++] = 4;
+		debug_request[i++] = DBGL_SYSTEM;
+		if ( debug_clients.clients_num[DBGL_CHANGES  -1] > 0 ) debug_request[i++] = DBGL_CHANGES;
+		if ( debug_clients.clients_num[DBGL_ALL      -1] > 0 ) debug_request[i++] = DBGL_ALL;
 		
-	} else if ( debug_prio_arg == 1 ) {
+	} else if ( debug_prio_arg == DBGL_ROUTES ) {
 		
-		if ( debug_clients.clients_num[0] > 0 ) debug_request[i++] = 1;
-		if ( debug_clients.clients_num[3] > 0 ) debug_request[i++] = 4;
+		if ( debug_clients.clients_num[DBGL_ROUTES   -1] > 0 ) debug_request[i++] = DBGL_ROUTES;
 
-	} else if ( debug_prio_arg == 2 ) {
+	} else if ( debug_prio_arg == DBGL_GATEWAYS ) {
 		
-		if ( debug_clients.clients_num[1] > 0 ) debug_request[i++] = 2;
-		if ( debug_clients.clients_num[3] > 0 ) debug_request[i++] = 4;
+		if ( debug_clients.clients_num[DBGL_GATEWAYS -1] > 0 ) debug_request[i++] = DBGL_GATEWAYS;
+		if ( debug_clients.clients_num[DBGL_ALL      -1] > 0 ) debug_request[i++] = DBGL_ALL;
 
-	} else if ( debug_prio_arg == 3 ) {
+	} else if ( debug_prio_arg == DBGL_CHANGES ) {
 	
-		if ( debug_clients.clients_num[2] > 0 ) debug_request[i++] = 3;
-		if ( debug_clients.clients_num[3] > 0 ) debug_request[i++] = 4;
+		if ( debug_clients.clients_num[DBGL_CHANGES  -1] > 0 ) debug_request[i++] = DBGL_CHANGES;
+		if ( debug_clients.clients_num[DBGL_ALL      -1] > 0 ) debug_request[i++] = DBGL_ALL;
 
-	} else if ( debug_prio_arg == 4 ) {
+	} else if ( debug_prio_arg == DBGL_ALL ) {
 	
-		if ( debug_clients.clients_num[3] > 0 ) debug_request[i++] = 4;
+		if ( debug_clients.clients_num[DBGL_ALL      -1] > 0 ) debug_request[i++] = DBGL_ALL;
 	
-	} else if ( debug_prio_arg == 5 ) {
+	} else if ( debug_prio_arg == DBGL_PROFILE ) {
 	
-		if ( debug_clients.clients_num[4] > 0 ) debug_request[i++] = 5;
+		if ( debug_clients.clients_num[DBGL_PROFILE  -1] > 0 ) debug_request[i++] = DBGL_PROFILE;
+	
+	} else if ( debug_prio_arg == DBGL_DETAILS ) {
+	
+		if ( debug_clients.clients_num[DBGL_DETAILS  -1] > 0 ) debug_request[i++] = DBGL_DETAILS;
+		if ( debug_clients.clients_num[DBGL_ALL      -1] > 0 ) debug_request[i++] = DBGL_ALL;
 	
 	}
 	i = 0;
 	
-while( debug_request[i] >= 0 ) {	
+	while( debug_request[i] >= 0 ) {	
+		
+		debug_prio = debug_request[i];
+		i++;
+		
+		if ( debug_prio == DBGL_SYSTEM ) {
 	
-	debug_prio = debug_request[i];
-	i++;
+			if ( debug_level == DBGL_SYSTEM ) {
 	
-	if ( debug_prio == 0 ) {
-
-		if ( debug_level == 0 ) {
-
-			va_start( args, format );
-			vsyslog( LOG_ERR, format, args );
-			va_end( args );
-
-		} 
-/*		else if ( ( debug_level == 3 ) || ( debug_level == 4 ) ) {
-
-			if ( debug_level == 4 )
-				printf( "[%10u] ", get_time() );
-
-			va_start( args, format );
-			vprintf( format, args );
-			va_end( args );
-
-		debug_prio_intern = 3;
-
-		}
-*/
-		continue;		
+				va_start( args, format );
+				vsyslog( LOG_ERR, format, args );
+				va_end( args );
 	
-	} else {
-
-		debug_prio_intern = debug_prio - 1;
-
-	}
-
-
-	if ( debug_clients.clients_num[debug_prio_intern] > 0 ) {
-
-		if ( pthread_mutex_trylock( (pthread_mutex_t *)debug_clients.mutex[debug_prio_intern] ) == 0 ) {
-
-			list_for_each( debug_pos, (struct list_head *)debug_clients.fd_list[debug_prio_intern] ) {
-
-				debug_level_info = list_entry(debug_pos, struct debug_level_info, list);
-
-				if ( debug_prio_intern >= 2 )
-					dprintf( debug_level_info->fd, "[%10u] ", get_time() );
-
-				if ( ( ( debug_level == 1 ) || ( debug_level == 2 ) ) && ( debug_level_info->fd == 1 ) && ( strncmp( format, "BOD", 3 ) == 0 ) ) {
-
-					system( "clear" );
-
-				} else {
-
-					if ( ( ( debug_level != 1 ) && ( debug_level != 2 ) ) || ( debug_level_info->fd != 1 ) || ( strncmp( format, "EOD", 3 ) != 0 ) ) {
-
-						va_start( args, format );
-						vsnprintf( tmp_string, MAX_DBG_STR_SIZE, format, args );
-						dprintf( debug_level_info->fd, "%s", tmp_string );
-						va_end( args );
-
-					}
-
-				}
-
-			}
-
-			if ( pthread_mutex_unlock( (pthread_mutex_t *)debug_clients.mutex[debug_prio_intern] ) < 0 )
-				debug_output( 0, "Error - could not unlock mutex (debug_output): %s \n", strerror( errno ) );
-
+			} 
+			continue;		
+		
 		} else {
-
-			debug_output( 0, "Warning - could not trylock mutex (debug_output): %s \n", strerror( EBUSY ) );
-
+	
+			debug_prio_intern = debug_prio - 1;
+	
 		}
-
+	
+	
+		if ( debug_clients.clients_num[debug_prio_intern] > 0 ) {
+	
+			if ( pthread_mutex_trylock( (pthread_mutex_t *)debug_clients.mutex[debug_prio_intern] ) == 0 ) {
+	
+				list_for_each( debug_pos, (struct list_head *)debug_clients.fd_list[debug_prio_intern] ) {
+	
+					debug_level_info = list_entry(debug_pos, struct debug_level_info, list);
+	
+					if ( debug_prio == DBGL_CHANGES || debug_prio == DBGL_ALL || debug_prio == DBGL_PROFILE  )
+						dprintf( debug_level_info->fd, "[%10u] ", get_time() );
+	
+					if ( ( ( debug_level == DBGL_ROUTES ) || ( debug_level == DBGL_GATEWAYS ) ) && ( debug_level_info->fd == 1 ) && ( strncmp( format, "BOD", 3 ) == 0 ) ) {
+	
+						system( "clear" );
+	
+					} else {
+	
+						if ( ( ( debug_level != DBGL_ROUTES ) && ( debug_level != DBGL_GATEWAYS ) ) || ( debug_level_info->fd != 1 ) || ( strncmp( format, "EOD", 3 ) != 0 ) ) {
+	
+							va_start( args, format );
+							vsnprintf( tmp_string, MAX_DBG_STR_SIZE, format, args );
+							dprintf( debug_level_info->fd, "%s", tmp_string );
+							va_end( args );
+	
+						}
+	
+					}
+	
+				}
+	
+				if ( pthread_mutex_unlock( (pthread_mutex_t *)debug_clients.mutex[debug_prio_intern] ) < 0 )
+					debug_output( 0, "Error - could not unlock mutex (debug_output): %s \n", strerror( errno ) );
+	
+			} else {
+	
+				debug_output( 0, "Warning - could not trylock mutex (debug_output): %s \n", strerror( EBUSY ) );
+	
+			}
+	
+		}
 	}
-}
 
 }
 	
@@ -284,14 +276,18 @@ void *unix_listen( void *arg ) {
 									}
 
 									if ( unix_client->debug_level != buff[2] ) {
-
+										
 										if ( pthread_mutex_lock( (pthread_mutex_t *)debug_clients.mutex[buff[2] - 1] ) != 0 )
 											debug_output( 0, "Error - could not lock mutex (unix_listen => 2): %s \n", strerror( errno ) );
 
 										debug_level_info = debugMalloc( sizeof(struct debug_level_info), 202 );
+										
 										INIT_LIST_HEAD( &debug_level_info->list );
+										
 										debug_level_info->fd = unix_client->sock;
+										
 										list_add( &debug_level_info->list, (struct list_head_first *)debug_clients.fd_list[buff[2] - 1] );
+										
 										debug_clients.clients_num[buff[2] - 1]++;
 
 										unix_client->debug_level = buff[2];

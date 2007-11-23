@@ -373,7 +373,17 @@ extern uint8_t gateway_class;
 
 extern char *prog_name;
 extern uint8_t debug_level;
-extern uint8_t debug_level_max;
+//extern uint8_t debug_level_max;
+#define debug_level_max 8
+#define DBGL_SYSTEM     0
+#define DBGL_ROUTES     1
+#define DBGL_GATEWAYS   2
+#define DBGL_CHANGES    3
+#define DBGL_ALL        4
+#define DBGL_PROFILE    5
+#define DBGL_DETAILS    8
+
+
 
 extern struct ext_packet *my_hna_ext_array;
 extern uint16_t my_hna_ext_array_len;
@@ -447,8 +457,8 @@ struct bat_packet
 struct orig_node                 /* structure for orig_list maintaining nodes of mesh */
 {
 	uint32_t orig;          /* this must be the first four bytes! otherwise the hash functionality does not work */
-	struct neigh_node *router;
-	struct batman_if *batman_if;
+	struct neigh_node *router;   /* the neighbor which is the currently best_next_hop */
+	struct batman_if *batman_if; /* TBD: can this be removed? This equals router->if_incoming ?! the interface to route towards the currently best next hop */
 	uint16_t *bidirect_link;    /* if node is a bidrectional neighbour, when my originator packet was broadcasted (replied) by this node and received by me */
 	uint32_t last_valid;              /* when last packet from this node was received */
 	uint32_t first_valid_sec;

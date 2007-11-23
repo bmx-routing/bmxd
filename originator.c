@@ -751,8 +751,8 @@ void debug_orig() {
 	uint32_t uptime_sec;
 	int download_speed, upload_speed;
 	static char str[ADDR_STR_LEN], str2[ADDR_STR_LEN], orig_str[ADDR_STR_LEN];
-	int dbg_ogm_out = 0, lq, nlq, l2q;
-	static char dbg_ogm_str[MAX_DBG_STR_SIZE + 1]; // TBD: must be checked for overflow when using with sprintf
+	int dbg_ogm_out = 0, dbg_ogm_out2 = 0, lq, nlq, l2q;
+	static char dbg_ogm_str[MAX_DBG_STR_SIZE + 1], dbg_ogm_str2[MAX_DBG_STR_SIZE + 1]; // TBD: must be checked for overflow when using with sprintf
 	uint8_t debug_neighbor = NO, blocked;
 	uint16_t hna_count = 0;
 //	uint32_t hna, netmask;
@@ -761,17 +761,17 @@ void debug_orig() {
 	struct hna_hash_node *hash_node;
 
 
-	if ( debug_clients.clients_num[1] > 0 ) {
+	if ( debug_clients.clients_num[DBGL_GATEWAYS-1] > 0 ) {
 
-		debug_output( 2, "BOD\n" );
+		debug_output( DBGL_GATEWAYS, "BOD\n" );
 
 		if ( list_empty( &gw_list ) ) {
 
-			debug_output( 2, "No gateways in range ... \n" );
+			debug_output( DBGL_GATEWAYS, "No gateways in range ... \n" );
 
 		} else {
 
-			debug_output( 2, "%12s     %15s (%s/%i) \n", "Gateway", "Router", "#", sequence_range );  
+			debug_output( DBGL_GATEWAYS, "%12s     %15s (%s/%i) \n", "Gateway", "Router", "#", sequence_range );  
 
 			list_for_each( orig_pos, &gw_list ) {
 
@@ -785,51 +785,54 @@ void debug_orig() {
 				
 				get_gw_speeds( gw_node->orig_node->gwflags, &download_speed, &upload_speed );
 				
-				debug_output( 2, "%s %-15s %''15s (%3i), gw_class %2i - %i%s/%i%s, reliability: %i, supported tunnel types %s, %s \n", ( curr_gateway == gw_node ? "=>" : "  " ), str, str2, gw_node->orig_node->router->packet_count, gw_node->orig_node->gwflags, ( download_speed > 2048 ? download_speed / 1024 : download_speed ), ( download_speed > 2048 ? "MBit" : "KBit" ), ( upload_speed > 2048 ? upload_speed / 1024 : upload_speed ), ( upload_speed > 2048 ? "MBit" : "KBit" ), gw_node->unavail_factor, ((gw_node->orig_node->gwtypes&TWO_WAY_TUNNEL_FLAG)?"TWT":"-"), ((gw_node->orig_node->gwtypes&ONE_WAY_TUNNEL_FLAG)?"OWT":"-") );
+				debug_output( DBGL_GATEWAYS, "%s %-15s %''15s (%3i), gw_class %2i - %i%s/%i%s, reliability: %i, supported tunnel types %s, %s \n", ( curr_gateway == gw_node ? "=>" : "  " ), str, str2, gw_node->orig_node->router->packet_count, gw_node->orig_node->gwflags, ( download_speed > 2048 ? download_speed / 1024 : download_speed ), ( download_speed > 2048 ? "MBit" : "KBit" ), ( upload_speed > 2048 ? upload_speed / 1024 : upload_speed ), ( upload_speed > 2048 ? "MBit" : "KBit" ), gw_node->unavail_factor, ((gw_node->orig_node->gwtypes&TWO_WAY_TUNNEL_FLAG)?"2WT":"-"), ((gw_node->orig_node->gwtypes&ONE_WAY_TUNNEL_FLAG)?"1WT":"-") );
 				
 				batman_count++;
 
 			}
 
 			if ( batman_count == 0 )
-				debug_output( 2, "No gateways in range ... \n" );
+				debug_output( DBGL_GATEWAYS, "No gateways in range ... \n" );
 
 		}
 
-		debug_output( 2, "EOD\n" );
+		debug_output( DBGL_GATEWAYS, "EOD\n" );
 
 	}
 
-	if ( ( debug_clients.clients_num[0] > 0 ) || ( debug_clients.clients_num[3] > 0 ) ) {
+	if ( ( debug_clients.clients_num[DBGL_ROUTES-1] > 0 ) || ( debug_clients.clients_num[DBGL_DETAILS-1] > 0 ) || ( debug_clients.clients_num[DBGL_ALL-1] > 0 ) ) {
 
 		addr_to_string( ((struct batman_if *)if_list.next)->addr.sin_addr.s_addr, orig_str, sizeof(orig_str) );
 		uptime_sec = (uint32_t)( get_time() / 1000 );
 
-		debug_output( 1, "BOD \n" );
+		debug_output( DBGL_ROUTES, "BOD \n" );
+		debug_output( DBGL_ROUTES, "  %-11s (%s/%3i) %15s [%10s]: %20s ... [BatMan-eXp %s%s, MainIF/IP: %s/%s, UT: %id%2ih%2im] ATTENTION: detailed output with -d %d\n", "Originator", "#", sequence_range, "Nexthop", "outgoingIF", "Potential nexthops", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), ((struct batman_if *)if_list.next)->dev, orig_str, uptime_sec/86400, ((uptime_sec%86400)/3600), ((uptime_sec)%3600)/60 , DBGL_DETAILS);
 		
-		debug_output( 1, "BatMan-eXp %s%s, IF %s %s, WindSize %i, OGI %i, currSeqno %d, UT %id%2ih%2im \n",
-			SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), 
-					  ((struct batman_if *)if_list.next)->dev, orig_str, sequence_range, originator_interval, 
-					    (list_entry( (&if_list)->next, struct batman_if, list ))->out.seqno,
+		
+		debug_output( DBGL_DETAILS, "BOD \n" );
+		debug_output( DBGL_DETAILS, "BatMan-eXp %s%s, IF %s %s, WindSize %i, OGI %i, currSeqno %d, UT %id%2ih%2im \n",
+		        SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), 
+			((struct batman_if *)if_list.next)->dev, orig_str, sequence_range, originator_interval, 
+			(list_entry( (&if_list)->next, struct batman_if, list ))->out.seqno,
 			uptime_sec/86400, ((uptime_sec%86400)/3600), ((uptime_sec)%3600)/60  );
 		
-		if ( debug_clients.clients_num[3] > 0 ) {
+		
+		
+		
+		if ( debug_clients.clients_num[DBGL_ALL-1] > 0 ) {
 
-			debug_output( 4, "------------------ DEBUG ------------------ \n" );
-			debug_output( 4, "Forward list \n" );
+			debug_output( DBGL_ALL, "------------------ DEBUG ------------------ \n" );
+			debug_output( DBGL_ALL, "Forward list \n" );
 
 			list_for_each( forw_pos, &forw_list ) {
 				forw_node = list_entry( forw_pos, struct forw_node, list );
 				addr_to_string( ((struct bat_packet *)forw_node->pack_buff)->orig, str, sizeof(str) );
-				debug_output( 4, "    %s at %u \n", str, forw_node->send_time );
+				debug_output( DBGL_ALL, "    %s at %u \n", str, forw_node->send_time );
 			}
-
-			//debug_output( 4, "Originator list \n" );
-			//debug_output( 4, "  %-12s %14s (%s/%3i %9s): %20s\n", "Originator", "Router", "#", sequence_range, "lastvalid", "Alternative routers" );
 
 		}
 		
-		debug_output( 1, "Neighbor        outgoingIF     bestNextHop (brc rcvd knownSince lseq lvld) [     viaIF RTQ  RQ  TQ]..\n");
+		debug_output( DBGL_DETAILS, "Neighbor        outgoingIF     bestNextHop (brc rcvd knownSince lseq lvld) [     viaIF RTQ  RQ  TQ]..\n");
 
 		
 		while ( NULL != ( hashit = hash_iterate( orig_hash, hashit ) ) ) {
@@ -881,10 +884,11 @@ void debug_orig() {
 				}
 			
 			}
-			debug_output( 1, "%s \n", dbg_ogm_str );
+			debug_output( DBGL_DETAILS, "%s \n", dbg_ogm_str );
 		}
 		
-		debug_output( 1, "\nOriginator      outgoingIF     bestNextHop (brc rcvd knownSince lseq lvld) alternative next hops...\n");
+		debug_output( DBGL_DETAILS, "\n");
+		debug_output( DBGL_DETAILS, "Originator      outgoingIF     bestNextHop (brc rcvd knownSince lseq lvld), alternativeNextHop(s)...\n");
 		
 		int nodes_count = 0, avg_packet_count = 0, avg_rcvd_all_bits = 0, avg_lvld = 0;
 		
@@ -900,45 +904,73 @@ void debug_orig() {
 
 			addr_to_string( orig_node->orig, str, sizeof (str) );
 			addr_to_string( orig_node->router->addr, str2, sizeof (str2) );
-			dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s %10s %15s (%3i %3i %3id%2ih%2im %5i %4i)", 
-					str, orig_node->router->if_incoming->dev, str2,
-					orig_node->router->packet_count /* accepted */,
-					get_dbg_rcvd_all_bits( orig_node, orig_node->router->if_incoming, sequence_range ), /* all */
-					 ((uptime_sec-(orig_node->first_valid_sec))/86400), 
-					(((uptime_sec-(orig_node->first_valid_sec))%86400)/3600),
-					(((uptime_sec-(orig_node->first_valid_sec))%3600)/60),
-					orig_node->last_seqno,
-					( uptime_sec - (orig_node->last_valid/1000) ) ); 
-					
-			avg_packet_count+=  orig_node->router->packet_count; /* accepted */
-			avg_rcvd_all_bits+= get_dbg_rcvd_all_bits( orig_node, orig_node->router->if_incoming, sequence_range ); /* all */ 
-			avg_lvld+= ( uptime_sec - (orig_node->last_valid/1000) );
-
-
-			list_for_each( neigh_pos, &orig_node->neigh_list ) {
-				neigh_node = list_entry( neigh_pos, struct neigh_node, list );
-
-				if( neigh_node->addr != orig_node->router->addr ) {
-					
-					addr_to_string( neigh_node->addr, str, sizeof (str) );
-
-					dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), " %15s (%3i)", str, neigh_node->packet_count );
+			
+			if ( ( debug_clients.clients_num[DBGL_DETAILS-1] > 0 ) || ( debug_clients.clients_num[DBGL_ALL-1] > 0 ) ) {
 				
+				dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s %10s %15s (%3i %3i %3id%2ih%2im %5i %4i)", 
+						str, orig_node->router->if_incoming->dev, str2,
+						orig_node->router->packet_count /* accepted */,
+						get_dbg_rcvd_all_bits( orig_node, orig_node->router->if_incoming, sequence_range ), /* all */
+						((uptime_sec-(orig_node->first_valid_sec))/86400), 
+						(((uptime_sec-(orig_node->first_valid_sec))%86400)/3600),
+						(((uptime_sec-(orig_node->first_valid_sec))%3600)/60),
+						orig_node->last_seqno,
+						( uptime_sec - (orig_node->last_valid/1000) ) ); 
+					
+				avg_packet_count+=  orig_node->router->packet_count; /* accepted */
+				avg_rcvd_all_bits+= get_dbg_rcvd_all_bits( orig_node, orig_node->router->if_incoming, sequence_range ); /* all */ 
+				avg_lvld+= ( uptime_sec - (orig_node->last_valid/1000) );
+
+				list_for_each( neigh_pos, &orig_node->neigh_list ) {
+					neigh_node = list_entry( neigh_pos, struct neigh_node, list );
+
+					if( neigh_node->addr != orig_node->router->addr ) {
+					
+						addr_to_string( neigh_node->addr, str, sizeof (str) );
+
+						dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), " %15s (%3i)", str, neigh_node->packet_count );
+				
+					}
 				}
+
+				debug_output( DBGL_DETAILS, "%s \n", dbg_ogm_str );
+			
+			}
+			
+			if ( debug_clients.clients_num[DBGL_ROUTES-1] > 0 ) {
+				
+				dbg_ogm_out2 = snprintf( dbg_ogm_str2, MAX_DBG_STR_SIZE, "%-15s (%3i) %15s [%10s]:", str, orig_node->router->packet_count, str2, orig_node->router->if_incoming->dev );
+				
+					
+				list_for_each( neigh_pos, &orig_node->neigh_list ) {
+					neigh_node = list_entry( neigh_pos, struct neigh_node, list );
+
+					if( neigh_node->addr != orig_node->router->addr ) {
+					
+						addr_to_string( neigh_node->addr, str, sizeof (str) );
+
+						dbg_ogm_out2 = dbg_ogm_out2 + snprintf( (dbg_ogm_str2 + dbg_ogm_out2), (MAX_DBG_STR_SIZE - dbg_ogm_out2), " %15s (%3i)", str, neigh_node->packet_count );
+				
+					}
+				}
+
+				debug_output( DBGL_ROUTES, "%s \n", dbg_ogm_str2 );
+			
 			}
 
-			debug_output( 1, "%s \n", dbg_ogm_str );
 			//debug_output( 4, "%s \n", dbg_ogm_str );
 			
 		}
 		
-		if ( nodes_count > 0 ) {
-			dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%3d %-13s                          (%3i %3i                  %4i)", 
-					nodes_count, "nodes - avg:", avg_packet_count/nodes_count, avg_rcvd_all_bits/nodes_count, avg_lvld/nodes_count ); 
-			debug_output( 1, "%s \n", dbg_ogm_str );
-		}
+		dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%4d %-37s (%3i %3i                  %4i)", 
+					nodes_count, "known Originator(s), avgerages:", (nodes_count > 0 ? avg_packet_count/nodes_count : -1), (nodes_count > 0 ? avg_rcvd_all_bits/nodes_count : -1), (nodes_count > 0 ? avg_lvld/nodes_count : -1) ); 
 		
-		debug_output( 1, "\nOriginator      Announced networks HNAs:  network/netmask or interface/IF (B:blocked)...\n");
+		debug_output( DBGL_DETAILS, "%s \n", dbg_ogm_str );
+
+			
+			
+		debug_output( DBGL_DETAILS, "\n");
+		debug_output( DBGL_DETAILS, "Originator      Announced networks HNAs:  network/netmask or interface/IF (B:blocked)...\n");
 		
 		while ( NULL != ( hashit = hash_iterate( orig_hash, hashit ) ) ) {
 
@@ -982,20 +1014,22 @@ void debug_orig() {
 
 			}
 
-			debug_output( 1, "%s \n", dbg_ogm_str );
+			debug_output( DBGL_DETAILS, "%s \n", dbg_ogm_str );
 
 		}			
 			
 
 		if ( batman_count == 0 ) {
 
-			debug_output( 1, "No batman nodes in range ... \n" );
+			debug_output( DBGL_ROUTES, "No batman nodes in range ... \n" );
+			debug_output( DBGL_DETAILS, "No batman nodes in range ... \n" );
 			//debug_output( 4, "No batman nodes in range ... \n" );
 
 		}
 
-		debug_output( 1, "EOD\n" );
-		debug_output( 4, "---------------------------------------------- END DEBUG \n" );
+		debug_output( DBGL_ROUTES, "EOD\n" );
+		debug_output( DBGL_DETAILS, "EOD\n" );
+		debug_output( DBGL_ALL, "---------------------------------------------- END DEBUG \n" );
 
 	}
 

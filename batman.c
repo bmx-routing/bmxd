@@ -35,7 +35,7 @@
 
 uint8_t debug_level = 0;
 
-
+/*
 #ifdef PROFILE_DATA
 
 uint8_t debug_level_max = 5;
@@ -49,7 +49,7 @@ uint8_t debug_level_max = 5;
 uint8_t debug_level_max = 4;
 
 #endif
-
+*/
 
 char *prog_name;
 
@@ -377,13 +377,14 @@ void verbose_usage( void ) {
 	fprintf( stderr, "       -c connect to running batmand via unix socket\n" );
 	fprintf( stderr, "       -d debug level\n" );
 	fprintf( stderr, "          default:         0 -> debug disabled\n" );
-	fprintf( stderr, "          allowed values:  1 -> list neighbours\n" );
+	fprintf( stderr, "          allowed values:  1 -> list originators\n" );
 	fprintf( stderr, "                           2 -> list gateways\n" );
 	fprintf( stderr, "                           3 -> observe batman\n" );
-	fprintf( stderr, "                           4 -> observe batman (very verbose)\n\n" );
-
-	if ( debug_level_max == 5  )
-		fprintf( stderr, "                           5 -> memory debug / cpu usage\n\n" );
+	fprintf( stderr, "                           4 -> observe batman (very verbose)\n" );
+//	if ( debug_level_max == 5  )
+	fprintf( stderr, "                           5 -> memory debug / cpu usage (only if compiled with -DDEBUG_MALLOC -DMEMORY_USAGE -DPROFILE_DATA)\n" );
+	fprintf( stderr, "                           %d -> list details\n", DBGL_DETAILS );
+	fprintf( stderr, "\n" );
 
 	fprintf( stderr, "       -g gateway class\n" );
 	fprintf( stderr, "          default:         0 -> gateway disabled\n" );
@@ -1690,7 +1691,7 @@ int8_t batman() {
 
 			checkIntegrity();
 
-			if ( debug_clients.clients_num[4] > 0 )
+			if ( debug_clients.clients_num[DBGL_PROFILE-1] > 0 )
 				prof_print();
 
 			if ( ( routing_class != 0 ) && ( curr_gateway == NULL ) )

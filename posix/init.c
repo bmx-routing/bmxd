@@ -1423,7 +1423,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 				snprintf( unix_buff, 10, "d:%c", debug_level );
 
-				if ( ( debug_level > 2 ) && ( batch_mode ) )
+				if ( ( batch_mode ) && ( debug_level == DBGL_CHANGES || debug_level == DBGL_ALL || debug_level == DBGL_PROFILE ) )
 					printf( "WARNING: Your chosen debug level (%i) does not support batch mode !\n", debug_level );
 
 			}
