@@ -293,7 +293,7 @@ void apply_init_args( int argc, char *argv[] ) {
 	struct in_addr tmp_ip_holder;
 	struct batman_if *batman_if;
 	struct debug_level_info *debug_level_info;
-	uint8_t found_args = 1, batch_mode = 0, apply_default_paras_and_break = NO;
+	uint8_t found_args = 1, batch_mode = 0, info_output = 0, apply_default_paras_and_break = NO;
 	int8_t res;
 	struct list_head *hna_list_pos;
 	struct hna_node *hna_node;
@@ -368,7 +368,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		apply_default_paras_and_break = NO;
 		
-		if ( ( optchar = getopt_long ( argc, argv, "a:A:bcmd:hHo:l:q:t:g:p:r:s:vV", long_options, &option_index ) ) == -1 ) {
+		if ( ( optchar = getopt_long ( argc, argv, "a:A:bcmd:hHio:l:q:t:g:p:r:s:vV", long_options, &option_index ) ) == -1 ) {
 			
 			if ( found_args == 1 ) {
 						
@@ -911,6 +911,15 @@ void apply_init_args( int argc, char *argv[] ) {
 			case 'H':
 				verbose_usage();
 				exit(EXIT_SUCCESS);
+				
+			case 'i':
+				info_output++;
+				break;
+
+			case 'n':
+				no_policy_routing = 1;
+				found_args++;
+				break;
 
 			case 'o':
 
@@ -958,6 +967,8 @@ void apply_init_args( int argc, char *argv[] ) {
 					exit(EXIT_FAILURE);
 
 				}
+				
+				routing_class_opt = 1;
 
 				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
 				break;
@@ -974,7 +985,6 @@ void apply_init_args( int argc, char *argv[] ) {
 
 				vis_server = tmp_ip_holder.s_addr;
 
-				routing_class_opt = 1;
 
 				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
 				break;
@@ -1002,6 +1012,13 @@ void apply_init_args( int argc, char *argv[] ) {
 				exit(EXIT_FAILURE);
 
 		}
+
+	}
+	
+	if (!unix_client && info_output) {
+
+		internal_output(1);
+		exit(EXIT_SUCCESS);
 
 	}
 
@@ -1373,7 +1390,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		
 		
-		if ( add_del_interface_rules( 0, (routing_class > 0 ? YES : NO) ) < 0 ) {
+		if ( add_del_interface_rules( 0, (routing_class > 0 ? YES : NO), YES ) < 0 ) {
 
 			restore_defaults();
 			exit(EXIT_FAILURE);
@@ -1491,12 +1508,18 @@ void apply_init_args( int argc, char *argv[] ) {
 			}
 			
 
-		} else {
+		} else if ( info_output ) {
 
 			batch_mode = 1;
 			snprintf( unix_buff, 10, "i" );
 
+		} else {
+
+			batch_mode = 1;
+			snprintf( unix_buff, 10, "y" );
+
 		}
+
 
 		if ( write( unix_if.unix_sock, unix_buff, 20 ) < 0 ) {
 

@@ -398,6 +398,9 @@ extern int16_t num_words;
 
 extern uint32_t pref_gateway;
 
+extern uint8_t no_policy_routing;
+
+
 extern int8_t stop;
 
 extern struct gw_listen_arg gw_listen_arg;

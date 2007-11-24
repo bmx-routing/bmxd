@@ -153,6 +153,33 @@ void debug_output( int8_t debug_prio_arg, char *format, ... ) {
 
 }
 	
+	
+	
+void internal_output(uint32_t sock)
+{
+	dprintf(sock, "source_version=%s\n", SOURCE_VERSION);
+	dprintf(sock, "compat_version=%i\n", COMPAT_VERSION);
+	dprintf(sock, "vis_compat_version=%i\n", VIS_COMPAT_VERSION);
+	dprintf(sock, "ogm_port=%i\n", PORT);
+	dprintf(sock, "gw_port=%i\n", PORT + 1);
+	dprintf(sock, "vis_port=%i\n", PORT + 2);
+	dprintf(sock, "unix_socket_path=%s\n", unix_path);
+	dprintf(sock, "own_ogm_jitter=%i\n", JITTER);
+	dprintf(sock, "default_ttl=%i\n", ttl);
+	dprintf(sock, "originator_timeout=%i\n", PURGE_TIMEOUT);
+	dprintf(sock, "rt_table_interfaces=%i\n", BATMAN_RT_TABLE_INTERFACES);
+	dprintf(sock, "rt_table_networks=%i\n", BATMAN_RT_TABLE_NETWORKS);
+	dprintf(sock, "rt_table_hosts=%i\n", BATMAN_RT_TABLE_HOSTS);
+	dprintf(sock, "rt_table_unreach=%i\n", BATMAN_RT_TABLE_UNREACH);
+	dprintf(sock, "rt_table_tunnel=%i\n", BATMAN_RT_TABLE_TUNNEL);
+	
+	dprintf(sock, "rt_prio_interfaces=%i\n", BATMAN_RT_PRIO_INTERFACES);
+	dprintf(sock, "rt_prio_default=%i\n", BATMAN_RT_PRIO_HOSTS);
+	dprintf(sock, "rt_prio_networks=%i\n", BATMAN_RT_PRIO_NETWORKS);
+	dprintf(sock, "rt_prio_unreach=%i\n", BATMAN_RT_PRIO_UNREACH);
+	dprintf(sock, "rt_prio_tunnel=%i\n", BATMAN_RT_PRIO_TUNNEL);
+}
+
 
 
 void *unix_listen( void *arg ) {
@@ -167,7 +194,7 @@ void *unix_listen( void *arg ) {
 	struct in_addr tmp_ip_holder;
 	int32_t status, max_sock, unix_opts, download_speed, upload_speed;
 	int8_t res;
-	char buff[100], str[16], was_gateway, is_gateway /*, tmp_unix_value*/;
+	char buff[100], str[16], was_gateway, is_gateway, tmp_unix_value;
 	fd_set wait_sockets, tmp_wait_sockets;
 	socklen_t sun_size = sizeof(struct sockaddr_un);
 	uint8_t unix_client_deleted = NO;
@@ -229,6 +256,8 @@ void *unix_listen( void *arg ) {
 					if ( FD_ISSET( unix_client->sock, &tmp_wait_sockets ) ) {
 
 						status = read( unix_client->sock, buff, sizeof( buff ) );
+						
+						debug_output( 3, "got request: %s\n", buff);
 						
 						if ( status > 0 ) {
 
@@ -305,46 +334,8 @@ void *unix_listen( void *arg ) {
 
 							} else if ( buff[0] == 'i' ) {
 
-								dprintf( unix_client->sock, "%s", prog_name );
-
-								if ( routing_class > 0 )
-									dprintf( unix_client->sock, " -r %i", routing_class );
-
-								if ( pref_gateway > 0 ) {
-
-									addr_to_string( pref_gateway, str, sizeof (str) );
-
-									dprintf( unix_client->sock, " -p %s", str );
-
-								}
-
-								if ( gateway_class > 0 ) {
-
-									get_gw_speeds( gateway_class, &download_speed, &upload_speed );
-
-									dprintf( unix_client->sock, " -g %i%s/%i%s", ( download_speed > 2048 ? download_speed / 1024 : download_speed ), ( download_speed > 2048 ? "MBit" : "KBit" ), ( upload_speed > 2048 ? upload_speed / 1024 : upload_speed ), ( upload_speed > 2048 ? "MBit" : "KBit" ) );
-
-								}
-
-								list_for_each( i_list_pos, &hna_list ) {
-
-									hna_node = list_entry( i_list_pos, struct hna_node, list );
-
-									addr_to_string( hna_node->key.addr, str, sizeof (str) );
-
-									dprintf( unix_client->sock, " -a %s/%i", str, hna_node->key.KEY_ANETMASK );
-
-								}
-
-								list_for_each( i_list_pos, &if_list ) {
-
-									batman_if = list_entry( i_list_pos, struct batman_if, list );
-
-									dprintf( unix_client->sock, " %s", batman_if->dev );
-
-								}
-
-								dprintf( unix_client->sock, "\nEOD\n" );
+								internal_output(unix_client->sock);
+								dprintf( unix_client->sock, "EOD\n" );
 
 							} else if ( buff[0] == 'g' ) {
 
@@ -380,6 +371,7 @@ void *unix_listen( void *arg ) {
 										}
 
 										
+										
 										if ( ( !was_gateway ) && ( is_gateway ) )
 											init_interface_gw( batman_if );
 
@@ -389,6 +381,8 @@ void *unix_listen( void *arg ) {
 
 											if ( curr_gateway != NULL )
 												curr_gateway = NULL;
+										
+											add_del_interface_rules( YES/*del*/, YES/*tunnel*/, NO/*networks*/ );
 
 										}
 
@@ -399,11 +393,11 @@ void *unix_listen( void *arg ) {
 								dprintf( unix_client->sock, "EOD\n" );
 
 								
-							/* TODO: check this ! and maybe also call add_del_interface_rules()
 							} else if ( buff[0] == 'r' ) {
 
 								if ( status > 2 ) {
-
+									
+									debug_output( 3, "Unix socket: 1. changing to -r %d \n", tmp_unix_value );
 									
 									if ((buff[2] == 0) || (probe_tun(0))) {
 
@@ -411,8 +405,13 @@ void *unix_listen( void *arg ) {
 
 										if ( ( tmp_unix_value >= 0 ) && ( tmp_unix_value <= 3 ) ) {
 
+											debug_output( 3, "Unix socket: changing to -r %d \n", tmp_unix_value );
+										
+											if ( routing_class == 0 )
+												add_del_interface_rules( NO/*del*/, YES/*tunnel*/, NO/*networks*/ );
+											
 											routing_class = tmp_unix_value;
-
+										
 											if ( curr_gateway != NULL )
 												curr_gateway = NULL;
 
@@ -420,13 +419,9 @@ void *unix_listen( void *arg ) {
 
 												gateway_class = 0;
 
-												list_for_each( i_list_pos, &if_list ) {
-
-													batman_if = list_entry( i_list_pos, struct batman_if, list );
-
-													batman_if->out.gwflags = gateway_class;
-
-												}
+												memset( my_gw_ext_array, 0, sizeof(struct ext_packet) );
+	
+												my_gw_ext_array_len = 0;
 
 											}
 
@@ -437,7 +432,7 @@ void *unix_listen( void *arg ) {
 								}
 
 								dprintf( unix_client->sock, "EOD\n" );
-							*/
+							
 								
 							} else if ( buff[0] == 'p' ) {
 
@@ -495,6 +490,53 @@ void *unix_listen( void *arg ) {
 								}
 
 								dprintf( unix_client->sock, "EOD\n" );
+
+							
+							} else if ( buff[0] == 'y' ) {
+
+								dprintf( unix_client->sock, "%s [not-all-options-displayed]", prog_name );
+
+								if ( routing_class > 0 )
+									dprintf( unix_client->sock, " -r %i", routing_class );
+
+								if ( pref_gateway > 0 ) {
+
+									addr_to_string( pref_gateway, str, sizeof (str) );
+
+									dprintf( unix_client->sock, " -p %s", str );
+
+								}
+
+								if ( gateway_class > 0 ) {
+
+									get_gw_speeds( gateway_class, &download_speed, &upload_speed );
+
+									dprintf( unix_client->sock, " -g %i%s/%i%s", ( download_speed > 2048 ? download_speed / 1024 : download_speed ), ( download_speed > 2048 ? "MBit" : "KBit" ), ( upload_speed > 2048 ? upload_speed / 1024 : upload_speed ), ( upload_speed > 2048 ? "MBit" : "KBit" ) );
+
+								}
+
+								//TODO: this needs a mutex !?
+								list_for_each( i_list_pos, &hna_list ) {
+
+									hna_node = list_entry( i_list_pos, struct hna_node, list );
+
+									addr_to_string( hna_node->key.addr, str, sizeof (str) );
+									
+									if ( hna_node->enabled )
+										dprintf( unix_client->sock, " -a %s/%i", str, hna_node->key.KEY_ANETMASK );
+
+								}
+
+								list_for_each( i_list_pos, &if_list ) {
+
+									batman_if = list_entry( i_list_pos, struct batman_if, list );
+
+									dprintf( unix_client->sock, " %s", batman_if->dev );
+
+								}
+
+								dprintf( unix_client->sock, "\nEOD\n" );
+
 
 							}
 

@@ -52,10 +52,12 @@ void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t so
 	struct {
 		struct nlmsghdr nlh;
 		struct rtmsg rtm;
-//		char buff[3 * ( sizeof(struct rtattr) + 4 )];
 		char buff[4 * ( sizeof(struct rtattr) + 4 )];
 	} req;
 
+	
+	if ( ( no_policy_routing ) && ( ( route_type == 1 ) || ( route_type == 2 ) ) )
+		return;
 
 	inet_ntop( AF_INET, &dest, str1, sizeof (str1) );
 	inet_ntop( AF_INET, &router, str2, sizeof (str2) );
@@ -220,6 +222,10 @@ void add_del_rule( uint32_t network, uint8_t netmask, uint8_t rt_table, uint32_t
 	} req;
 
 
+	if ( no_policy_routing )
+		return;
+	
+	
 	memset( &nladdr, 0, sizeof(struct sockaddr_nl) );
 	memset( &req, 0, sizeof(req) );
 	memset( &msg, 0, sizeof(struct msghdr) );
@@ -361,7 +367,7 @@ void add_del_rule( uint32_t network, uint8_t netmask, uint8_t rt_table, uint32_t
 
 
 
-int add_del_interface_rules( int8_t del, uint8_t setup_tunnel ) {
+int add_del_interface_rules( int8_t del, uint8_t setup_tunnel, uint8_t setup_networks ) {
 
 	int32_t tmp_fd;
 	uint32_t len, addr, netaddr;
@@ -372,6 +378,10 @@ int add_del_interface_rules( int8_t del, uint8_t setup_tunnel ) {
 	struct batman_if *batman_if;
 
 
+	if ( no_policy_routing )
+		return 1;
+
+	
 	tmp_fd = socket( AF_INET, SOCK_DGRAM, 0 );
 
 	if ( tmp_fd < 0 ) {
@@ -463,7 +473,7 @@ int add_del_interface_rules( int8_t del, uint8_t setup_tunnel ) {
 			continue;
 
 		
-		if( !no_throw_rules )
+		if( !no_throw_rules && setup_networks)
 			add_del_route( netaddr, netmask, 0, 0, 0, ifr->ifr_name, BATMAN_RT_TABLE_NETWORKS, 1, del );
 
 		
@@ -508,6 +518,10 @@ int flush_routes_rules( int8_t is_rule ) {
 	struct rtattr *rtap;
 
 
+	if ( ( no_policy_routing ) && ( is_rule ) )
+		return 1;
+	
+	
 	memset( &nladdr, 0, sizeof(struct sockaddr_nl) );
 	memset( &req, 0, sizeof(req) );
 	memset( &msg, 0, sizeof(struct msghdr) );
@@ -569,7 +583,9 @@ int flush_routes_rules( int8_t is_rule ) {
 		if ( ( rtm->rtm_table != BATMAN_RT_TABLE_UNREACH ) && ( rtm->rtm_table != BATMAN_RT_TABLE_INTERFACES ) && ( rtm->rtm_table != BATMAN_RT_TABLE_NETWORKS ) && ( rtm->rtm_table != BATMAN_RT_TABLE_HOSTS ) && ( rtm->rtm_table != BATMAN_RT_TABLE_TUNNEL ) )
 			continue;
 
-
+		if ( ( no_policy_routing ) && ( rtm->rtm_table != BATMAN_RT_TABLE_NETWORKS ) && ( rtm->rtm_table != BATMAN_RT_TABLE_HOSTS ) )
+			continue;
+		
 		while ( RTA_OK(rtap, rtl) ) {
 
 			switch( rtap->rta_type ) {

@@ -43,7 +43,7 @@ void restore_and_exit( uint8_t is_sigsegv );
 void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t source, int32_t ifi, char *dev, uint8_t rt_table, int8_t route_type, int8_t del );
 
 void add_del_rule( uint32_t network, uint8_t netmask, uint8_t rt_table, uint32_t prio, char *iif, int8_t dst_rule, int8_t del );
-int add_del_interface_rules( int8_t del, uint8_t setup_tunnel );
+int add_del_interface_rules( int8_t del, uint8_t setup_tunnel, uint8_t setup_networks );
 int flush_routes_rules( int8_t rt_table );
 
 /* tun.c */
@@ -159,6 +159,7 @@ struct tun_packet
 
 /* unix_sokcet.c */
 void *unix_listen( void *arg );
+void internal_output(uint32_t sock);
 void debug_output( int8_t debug_prio, char *format, ... );
 
 

@@ -156,6 +156,9 @@ pthread_t curr_gateway_thread_id = 0;
 
 uint32_t pref_gateway = 0;
 
+uint8_t no_policy_routing = 0;
+
+
 struct ext_packet *my_hna_ext_array = NULL;
 uint16_t my_hna_ext_array_len = 0;
 
@@ -356,6 +359,7 @@ void usage( void ) {
 	fprintf( stderr, "       -g gateway class\n" );
 	fprintf( stderr, "       -h this help\n" );
 	fprintf( stderr, "       -H verbose help\n" );
+	fprintf( stderr, "       -i internal options output\n" );
 	fprintf( stderr, "       -o originator interval in ms\n" );
 	fprintf( stderr, "       -p preferred gateway\n" );
 	fprintf( stderr, "       -r routing class\n" );
@@ -403,6 +407,7 @@ void verbose_usage( void ) {
 	fprintf( stderr, "                                5mbit/1mbit\n" );
 	fprintf( stderr, "       -h shorter help\n" );
 	fprintf( stderr, "       -H this help\n" );
+	fprintf( stderr, "       -i gives information about all internal options\n" );
 	fprintf( stderr, "       -o originator interval in ms\n" );
 	fprintf( stderr, "          default: %d, allowed values: >0\n\n", DEFAULT_ORIGINATOR_INTERVAL );
 	fprintf( stderr, "       -p preferred gateway\n" );
@@ -1384,6 +1389,7 @@ int8_t batman() {
 		my_gw_ext_array->EXT_GW_FLAGS = ( ( two_way_tunnel || one_way_tunnel ) ? gateway_class : 0 );
 		my_gw_ext_array->EXT_GW_TYPES = ( gateway_class ? ( (two_way_tunnel?TWO_WAY_TUNNEL_FLAG:0) | (one_way_tunnel?ONE_WAY_TUNNEL_FLAG:0) ) : 0 );
 		my_gw_ext_array_len = 1;
+	
 	}
 	
 	if_rp_filter_all_old = get_rp_filter( "all" );
