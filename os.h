@@ -53,9 +53,14 @@ int8_t add_dev_tun( struct batman_if *batman_if, uint32_t dest_addr, char *tun_d
 int8_t set_tun_addr( int32_t fd, uint32_t tun_addr, char *tun_dev );
 
 /* init.c */
+
+#define MAX_UNIX_REQ_SIZE 20 /* there is a magic limit beyond 20 which I dont understand ??? */
+
+void prepare_add_del_own_hna ( char *optarg_str, int8_t del, uint8_t atype, uint8_t startup  );
 void apply_init_args( int argc, char *argv[] );
 void init_interface ( struct batman_if *batman_if );
 void init_interface_gw ( struct batman_if *batman_if );
+
 
 /* kernel.c */
 void set_rp_filter( int32_t state, char* dev );

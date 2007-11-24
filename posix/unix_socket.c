@@ -171,7 +171,7 @@ void *unix_listen( void *arg ) {
 	fd_set wait_sockets, tmp_wait_sockets;
 	socklen_t sun_size = sizeof(struct sockaddr_un);
 	uint8_t unix_client_deleted = NO;
-
+	uint32_t tmp_enabled, tmp_netmask, tmp_address;
 
 	INIT_LIST_HEAD_FIRST(unix_if.client_list);
 
@@ -229,7 +229,7 @@ void *unix_listen( void *arg ) {
 					if ( FD_ISSET( unix_client->sock, &tmp_wait_sockets ) ) {
 
 						status = read( unix_client->sock, buff, sizeof( buff ) );
-
+						
 						if ( status > 0 ) {
 
 							if ( unix_client->sock > max_sock )
@@ -456,6 +456,42 @@ void *unix_listen( void *arg ) {
 
 									}
 
+								}
+
+								dprintf( unix_client->sock, "EOD\n" );
+
+							} else if ( buff[0] == 'a' ) {
+
+								if ( status > 2 ) {
+									struct todo_node *new_todo_node;
+									
+									tmp_enabled = strtoul( buff+2, NULL, 10 );
+									tmp_netmask = strtoul( buff+4, NULL, 10 );
+									tmp_address = strtoul( buff+8, NULL, 10 );
+									addr_to_string( tmp_address, str, sizeof (str) );
+
+									
+									if ( pthread_mutex_lock( (pthread_mutex_t *)todo_mutex ) != 0 )
+										debug_output( 0, "Error - could not lock todo_mutex: %s \n", strerror( errno ) );
+
+									debug_output( 3, "Unix socket: todo_mutex locked, requesting %s of HNA %s/%d - put this on todo list... \n", tmp_enabled?"adding":"removing", str, tmp_netmask   );
+									
+									
+									new_todo_node = debugMalloc( sizeof( struct todo_node ), 220 );
+									
+									memset( new_todo_node, 0,  sizeof( struct todo_node ) );
+									INIT_LIST_HEAD( &new_todo_node->list );
+									new_todo_node->add = tmp_enabled;
+									new_todo_node->todo_type = TODO_TYPE_HNA;
+									new_todo_node->key.KEY_ANETMASK = tmp_netmask;
+									new_todo_node->key.KEY_ATYPE = A_TYPE_NETWORK;
+									new_todo_node->key.addr = tmp_address;
+									
+									list_add_tail( &new_todo_node->list, &todo_list );
+									
+									if ( pthread_mutex_unlock( (pthread_mutex_t *)todo_mutex ) != 0 )
+										debug_output( 0, "Error - could not unlock mutex (unix_listen => 2): %s \n", strerror( errno ) );
+									
 								}
 
 								dprintf( unix_client->sock, "EOD\n" );

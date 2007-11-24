@@ -624,6 +624,8 @@ void cleanup() {
 	int8_t i;
 	struct debug_level_info *debug_level_info;
 	struct list_head *debug_pos, *debug_pos_tmp;
+	
+	debugFree( todo_mutex, 1229 );
 
 
 	for ( i = 0; i < debug_level_max; i++ ) {
@@ -673,7 +675,10 @@ int main( int argc, char *argv[] ) {
 	INIT_LIST_HEAD_FIRST( gw_list );
 	INIT_LIST_HEAD_FIRST( if_list );
 	INIT_LIST_HEAD_FIRST( hna_list );
+	INIT_LIST_HEAD_FIRST( todo_list );
 
+	todo_mutex = debugMalloc( sizeof(pthread_mutex_t), 229 );
+	pthread_mutex_init( (pthread_mutex_t *)todo_mutex, NULL );
 
 	start_time = times(&tp);
 	system_tick = (float)sysconf(_SC_CLK_TCK);

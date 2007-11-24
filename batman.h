@@ -391,7 +391,7 @@ extern uint16_t my_hna_ext_array_len;
 extern struct ext_packet *my_gw_ext_array;
 extern uint16_t my_gw_ext_array_len;
 
-extern uint16_t hna_list_size;
+extern uint16_t hna_list_enabled;
 
 
 extern int16_t num_words;
@@ -414,6 +414,9 @@ extern uint8_t unix_client;
 extern struct hashtable_t *orig_hash;
 extern struct hashtable_t *hna_hash;
 
+extern pthread_mutex_t *todo_mutex;
+
+extern struct list_head_first todo_list;
 extern struct list_head_first if_list;
 extern struct list_head_first hna_list;
 extern struct list_head_first gw_list;
@@ -590,8 +593,18 @@ struct hna_node
 {
 	struct list_head list;
 	struct hna_key key;
+	uint8_t enabled;
 };
 
+#define TODO_TYPE_HNA 0x01
+
+struct todo_node
+{
+	struct list_head list;
+	uint8_t todo_type;
+	uint8_t add;
+	struct hna_key key;
+};
 
 #define  HNA_HASH_NODE_EMPTY 0x00
 #define  HNA_HASH_NODE_MYONE 0x01
@@ -717,6 +730,7 @@ void get_gw_speeds( unsigned char class, int *down, int *up );
 unsigned char get_gw_class( int down, int up );
 void choose_gw();
 struct hna_hash_node *get_hna_node( struct hna_key *hk );
+void add_del_other_hna( struct orig_node *orig_node, struct ext_packet *hna_array, int16_t hna_array_len /*int8_t del*/ );
 
 
 #endif

@@ -24,6 +24,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <errno.h>
 
 
 #include "os.h"
@@ -176,7 +177,10 @@ struct list_head_first gw_list;
 struct list_head_first if_list;
 struct list_head_first hna_list;
 
-uint16_t hna_list_size = 0;
+struct list_head_first todo_list;
+pthread_mutex_t *todo_mutex = NULL;
+
+uint16_t hna_list_enabled = 0;
 
 struct vis_if vis_if;
 struct unix_if unix_if;
@@ -522,10 +526,10 @@ struct hna_hash_node *get_hna_node( struct hna_key *hk /*, struct orig_node *ori
 }
 
 /*
- * updates hna information maintained for a orig_node
+ * updates hna information maintained for other orig_node
  * updates are made according to given hna_array and hna_array_len arguments
  */
-void add_del_hna( struct orig_node *orig_node, struct ext_packet *hna_array, int16_t hna_array_len /*int8_t del*/ ) {
+void add_del_other_hna( struct orig_node *orig_node, struct ext_packet *hna_array, int16_t hna_array_len /*int8_t del*/ ) {
 
 	uint16_t hna_count = 0;
 	struct hna_key key;
@@ -602,6 +606,105 @@ void add_del_hna( struct orig_node *orig_node, struct ext_packet *hna_array, int
 
 }
 
+
+
+
+void add_del_own_hna( uint8_t purge ) {
+	struct list_head *list_pos, *hna_pos_tmp;
+	struct hna_node *hna_node;
+	struct hna_hash_node *hash_node;
+	static char str[ADDR_STR_LEN], str2[ADDR_STR_LEN];
+
+	
+	list_for_each_safe( list_pos, hna_pos_tmp, &hna_list ) {
+
+		hna_node = list_entry( list_pos, struct hna_node, list );
+		
+		//remove the corresponding hna_hash entry so that its not blocked for others
+		hash_node = get_hna_node( &hna_node->key );
+			
+			
+		if ( hash_node->status == HNA_HASH_NODE_MYONE ) {
+			
+			/* del throw routing entries for own hna */
+			add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_INTERFACES, 1, 1 );
+			add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS,   1, 1 );
+			add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS,      1, 1 );
+			add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH,    1, 1 );
+			add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL,     1, 1 );
+			
+			hash_node->status = HNA_HASH_NODE_EMPTY;
+		}
+		
+		if ( purge ) { 
+				
+			hash_remove( hna_hash, hash_node );
+			debugFree( hash_node, 1401 );
+			debugFree( hna_node, 1103 );
+		
+		}
+
+	}
+
+	if ( my_hna_ext_array != NULL )
+		debugFree( my_hna_ext_array, 1104 );
+		
+	my_hna_ext_array_len = 0;
+
+	
+	
+	if ( ! purge  &&  !( list_empty( &hna_list ) )  ) {
+		
+		my_hna_ext_array = debugMalloc( hna_list_enabled * sizeof(struct ext_packet), 15 );
+		memset( my_hna_ext_array, 0, hna_list_enabled * sizeof(struct ext_packet) );
+
+		list_for_each( list_pos, &hna_list ) {
+			
+
+			hna_node = list_entry( list_pos, struct hna_node, list );
+
+			if ( hna_node->enabled ) {
+				
+				// create a corresponding hna_hash entry so that its blocked for others
+				hash_node = get_hna_node( &hna_node->key );
+				
+				
+				if ( hash_node->status == HNA_HASH_NODE_EMPTY ) {
+					
+					hash_node->status = HNA_HASH_NODE_MYONE;
+					hash_node->orig = NULL;
+					
+					my_hna_ext_array[my_hna_ext_array_len].ext_flag = EXTENSION_FLAG;
+					my_hna_ext_array[my_hna_ext_array_len].ext_type = EXT_TYPE_HNA;
+		
+					my_hna_ext_array[my_hna_ext_array_len].EXT_HNA_ADDR    = hna_node->key.addr;
+					my_hna_ext_array[my_hna_ext_array_len].EXT_HNA_NETMASK = hna_node->key.KEY_ANETMASK;
+					my_hna_ext_array[my_hna_ext_array_len].EXT_HNA_TYPE    = hna_node->key.KEY_ATYPE;
+					
+					my_hna_ext_array_len++;
+					
+					/* add throw routing entries for own hna */  
+					add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_INTERFACES, 1, 0 );
+					add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS,   1, 0 );
+					add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS,      1, 0 );
+					add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH,    1, 0 ); 
+					add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL,     1, 0 );
+					
+				} else {
+					
+					addr_to_string( hna_node->key.addr, str, ADDR_STR_LEN );
+					addr_to_string( hash_node->orig->orig, str2, ADDR_STR_LEN );
+					debug_output( DBGL_SYSTEM, "Error - Could not announce network %s/%d, atype %d. Blocked by Originator %s. Disabling request! \n", str, hna_node->key.KEY_ANETMASK, hna_node->key.KEY_ATYPE, str2);
+					hna_node->enabled = NO;
+					
+				}
+					
+			}
+		}
+	
+	}
+		
+}
 
 
 void choose_gw() {
@@ -769,7 +872,7 @@ void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, 
 
 			/* remove old announced network(s) */
 			if ( orig_node->hna_array_len > 0 )
-				add_del_hna( orig_node, NULL, 0 );
+				add_del_other_hna( orig_node, NULL, 0 );
 
 			add_del_route( orig_node->orig, 32, orig_node->router->addr, 0, orig_node->batman_if->if_index, orig_node->batman_if->dev, BATMAN_RT_TABLE_HOSTS, 0, 1 );
 
@@ -792,7 +895,7 @@ void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, 
 			/* add new announced network(s) */
 			if ( ( hna_array_len > 0 ) && ( hna_array != NULL ) ) {
 
-				add_del_hna( orig_node, hna_array, hna_array_len );
+				add_del_other_hna( orig_node, hna_array, hna_array_len );
 
 			}
 
@@ -806,10 +909,10 @@ void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, 
 		if ( ( hna_array_len != orig_node->hna_array_len ) || ( ( hna_array_len > 0 ) && ( orig_node->hna_array_len > 0 ) && ( memcmp( orig_node->hna_array, hna_array, hna_array_len * sizeof(struct ext_packet) ) != 0 ) ) ) {
 
 			if ( orig_node->hna_array_len > 0 )
-				add_del_hna( orig_node, NULL, 0 );
+				add_del_other_hna( orig_node, NULL, 0 );
 
 			if ( ( hna_array_len > 0 ) && ( hna_array != NULL ) )
-				add_del_hna( orig_node, hna_array, hna_array_len );
+				add_del_other_hna( orig_node, hna_array, hna_array_len );
 
 		}
 
@@ -1154,15 +1257,54 @@ void send_vis_packet() {
 
 }
 
+void check_todos() {
+	struct list_head *todo_pos, *todo_pos_tmp;
+	struct todo_node *todo_node;
+	char fake_arg[ADDR_STR_LEN + 4], ifaddr_str[ADDR_STR_LEN];
 
+	if ( pthread_mutex_trylock( (pthread_mutex_t *)todo_mutex ) != 0 ) {
+		debug_output( 0, "Error - could not trylock todo_mutex: %s \n", strerror( errno ) );
+	} else {
+	
+		list_for_each_safe( todo_pos, todo_pos_tmp, &todo_list) {
+			todo_node = list_entry( todo_pos, struct todo_node, list );
+
+			
+			if ( todo_node->todo_type == TODO_TYPE_HNA ) {
+				
+				addr_to_string( todo_node->key.addr, ifaddr_str, sizeof(ifaddr_str) );
+				debug_output( 3, "found todo item, %s HNA %s/%d atype %d \n", todo_node->add ? "adding":"removing", ifaddr_str, todo_node->key.KEY_ANETMASK, todo_node->key.KEY_ATYPE );
+				sprintf( fake_arg, "%s/%d", ifaddr_str, todo_node->key.KEY_ANETMASK);
+				prepare_add_del_own_hna( fake_arg, (todo_node->add ? NO : YES), todo_node->key.KEY_ATYPE, NO /*not during startup*/ );
+				
+				add_del_own_hna( NO );
+				
+			} else {
+				
+				debug_output( 0, "Error, unkown todo_type %d\n", todo_node->todo_type );
+				
+			}
+			
+			list_del( (struct list_head *)&todo_list, todo_pos, &todo_list );
+			debugFree( todo_pos, 1220 );
+
+		}
+	
+		//debug_output( 3, "Unix socket: todo_mutex trylocked, - processing todo list... \n" );
+
+		if ( pthread_mutex_unlock( (pthread_mutex_t *)todo_mutex ) != 0 )
+			debug_output( 0, "Error - could not unlock un-trylock_mutex : %s \n", strerror( errno ) );
+	
+	}
+	
+}
 
 int8_t batman() {
 
-	struct list_head *list_pos, *hna_pos_tmp, *forw_pos_tmp;
+	struct list_head *list_pos, *forw_pos_tmp;
 	struct orig_node *orig_neigh_node, *orig_node; 
 	struct batman_if *batman_if, *if_incoming;
 	struct neigh_node *neigh_node;
-	struct hna_node *hna_node;
 	struct forw_node *forw_node;
 	uint32_t neigh, debug_timeout, vis_timeout, select_timeout, aggregation_time = 0, curr_time;
 	//uint32_t hna;
@@ -1205,40 +1347,8 @@ int8_t batman() {
 	prof_init( PROF_schedule_forward_packet, "schedule_forward_packet" );
 	prof_init( PROF_send_outstanding_packets, "send_outstanding_packets" );
 
-		
-	if ( !( list_empty( &hna_list ) ) ) {
-		
-		my_hna_ext_array = debugMalloc( hna_list_size * sizeof(struct ext_packet), 15 );
-		memset( my_hna_ext_array, 0, hna_list_size * sizeof(struct ext_packet) );
-
-		list_for_each( list_pos, &hna_list ) {
-			
-
-			hna_node = list_entry( list_pos, struct hna_node, list );
-
-			// create a corresponding hna_hash entry so that its blocked for others
-			(*get_hna_node( &hna_node->key )).status = HNA_HASH_NODE_MYONE;
-			
-			my_hna_ext_array[my_hna_ext_array_len].ext_flag = EXTENSION_FLAG;
-			my_hna_ext_array[my_hna_ext_array_len].ext_type = EXT_TYPE_HNA;
-
-			my_hna_ext_array[my_hna_ext_array_len].EXT_HNA_ADDR    = hna_node->key.addr;
-			my_hna_ext_array[my_hna_ext_array_len].EXT_HNA_NETMASK = hna_node->key.KEY_ANETMASK;
-			my_hna_ext_array[my_hna_ext_array_len].EXT_HNA_TYPE    = hna_node->key.KEY_ATYPE;
-			
-			my_hna_ext_array_len++;
-			
-			/* add throw routing entries for own hna */  
-			add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_INTERFACES, 1, 0 );
-			add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS,   1, 0 );
-			add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS,      1, 0 );
-			add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH,    1, 0 ); 
-			add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL,     1, 0 );
-				
-		}
-		
-	}
-
+	add_del_own_hna( NO /*do not purge*/ );	
+	
 	if ( initial_seqno == 0 )
 		initial_seqno = rand_num( FULL_SEQ_RANGE - (10*sequence_range) );
 	
@@ -1678,6 +1788,8 @@ int8_t batman() {
 			send_outstanding_packets();
 			
 		}
+		
+		check_todos();
 
 		if ( debug_timeout + 1000 < curr_time ) {
 
@@ -1714,39 +1826,15 @@ int8_t batman() {
 
 	purge_orig( get_time() + ( 5 * PURGE_TIMEOUT ) + originator_interval );
 	
+	add_del_own_hna( YES /*purge*/ );
+	
 	purge_empty_hna_nodes( );
 
 	hash_destroy( hna_hash );
 	
 	hash_destroy( orig_hash );
 
-
-	list_for_each_safe( list_pos, hna_pos_tmp, &hna_list ) {
-
-		hna_node = list_entry( list_pos, struct hna_node, list );
-		
-		//remove the corresponding hna_hash entry so that its not blocked for others
-		hash_node = get_hna_node( &hna_node->key );
-		hash_remove( hna_hash, hash_node );
-		debugFree( hash_node, 1401 );
-			
-
-		
-		/* del throw routing entries for own hna */
-		add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_INTERFACES, 1, 1 );
-		add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS,   1, 1 );
-		add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS,      1, 1 );
-		add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH,    1, 1 );
-		add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL,     1, 1 );
-		
-		debugFree( hna_node, 1103 );
-
-	}
-
-	if ( my_hna_ext_array != NULL )
-		debugFree( my_hna_ext_array, 1104 );
-
-
+	
 	list_for_each_safe( list_pos, forw_pos_tmp, &forw_list ) {
 
 		forw_node = list_entry( list_pos, struct forw_node, list );

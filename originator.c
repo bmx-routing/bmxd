@@ -485,7 +485,7 @@ void purge_orig( uint32_t curr_time ) {
 
 						/* remove old announced network(s) */
 						if ( orig_node->hna_array_len > 0 )
-							add_del_hna( orig_node, NULL, 0 );
+							add_del_other_hna( orig_node, NULL, 0 );
 
 						add_del_route( orig_node->orig, 32, orig_node->router->addr, 0, orig_node->batman_if->if_index, orig_node->batman_if->dev, BATMAN_RT_TABLE_HOSTS, 0, 1 );
 

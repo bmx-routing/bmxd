@@ -170,15 +170,31 @@ void set_gw_network ( char *optarg_p ) {
 }
 
 
-void add_del_hna_opt ( char *optarg_str, int8_t del, uint8_t atype ) {
+void prepare_add_del_own_hna ( char *optarg_str, int8_t del, uint8_t atype, uint8_t startup ) {
 	
 	struct hna_node *hna_node;
 	struct in_addr tmp_ip_holder;
 	uint16_t netmask;
 	char *slash_ptr;
-	struct list_head *hna_list_pos, *prev_hna_list_head, *hna_pos_tmp;
+	struct list_head *hna_list_pos;
 	char str[16];
+	uint8_t found = NO;
 			
+	
+	// check if umber of HNAs fit into max packet size
+	if ( !del  &&  sizeof(struct bat_packet) + (hna_list_enabled * sizeof(struct ext_packet)) > MAX_PACKET_OUT_SIZE ) {
+		
+		if( startup ) {
+			printf("HNAs do not fit into max packet size \n");
+			exit(EXIT_FAILURE);
+		} else {
+			debug_output(0, "HNAs do not fit into max packet size \n");
+			return;
+		}
+
+	}
+
+	
 	if ( ( slash_ptr = strchr( optarg_str, '/' ) ) == NULL ) {
 
 		printf( "Invalid announced network (netmask is missing): %s\n", optarg_str );
@@ -217,33 +233,32 @@ void add_del_hna_opt ( char *optarg_str, int8_t del, uint8_t atype ) {
 	
 	tmp_ip_holder.s_addr = ( tmp_ip_holder.s_addr & htonl(0xFFFFFFFF<<(32-netmask)) );
 		
+	list_for_each( hna_list_pos, &hna_list ) {
 
-	if ( del ) {
-		
-		prev_hna_list_head = (struct list_head *)&hna_list;
-		
-		list_for_each_safe( hna_list_pos, hna_pos_tmp, &hna_list ) {
+		hna_node = list_entry( hna_list_pos, struct hna_node, list );
 
-			hna_node = list_entry( hna_list_pos, struct hna_node, list );
-
-			if ( hna_node->key.addr == tmp_ip_holder.s_addr && hna_node->key.KEY_ANETMASK == netmask && hna_node->key.KEY_ATYPE == atype ) {
+		if ( hna_node->key.addr == tmp_ip_holder.s_addr && hna_node->key.KEY_ANETMASK == netmask && hna_node->key.KEY_ATYPE == atype ) {
 				
-				addr_to_string( hna_node->key.addr, str, sizeof (str) );
-				printf( "removing HNA %s/%i \n", str, hna_node->key.KEY_ANETMASK );
-				
-				list_del( prev_hna_list_head, hna_list_pos, &hna_list );
-				debugFree( hna_node, 1103 );
-				
-				hna_list_size--;
+			found = YES;
+			break;
 			
-			} else {
-				
-				prev_hna_list_head = &hna_node->list;
-				
-			}
-
 		}
 
+	}
+
+	
+	if ( found ) {
+		
+		if ( del && hna_node->enabled ) {
+			//printf( "removing HNA %s/%i, atype %d \n", str, netmask, atype );
+			hna_node->enabled = NO;
+			hna_list_enabled--;
+		
+		} else if ( !del && ! hna_node->enabled ) {
+			
+			hna_node->enabled = YES;
+			hna_list_enabled++;
+		}
 		
 	} else {
 		
@@ -254,25 +269,21 @@ void add_del_hna_opt ( char *optarg_str, int8_t del, uint8_t atype ) {
 		hna_node->key.addr = tmp_ip_holder.s_addr;
 		hna_node->key.KEY_ANETMASK = netmask;
 		hna_node->key.KEY_ATYPE = atype;
+		hna_node->enabled = ( del ? NO : YES ) ;
 		
 		
 		addr_to_string( hna_node->key.addr, str, sizeof (str) );
-		printf( "adding HNA %s/%i, atype %d \n", str, netmask, atype );
+		//printf( "adding HNA %s/%i, atype %d \n", str, netmask, atype );
 	
 		list_add_tail( &hna_node->list, &hna_list );
 		
-		hna_list_size++;
+		if ( hna_node->enabled )
+			hna_list_enabled++;
 
 	}
+	
 	*slash_ptr = '/';
 	
-	// check if umber of HNAs fit into max packet size
-	if ( sizeof(struct bat_packet) + (hna_list_size * sizeof(struct ext_packet)) > MAX_PACKET_OUT_SIZE ) {
-		
-		printf("HNAs do not fit into max packet size \n");
-		exit(EXIT_FAILURE);
-
-	}
 
 	
 }
@@ -284,13 +295,18 @@ void apply_init_args( int argc, char *argv[] ) {
 	struct debug_level_info *debug_level_info;
 	uint8_t found_args = 1, batch_mode = 0, apply_default_paras_and_break = NO;
 	int8_t res;
+	struct list_head *hna_list_pos;
+	struct hna_node *hna_node;
+
 
 	int32_t optchar, recv_buff_len, bytes_written, download_speed = 0, upload_speed = 0;
 	char str1[16], str2[16], *slash_ptr, *unix_buff, *buff_ptr, *cr_ptr;
-	char routing_class_opt = 0, gateway_class_opt = 0, pref_gw_opt = 0;
+	char routing_class_opt = 0, gateway_class_opt = 0, pref_gw_opt = 0, hna_opt = 0;
+	struct ext_type_hna hna_type_request;
 	uint32_t vis_server = 0;
 
-
+	memset( &hna_type_request, 0, sizeof( hna_type_request ) );
+	
 	memset( &tmp_ip_holder, 0, sizeof (struct in_addr) );
 	stop = 0;
 	prog_name = argv[0];
@@ -352,7 +368,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		apply_default_paras_and_break = NO;
 		
-		if ( ( optchar = getopt_long ( argc, argv, "a:bcmd:hHo:l:q:t:g:p:r:s:vV", long_options, &option_index ) ) == -1 ) {
+		if ( ( optchar = getopt_long ( argc, argv, "a:A:bcmd:hHo:l:q:t:g:p:r:s:vV", long_options, &option_index ) ) == -1 ) {
 			
 			if ( found_args == 1 ) {
 						
@@ -800,11 +816,23 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			case 'a':
 
-				add_del_hna_opt( optarg, NO, A_TYPE_NETWORK );
+				prepare_add_del_own_hna( optarg, NO, A_TYPE_NETWORK, YES );
+				
+				hna_opt = YES; /* for activating the add request */
+				
 				
 				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
 				break;
 
+			case 'A':
+
+				prepare_add_del_own_hna( optarg, YES, A_TYPE_NETWORK, YES );
+				
+				hna_opt = YES; /* for activating the del request */
+				
+				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
+				break;
+			
 			case 'b':
 				batch_mode++;
 				found_args += 1;
@@ -1102,7 +1130,7 @@ void apply_init_args( int argc, char *argv[] ) {
 						
 					addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
 					sprintf( fake_arg, "%s/32", ifaddr_str);
-					add_del_hna_opt( fake_arg, NO, A_TYPE_INTERFACE );
+					prepare_add_del_own_hna( fake_arg, NO, A_TYPE_INTERFACE, YES );
 					printf ("Interface %s specific option: /%c \n", batman_if->dev, MAKE_IP_HNA_IF_SWITCH );
 						
 					batman_if->send_ogm_only_via_owning_if = YES;
@@ -1124,7 +1152,7 @@ void apply_init_args( int argc, char *argv[] ) {
 						
 					addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
 					sprintf( fake_arg, "%s/32", ifaddr_str);
-					add_del_hna_opt( fake_arg, NO, A_TYPE_INTERFACE );
+					prepare_add_del_own_hna( fake_arg, NO, A_TYPE_INTERFACE, YES );
 					printf ("Interface %s specific option: /%c \n", batman_if->dev, MAKE_IP_HNA_IF_SWITCH );
 						
 					batman_if->send_ogm_only_via_owning_if = YES;
@@ -1246,7 +1274,7 @@ void apply_init_args( int argc, char *argv[] ) {
 						
 						addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
 						sprintf( fake_arg, "%s/32", ifaddr_str);
-						add_del_hna_opt( fake_arg, NO, A_TYPE_INTERFACE );
+						prepare_add_del_own_hna( fake_arg, NO, A_TYPE_INTERFACE, YES );
 						
 						batman_if->send_ogm_only_via_owning_if = YES;
 						batman_if->if_ttl = 1;
@@ -1270,7 +1298,7 @@ void apply_init_args( int argc, char *argv[] ) {
 					
 					addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
 					sprintf( fake_arg, "%s/32", ifaddr_str);
-					add_del_hna_opt( fake_arg, YES, A_TYPE_INTERFACE );
+					prepare_add_del_own_hna( fake_arg, YES, A_TYPE_INTERFACE, YES );
 						
 					found_args += 1;
 
@@ -1421,7 +1449,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			if ( debug_level <= debug_level_max ) {
 
-				snprintf( unix_buff, 10, "d:%c", debug_level );
+				snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "d:%c", debug_level );
 
 				if ( ( batch_mode ) && ( debug_level == DBGL_CHANGES || debug_level == DBGL_ALL || debug_level == DBGL_PROFILE ) )
 					printf( "WARNING: Your chosen debug level (%i) does not support batch mode !\n", debug_level );
@@ -1437,12 +1465,31 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			batch_mode = 1;
 			addr_to_string( pref_gateway, str1, sizeof(str1) );
-			snprintf( unix_buff, 20, "p:%s", str1 );
+			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "p:%s", str1 );
 
 		} else if ( gateway_class_opt ) {
 
 			batch_mode = 1;
 			snprintf( unix_buff, 10, "g:%c", gateway_class );
+
+		} else if ( hna_opt ) {
+
+			
+			list_for_each( hna_list_pos, &hna_list ) {
+
+				hna_node = list_entry( hna_list_pos, struct hna_node, list );
+				
+				addr_to_string( hna_node->key.addr, str1, sizeof(str1) );
+				printf(" sending a:%d %-3d %u %s\n", hna_node->enabled, hna_node->key.KEY_ANETMASK, hna_node->key.addr, str1 );
+				
+				snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "a:%d %-3d %u", hna_node->enabled, hna_node->key.KEY_ANETMASK, hna_node->key.addr );
+				
+				batch_mode = 1;
+				
+				break;
+			
+			}
+			
 
 		} else {
 
