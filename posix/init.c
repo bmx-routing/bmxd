@@ -415,7 +415,7 @@ void apply_init_args( int argc, char *argv[] ) {
 	
 			set_init_arg( GW_CHANGE_HYSTERESIS_SWITCH, "2", MIN_GW_CHANGE_HYSTERESIS, MAX_GW_CHANGE_HYSTERESIS, &gw_change_hysteresis ); 
 	
-			set_init_arg( DUP_TTL_LIMIT_SWITCH, "3", MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT, &dup_ttl_limit );
+			set_init_arg( DUP_TTL_LIMIT_SWITCH, "5", MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT, &dup_ttl_limit );
 	
 			set_init_arg( DUP_RATE_SWITCH, "99", MIN_DUP_RATE, MAX_DUP_RATE, &dup_rate );
 	
