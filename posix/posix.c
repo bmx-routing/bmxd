@@ -794,11 +794,11 @@ int main( int argc, char *argv[] ) {
 	start_time = times(&tp);
 	system_tick = (float)sysconf(_SC_CLK_TCK);
 
+	srand( getpid() );
+	
 	apply_init_args( argc, argv );
 
 	init_bh_ports();
-
-	srand( getpid() );
 
 	res = batman();
 
