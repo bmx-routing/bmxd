@@ -194,21 +194,21 @@ void *client_to_gw_tun( void *arg ) {
 	memset( &my_addr, 0, sizeof(struct sockaddr_in) );
 
 	gw_addr.sin_family = AF_INET;
-	gw_addr.sin_port = htons(PORT + 1);
-	gw_addr.sin_addr.s_addr = curr_gw_data->orig;
+	gw_addr.sin_port = curr_gw_data->gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWPORT;
+	gw_addr.sin_addr.s_addr = curr_gw_data->gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWADDR;
 
 	my_addr.sin_family = AF_INET;
-	my_addr.sin_port = htons(PORT + 1);
+	my_addr.sin_port = curr_gw_data->gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWPORT;
 	my_addr.sin_addr.s_addr = curr_gw_data->batman_if->addr.sin_addr.s_addr;
 
-	if ( two_way_tunnel > which_tunnel_max && (curr_gw_data->gw_node->orig_node->gwtypes & TWO_WAY_TUNNEL_FLAG) ){
+	if ( two_way_tunnel > which_tunnel_max && (curr_gw_data->gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWTYPES & TWO_WAY_TUNNEL_FLAG) ){
 		
 		which_tunnel = TWO_WAY_TUNNEL_FLAG;
 		which_tunnel_max = two_way_tunnel;
 		
 	}
 	
-	if (one_way_tunnel > which_tunnel_max && (curr_gw_data->gw_node->orig_node->gwtypes & ONE_WAY_TUNNEL_FLAG) ) {
+	if (one_way_tunnel > which_tunnel_max && (curr_gw_data->gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWTYPES & ONE_WAY_TUNNEL_FLAG) ) {
 			
 		which_tunnel = ONE_WAY_TUNNEL_FLAG;
 		which_tunnel_max = one_way_tunnel;
@@ -264,7 +264,7 @@ void *client_to_gw_tun( void *arg ) {
 		
 	}
 	
-	while ( ( !is_aborted() ) && ( curr_gateway != NULL ) && ( ! curr_gw_data->gw_node->deleted ) && (which_tunnel & curr_gw_data->gw_node->orig_node->gwtypes) ) {
+	while ( ( !is_aborted() ) && ( curr_gateway != NULL ) && ( ! curr_gw_data->gw_node->deleted ) && (which_tunnel & curr_gw_data->gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWTYPES) ) {
 
 		// obtain virtual IP and refresh leased IP  when 90% of lease_duration has expired
 		if ( (which_tunnel & TWO_WAY_TUNNEL_FLAG) && (tun_ip_request_stamp + TUNNEL_IP_REQUEST_TIMEOUT < current_time) && 
@@ -700,7 +700,7 @@ void *gw_listen( void *arg ) {
 	}
 
 	client_addr.sin_family = AF_INET;
-	client_addr.sin_port = htons(PORT + 1);
+	client_addr.sin_port = htons(my_gw_port);
 
 	
 	if ( add_dev_tun( batman_if, my_tun_ip, tun_dev, sizeof(tun_dev), &tun_fd, &tun_ifi ) < 0 )

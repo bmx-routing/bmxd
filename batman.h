@@ -39,7 +39,7 @@
 
 #define SOURCE_VERSION "0.3-alpha" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
 
-#define COMPAT_VERSION 9
+#define COMPAT_VERSION 10 /* set me back to 10 */
 
 
 #define ADDR_STR_LEN 16
@@ -110,7 +110,7 @@ extern int32_t aggregations_po;
 
 extern int32_t sequence_range;
 #define FULL_SEQ_RANGE ((uint16_t)-1)
-#define MAX_SEQ_RANGE 250      /* TBD: should not be larger until neigh_node.packet_count (and related variables) is only 8 bit */
+#define MAX_SEQ_RANGE 250      /* TBD: should not be larger until ogm->nbrf and neigh_node.packet_count (and related variables) is only 8 bit */
 #define MIN_SEQ_RANGE 1
 #define DEFAULT_SEQ_RANGE 128  /* NBRF: NeighBor Ranking sequence Frame) sliding packet range of received orginator messages in squence numbers (should be a multiple of our word size) */
 #define NBRFSIZE_SWITCH          "window-size"
@@ -226,6 +226,12 @@ extern int32_t penalty_exceed;
 #define ADVANCED_SWITCH          "dangerous"
 //#define DEF_ADVANCED_SWITCH NO;
 
+
+#define ADD_SRV_SWITCH "add-service"
+
+#define DEL_SRV_SWITCH "del-service"
+
+
 extern int8_t resist_blocked_send;
 #define RESIST_BLOCKED_SEND_SWITCH "resist-blocked-send"
 #define DEF_RESIST_BLOCKED_SEND NO
@@ -249,13 +255,23 @@ extern int32_t default_para_set;
 #define MAKE_IP_HNA_IF_SWITCH 'a'
 #define UNDO_IP_HNA_IF_SWITCH 'A'
 
-extern int32_t base_port;
+extern int32_t ogm_port;
 #define BASE_PORT_SWITCH "base-port"
 #define DEF_BASE_PORT 4305
 #define MIN_BASE_PORT 1025
 #define MAX_BASE_PORT 60000
 
-#define PORT base_port
+extern int32_t my_gw_port;
+#define DEF_GW_PORT 0 /* use ogm_port + 1 */
+
+extern uint32_t my_gw_addr;
+#define DEF_GW_ADDR 0 /* use primary interface addr */
+
+extern int32_t vis_port;
+#define DEF_VIS_PORT 4307
+
+//#define PORT base_port
+
 
 
 
@@ -387,11 +403,18 @@ extern uint8_t debug_level;
 
 extern struct ext_packet *my_hna_ext_array;
 extern uint16_t my_hna_ext_array_len;
+extern uint16_t my_hna_list_enabled;
+
+extern struct ext_packet *my_srv_ext_array;
+extern uint16_t my_srv_ext_array_len;
+extern uint16_t my_srv_list_enabled;
 
 extern struct ext_packet *my_gw_ext_array;
 extern uint16_t my_gw_ext_array_len;
 
-extern uint16_t hna_list_enabled;
+extern struct ext_packet *my_pip_ext_array;
+extern uint16_t my_pip_ext_array_len;
+
 
 
 extern int16_t num_words;
@@ -414,81 +437,174 @@ extern fd_set receive_wait_set;
 
 extern uint8_t unix_client;
 
+extern int g_argc;
+extern char **g_argv;
+
+
+extern struct bat_packet **received_ogm;
+extern uint32_t           *received_neigh;
+extern struct batman_if  **received_if_incoming;
+extern uint32_t           *received_batman_time;
+
+extern struct ext_packet **received_gw_array;
+extern int16_t            *received_gw_pos;
+extern struct ext_packet **received_hna_array;
+extern int16_t            *received_hna_pos;
+extern struct ext_packet **received_srv_array;
+extern int16_t            *received_srv_pos;
+extern struct ext_packet **received_vis_array;
+extern int16_t            *received_vis_pos;
+extern struct ext_packet **received_pip_array;
+extern int16_t            *received_pip_pos;
+
+
 extern struct hashtable_t *orig_hash;
 extern struct hashtable_t *hna_hash;
 
 extern pthread_mutex_t *todo_mutex;
 
-extern struct list_head_first todo_list;
 extern struct list_head_first if_list;
-extern struct list_head_first hna_list;
-extern struct list_head_first gw_list;
 extern struct list_head_first forw_list;
+extern struct list_head_first todo_list;
+extern struct list_head_first my_hna_list;
+extern struct list_head_first my_srv_list;
+extern struct list_head_first gw_list;
+//extern struct list_head_first link_list;
+extern struct list_head_first pifnb_list;
+
 extern struct vis_if vis_if;
 extern struct unix_if unix_if;
 extern struct debug_clients debug_clients;
 
 /* the bat_packet flags: */
-#define UNIDIRECTIONAL_FLAG 0x02 /* set when re-broadcasting a received OGM via a curretnly not bi-directional link and only together with IDF */
-#define DIRECTLINK_FLAG     0x04 /* set when re-broadcasting a received OGM with identical OG IP and NB IP on the interface link as received */
-#define CLONED_FLAG         0x08 /* set when (re-)broadcasting a OGM not-for-the-first time or re-broadcasting a OGM with this flag */
+#define UNIDIRECTIONAL_FLAG 0x01 /* set when re-broadcasting a received OGM via a curretnly not bi-directional link and only together with IDF */
+#define DIRECTLINK_FLAG     0x02 /* set when re-broadcasting a received OGM with identical OG IP and NB IP on the interface link as received */
+#define CLONED_FLAG         0x04 /* set when (re-)broadcasting a OGM not-for-the-first time or re-broadcasting a OGM with this flag */
 
-#define EXTENSION_FLAG       0x01 /* unset for OGM, set for OGM related extensions like HNA,... */
+//#define EXTENSION_MSG       0x01 /* ext_flag unset for OGM, set for OGM related extensions like HNA,... */
 
 
 
-/* the flags for bat_packet gwtypes: */
-#define TWO_WAY_TUNNEL_FLAG   0x01
-#define ONE_WAY_TUNNEL_FLAG   0x02
+struct bat_header
+{
+	uint8_t  version;
+	uint8_t  reserved1;
+	uint8_t  reserved2;
+	uint8_t  size; // the relevant data size in 4 oktets blocks of the packet (including the bat_header)
+} __attribute__((packed));
+
+
+#define BAT_TYPE_OGM 0x00
+
+struct bat_packet_common
+{
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+	unsigned int reserved1:4;
+	unsigned int bat_type:3;
+	unsigned int ext_msg:1;
+#elif __BYTE_ORDER == __BIG_ENDIAN
+	unsigned int ext_msg:1;
+	unsigned int bat_type:3;
+	unsigned int reserved1:4;
+#else
+# error "Please fix <bits/endian.h>"
+#endif
+	
+	uint8_t size; //in 4 bytes steps
+	
+	uint16_t reserved2;
+	
+} __attribute__((packed));
 
 
 struct bat_packet
 {
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 	unsigned int flags:4;    /* 0x08: UNIDIRECTIONAL link, 0x04: DIRECTLINK flag, ... */
-	unsigned int version:4;  /* should be the first field in the packet in network byte order */
+	unsigned int bat_type:3;
+	unsigned int ext_msg:1;
 #elif __BYTE_ORDER == __BIG_ENDIAN
-	unsigned int version:4;
+	unsigned int ext_msg:1;
+	unsigned int bat_type:3;
 	unsigned int flags:4;
 #else
 # error "Please fix <bits/endian.h>"
 #endif
-	uint8_t  ttl;
+	uint8_t size; //in 4 bytes steps
+	
+	uint8_t nbrf; //in 1 bit steps 
+	uint8_t reserved_someting;
+	
+	uint8_t ttl;
+	uint8_t prev_hop_id;
 	uint16_t seqno;
+	
 	uint32_t orig;
-	uint32_t prev_hop;
+//	uint32_t prev_hop;
 	
 } __attribute__((packed));
 
 struct orig_node                 /* structure for orig_list maintaining nodes of mesh */
 {
 	uint32_t orig;          /* this must be the first four bytes! otherwise the hash functionality does not work */
+	struct orig_node *primary_orig_node;
 	struct neigh_node *router;   /* the neighbor which is the currently best_next_hop */
+	
 	struct batman_if *batman_if; /* TBD: can this be removed? This equals router->if_incoming ?! the interface to route towards the currently best next hop */
-	uint16_t *bidirect_link;    /* if node is a bidrectional neighbour, when my originator packet was broadcasted (replied) by this node and received by me */
-	uint32_t last_valid;              /* when last packet from this node was received */
+	struct list_head_first neigh_list;
+	
+	uint32_t last_valid;              /* when last valid ogm from this node was received */
+	uint32_t last_aware;              /* when last valid ogm via  this node was received */
 	uint32_t first_valid_sec;
-	uint8_t  gwflags;                 /* flags related to gateway functions: gateway class */
-	uint8_t  gwtypes;                 /* flags related to offered gateway tunnel types */
+	uint16_t last_seqno;              /* last and best known squence number */
+	uint8_t last_seqno_largest_ttl;	  /* largest (best) TTL received with last sequence number */
+	
+	//uint8_t  gwflags;                 /* flags related to gateway functions: gateway class */
+	//uint8_t  gwtypes;                 /* flags related to offered gateway tunnel types */
+
+	struct ext_packet *gw_msg;
+	
 	struct ext_packet *hna_array;
 	int16_t  hna_array_len;
-	uint16_t last_seqno;              /* last and best known squence number */
 	
-	uint8_t last_seqno_largest_ttl;	  /* largest (best) TTL received with last sequence number */
+	struct ext_packet *srv_array;
+	int16_t  srv_array_len;
+	
+	TYPE_OF_WORD *dbg_rcvd_bits;
+	uint16_t last_dbg_rcvd_seqno;
+	
+	uint32_t last_link; /* when the last time a direct OGM has been received via any of this OGs' interfaces */
+	uint16_t id4him;    /* when last_link expired id4him is reset */
+#define MAX_ID4HIM 255	
+	uint16_t id4me;
+	
+	struct link_node *link_node;
+	
+};
+
+
+struct pifnb_node
+{
+	struct list_head list;
+	struct orig_node *pog;
+};
+
+/* MUST be allocated and initiated all or nothing !
+ * MUST be initiated with any unidirectional received OGM
+ * from a direct link NB */
+struct link_node
+{
+//	struct list_head list;
+	uint32_t addr;
+	struct orig_node *orig_node;
+	
+	uint16_t *bidirect_link;    /* if node is a bidrectional neighbour, when my OGM was broadcasted (replied) by this node and received by me */
 	
 	TYPE_OF_WORD *bi_link_bits;       /* for bidirect-link statistics */
 	uint16_t *last_bi_link_seqno;     /* for bidirect-link statistics */
 	
 	TYPE_OF_WORD *lq_bits;            /* for link-quality (lq) statistics */
 	uint16_t last_lq_seqno;           /* for link-quality (lq) statistics */
-	
-//	TYPE_OF_WORD send_old_seq_bits[ MAX_NUM_WORDS ]; /* just for debugging, indicates the re-broadcasted (non-unidirectional and non-quickest) OGMs for this foreign OG */
-	
-	TYPE_OF_WORD *dbg_rcvd_bits;
-	uint16_t last_dbg_rcvd_seqno;
-	
-	
-	struct list_head_first neigh_list;
 };
 
 struct neigh_node
@@ -523,68 +639,110 @@ struct hna_netmask_type
 
 
 
-#define EXT_HNA_TYPE    et.hna.nt.atype
-#define EXT_HNA_NETMASK et.hna.nt.anetmask
-#define EXT_HNA_ADDR    et.hna.addr
+#define EXT_HNA_FIELD_TYPE    et.hna.nt.atype
+#define EXT_HNA_FIELD_NETMASK et.hna.nt.anetmask
+#define EXT_HNA_FIELD_ADDR    et.hna.addr
 
 struct ext_type_hna
 {
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+	unsigned int ext_related:2;   // may be used by the related message type
+	unsigned int ext_type:5;      // identifies the extension message size, type and content
+	unsigned int ext_msg:1;       // MUST be set to one for extension messages
+#elif __BYTE_ORDER == __BIG_ENDIAN
+	unsigned int ext_msg:1;
+	unsigned int ext_type:5;
+	unsigned int ext_related:2;
+#else
+# error "Please fix <bits/endian.h>"
+#endif
 	struct hna_netmask_type nt;
+	
+	uint16_t reserved;
+	
 	uint32_t addr;
+
 } __attribute__((packed));
 
 
-#define EXT_GW_TYPES et.gw.gwtypes
-#define EXT_GW_FLAGS et.gw.gwflags
 
-struct ext_type_gw
+struct ext_type_def
 {
+
 #if __BYTE_ORDER == __LITTLE_ENDIAN
-	unsigned int gwtypes:4;  /* to let a gw announce its offered gateway types */
-	unsigned int reserved:4;
+	unsigned int ext_related:2;   // may be used by the related message type
+	unsigned int ext_type:5;      // identifies the extension message size, type and content
+	unsigned int ext_msg:1;      // MUST be set to one for extension messages
 #elif __BYTE_ORDER == __BIG_ENDIAN
-	unsigned int reserved:4;
-	unsigned int gwtypes:4;
+	unsigned int ext_msg:1;
+	unsigned int ext_type:5;
+	unsigned int ext_related:2;
 #else
 # error "Please fix <bits/endian.h>"
 #endif
 	
-	uint8_t  gwflags;     /* flags related to gateway functions: gateway class */
-	
-	uint8_t  reserved2;
-	uint8_t  reserved3;
-	uint8_t  reserved4;
+	uint8_t  def8;
+	uint16_t def16;
+	uint32_t def32;
 
 } __attribute__((packed));
 
-#define EXT_TYPE_GW  0x00
-#define EXT_TYPE_HNA 0x01
+
 
 struct ext_packet
 {
-#if __BYTE_ORDER == __LITTLE_ENDIAN
-	unsigned int ext_flag:1;
-	unsigned int ext_type:3;
-	unsigned int ext_reserved:4;
-#elif __BYTE_ORDER == __BIG_ENDIAN
-	unsigned int ext_reserved:4;
-	unsigned int ext_type:3;
-	unsigned int ext_flag:1;
-#else
-# error "Please fix <bits/endian.h>"
-#endif
 
+#define EXT_TYPE_GW  0x00
+#define EXT_TYPE_HNA 0x01
+#define EXT_TYPE_PIP 0x02
+#define EXT_TYPE_SRV 0x03
+#define EXT_TYPE_VIS 0x04
+#define EXT_TYPE_MAX 0x04
+
+#define EXT_FIELD_RELATED et.def.ext_related
+#define EXT_FIELD_TYPE    et.def.ext_type
+#define EXT_FIELD_MSG     et.def.ext_msg
+
+		
+// field accessor and flags for gateway announcement extension packets
+//#define EXT_GW_TYPES et.gw.gwtypes
+#define EXT_GW_FIELD_GWTYPES et.def.ext_related
+#define EXT_GW_FIELD_GWFLAGS et.def.def8
+#define EXT_GW_FIELD_GWPORT  et.def.def16
+#define EXT_GW_FIELD_GWADDR  et.def.def32
+// the flags for gw extension messsage gwtypes:
+#define TWO_WAY_TUNNEL_FLAG   0x01
+#define ONE_WAY_TUNNEL_FLAG   0x02
+		
+// field accessor for service announcement extension packets
+#define EXT_SRV_FIELD_SEQNO  et.def.def8
+#define EXT_SRV_FIELD_PORT   et.def.def16
+#define EXT_SRV_FIELD_ADDR   et.def.def32
+
+// field accessor for vis announcement extension packets
+#define EXT_VIS_FIELD_RES1   et.def.def8
+#define EXT_VIS_FIELD_PORT   et.def.def16
+#define EXT_VIS_FIELD_ADDR   et.def.def32
+
+// field accessor for primary interface announcement extension packets
+#define EXT_PIP_FIELD_RES1   et.def.def8
+#define EXT_PIP_FIELD_RES2   et.def.def16
+#define EXT_PIP_FIELD_ADDR   et.def.def32
+
+	
 	union
 	{
-		struct ext_type_gw  gw;
+		struct ext_type_def def;
+//		struct ext_type_gw  gw;
 		struct ext_type_hna hna;
+//		struct ext_type_srv srv;
 	}et;
 
 } __attribute__((packed));
 
 
-#define KEY_ATYPE    nt.atype
-#define KEY_ANETMASK nt.anetmask
+#define KEY_FIELD_ATYPE    nt.atype
+#define KEY_FIELD_ANETMASK nt.anetmask
 
 struct hna_key
 {
@@ -600,6 +758,7 @@ struct hna_node
 };
 
 #define TODO_TYPE_HNA 0x01
+#define TODO_TYPE_SRV 0x02
 
 struct todo_node
 {
@@ -607,6 +766,9 @@ struct todo_node
 	uint8_t todo_type;
 	uint8_t add;
 	struct hna_key key;
+	uint32_t def32;
+	uint16_t def16;
+	uint8_t  def8;
 };
 
 #define  HNA_HASH_NODE_EMPTY 0x00
@@ -621,6 +783,17 @@ struct hna_hash_node
 	uint8_t status;
 
 };
+
+
+struct srv_node
+{
+	struct list_head list;
+	uint32_t srv_addr;
+	uint16_t srv_port;
+	uint8_t  srv_seqno;
+	uint8_t enabled;
+};
+
 
 struct forw_node                 /* structure for forw_list maintaining packets to be send/forwarded */
 {
@@ -726,14 +899,17 @@ int8_t batman( void );
 void usage( void );
 void verbose_usage( void );
 void print_advanced_opts ( int verbose );
+
+int calc_ogm_if_size( int if_num );
 int is_batman_if( char *dev, struct batman_if **batman_if );
 void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, struct ext_packet *hna_array, int16_t hna_array_len );
-void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags, uint8_t new_gwtypes );
+void update_gw_list( struct orig_node *orig_node, int16_t gw_array_len, struct ext_packet *gw_array );
 void get_gw_speeds( unsigned char class, int *down, int *up );
 unsigned char get_gw_class( int down, int up );
 void choose_gw();
 struct hna_hash_node *get_hna_node( struct hna_key *hk );
 void add_del_other_hna( struct orig_node *orig_node, struct ext_packet *hna_array, int16_t hna_array_len /*int8_t del*/ );
+void add_del_other_srv( struct orig_node *orig_node, struct ext_packet *srv_array, int16_t srv_array_len /*int8_t del*/ );
 
 
 #endif

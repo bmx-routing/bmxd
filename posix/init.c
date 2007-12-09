@@ -89,10 +89,12 @@ void set_init_arg( char* switch_name, char* switch_arg, int min, int max, int32_
 	errno = 0;
 	int16_t tmp = strtol (switch_arg, NULL , 10);
 
+	/*
 	printf ("--%s", switch_name );
 	if (switch_arg)
 		printf (" %d", tmp );
 	printf (" \\ \n");
+	*/
 	
 	if ( tmp < min || tmp > max ) {
 
@@ -111,7 +113,7 @@ void set_gw_network ( char *optarg_p ) {
 	struct in_addr tmp_ip_holder;
 	uint16_t netmask;
 	char *slash_ptr;
-	static char netmask_str[ADDR_STR_LEN];
+	//static char netmask_str[ADDR_STR_LEN];
 		
 	char optarg_str[22];
 	
@@ -157,6 +159,7 @@ void set_gw_network ( char *optarg_p ) {
 	gw_tunnel_prefix  = gw_tunnel_prefix & htonl( 0xFFFFFFFF<<(32-netmask) );
 	gw_tunnel_netmask = netmask;
 	
+	/*
 	addr_to_string( gw_tunnel_prefix, netmask_str, ADDR_STR_LEN );
 	printf("Setting GW-tunnel-network to (%X) %s/%i  -- %i.%i.%i.%i\n",gw_tunnel_prefix, netmask_str, netmask, 
 		((uint8_t*)&gw_tunnel_prefix)[0],
@@ -164,6 +167,7 @@ void set_gw_network ( char *optarg_p ) {
 		((uint8_t*)&gw_tunnel_prefix)[2],
 		((uint8_t*)&gw_tunnel_prefix)[3]
 	      );
+	*/
 	
 	*slash_ptr = '/';
 	
@@ -181,8 +185,10 @@ void prepare_add_del_own_hna ( char *optarg_str, int8_t del, uint8_t atype, uint
 	uint8_t found = NO;
 			
 	
-	// check if umber of HNAs fit into max packet size
-	if ( !del  &&  sizeof(struct bat_packet) + (hna_list_enabled * sizeof(struct ext_packet)) > MAX_PACKET_OUT_SIZE ) {
+	// check if number of HNAs fit into max packet size
+	if ( !del  &&  sizeof(struct bat_header) + sizeof(struct bat_packet) + 
+		     ( ( 2 /*placeholder for the new hna-ext and one gw-ext packet*/ +  
+		     my_srv_ext_array_len + my_hna_list_enabled) * sizeof(struct ext_packet)) > MAX_PACKET_OUT_SIZE ) {
 		
 		if( startup ) {
 			printf("HNAs do not fit into max packet size \n");
@@ -233,13 +239,27 @@ void prepare_add_del_own_hna ( char *optarg_str, int8_t del, uint8_t atype, uint
 	
 	tmp_ip_holder.s_addr = ( tmp_ip_holder.s_addr & htonl(0xFFFFFFFF<<(32-netmask)) );
 		
-	list_for_each( hna_list_pos, &hna_list ) {
+	
+	list_for_each( hna_list_pos, &my_hna_list ) {
 
 		hna_node = list_entry( hna_list_pos, struct hna_node, list );
 
-		if ( hna_node->key.addr == tmp_ip_holder.s_addr && hna_node->key.KEY_ANETMASK == netmask && hna_node->key.KEY_ATYPE == atype ) {
+		if ( hna_node->key.addr == tmp_ip_holder.s_addr && hna_node->key.KEY_FIELD_ANETMASK == netmask && hna_node->key.KEY_FIELD_ATYPE == atype ) {
 				
 			found = YES;
+			
+			if ( del && hna_node->enabled ) {
+			//printf( "removing HNA %s/%i, atype %d \n", str, netmask, atype );
+				hna_node->enabled = NO;
+				my_hna_list_enabled--;
+		
+			} else if ( !del && ! hna_node->enabled ) {
+			
+				hna_node->enabled = YES;
+				my_hna_list_enabled++;
+			}
+			
+			
 			break;
 			
 		}
@@ -247,46 +267,188 @@ void prepare_add_del_own_hna ( char *optarg_str, int8_t del, uint8_t atype, uint
 	}
 
 	
-	if ( found ) {
-		
-		if ( del && hna_node->enabled ) {
-			//printf( "removing HNA %s/%i, atype %d \n", str, netmask, atype );
-			hna_node->enabled = NO;
-			hna_list_enabled--;
-		
-		} else if ( !del && ! hna_node->enabled ) {
-			
-			hna_node->enabled = YES;
-			hna_list_enabled++;
-		}
-		
-	} else {
+	if ( ! found ) {
 		
 		hna_node = debugMalloc( sizeof(struct hna_node), 203 );
 		memset( hna_node, 0, sizeof(struct hna_node) );
 		INIT_LIST_HEAD( &hna_node->list );
 	
 		hna_node->key.addr = tmp_ip_holder.s_addr;
-		hna_node->key.KEY_ANETMASK = netmask;
-		hna_node->key.KEY_ATYPE = atype;
+		hna_node->key.KEY_FIELD_ANETMASK = netmask;
+		hna_node->key.KEY_FIELD_ATYPE = atype;
 		hna_node->enabled = ( del ? NO : YES ) ;
 		
 		
 		addr_to_string( hna_node->key.addr, str, sizeof (str) );
 		//printf( "adding HNA %s/%i, atype %d \n", str, netmask, atype );
 	
-		list_add_tail( &hna_node->list, &hna_list );
+		list_add_tail( &hna_node->list, &my_hna_list );
 		
 		if ( hna_node->enabled )
-			hna_list_enabled++;
+			my_hna_list_enabled++;
 
 	}
 	
 	*slash_ptr = '/';
 	
+}
+
+
+void prepare_add_del_own_srv ( char *optarg_str, int8_t del, int8_t startup ) {
+	
+	struct srv_node *srv_node;
+	struct in_addr tmp_ip_holder;
+	uint16_t port;
+	uint8_t seqno = 0;
+	char *delimiter1_ptr, *delimiter2_ptr;
+	struct list_head *srv_list_pos;
+	char str[16];
+	uint8_t found = NO;
+	
+	int opt_len = strlen( optarg_str );
+	
+	// check if number of SRVs fit into max packet size
+	if ( !del  &&  sizeof(struct bat_header) + sizeof(struct bat_packet) + 
+		     ( ( 2 /*placeholder for the new hna-ext and one gw-ext packet*/ +  
+		     my_srv_list_enabled + my_hna_list_enabled) * sizeof(struct ext_packet)) > MAX_PACKET_OUT_SIZE ) {
+		
+		if( startup ) {
+			printf("SRV announcements  do not fit into max packet size \n");
+			exit(EXIT_FAILURE);
+		} else {
+			debug_output(0, "SRV announcements do not fit into max packet size \n");
+			return;
+		}
+
+		
+	}
+
+
+	if ( ( delimiter1_ptr = strchr( optarg_str, ':' ) ) == NULL ) {
+
+		printf( "Invalid SRV announcement (first : is missing): %s\n", optarg_str );
+		exit(EXIT_FAILURE);
+
+	}
+
+	*delimiter1_ptr = '\0';
+
+	if ( inet_pton( AF_INET, optarg_str, &tmp_ip_holder ) < 1 ) {
+
+		*delimiter1_ptr = ':';
+		printf( "Invalid SRV announcement (IP is invalid): %s\n", optarg_str );
+		exit(EXIT_FAILURE);
+
+	}
+	
+	*delimiter1_ptr = ':';
 
 	
+	errno = 0;
+	port = strtol( delimiter1_ptr + 1, NULL, 10 );
+	
+	if ( ( errno == ERANGE ) ) {
+	
+		//*delimiter2_ptr = ':';
+		printf( "Invalid SRV announcement (port is invalid): %s\n", optarg_str );
+		perror("strtol");
+		exit(EXIT_FAILURE);
+	
+	}
+	
+	if( !del ) {
+	
+		if ( ( ((delimiter1_ptr + 2) - optarg_str) > opt_len ) || ( delimiter2_ptr = strchr( (delimiter1_ptr + 1), ':' ) ) == NULL ) {
+	
+			printf( "Invalid SRV announcement (second : is missing): %s\n", optarg_str );
+			exit(EXIT_FAILURE);
+	
+		}
+		
+	
+		//*delimiter2_ptr = ':';
+	
+		
+		
+		if (  ((delimiter2_ptr + 2) - optarg_str) > opt_len  ) {
+	
+			printf( "Invalid SRV announcement (seqno is missing): %s\n", optarg_str );
+			exit(EXIT_FAILURE);
+	
+		}
+		
+		errno = 0;
+		seqno = strtol( delimiter2_ptr + 1, NULL, 10 );
+	
+		if ( ( errno == ERANGE ) ) {
+	
+			printf( "Invalid SRV announcement (seqno is invalid): %s\n", optarg_str );
+			perror("strtol");
+			exit(EXIT_FAILURE);
+	
+		}
+	
+	}	
+	
+
+	list_for_each( srv_list_pos, &my_srv_list ) {
+
+		srv_node = list_entry( srv_list_pos, struct srv_node, list );
+
+		if ( srv_node->srv_addr == tmp_ip_holder.s_addr && srv_node->srv_port == port ) {
+		
+			found = YES;
+	
+			if ( del && srv_node->enabled ) {
+				//printf( "removing HNA %s/%i, atype %d \n", str, netmask, atype );
+				srv_node->enabled = NO;
+				my_srv_list_enabled--;
+
+			} else if ( !del && ! srv_node->enabled ) {
+	
+				srv_node->enabled = YES;
+				srv_node->srv_seqno = seqno;
+				my_srv_list_enabled++;
+			
+			} else if ( !del && srv_node->enabled ) {
+	
+				srv_node->srv_seqno = seqno;
+			
+			}
+	
+	
+			break;
+	
+		}
+
+	}
+
+
+	if ( ! found ) {
+
+		srv_node = debugMalloc( sizeof(struct srv_node), 223 );
+		memset( srv_node, 0, sizeof(struct srv_node) );
+		INIT_LIST_HEAD( &srv_node->list );
+
+		srv_node->srv_addr = tmp_ip_holder.s_addr;
+		srv_node->srv_port = port;
+		srv_node->srv_seqno = ( !del ? seqno : 0 );
+		srv_node->enabled = ( del ? NO : YES ) ;
+
+
+		addr_to_string( srv_node->srv_addr, str, sizeof (str) );
+		printf( "adding SRV %s:%d:%i \n", str, port, seqno );
+
+		list_add_tail( &srv_node->list, &my_srv_list );
+
+		if ( srv_node->enabled )
+			my_srv_list_enabled++;
+
+	}
+	
 }
+
+
 
 void apply_init_args( int argc, char *argv[] ) {
 
@@ -295,13 +457,14 @@ void apply_init_args( int argc, char *argv[] ) {
 	struct debug_level_info *debug_level_info;
 	uint8_t found_args = 1, batch_mode = 0, info_output = 0, apply_default_paras_and_break = NO;
 	int8_t res;
-	struct list_head *hna_list_pos;
+	struct list_head *hna_list_pos, *srv_list_pos;
 	struct hna_node *hna_node;
+	struct srv_node *srv_node;
 
 
 	int32_t optchar, recv_buff_len, bytes_written, download_speed = 0, upload_speed = 0;
 	char str1[16], str2[16], *slash_ptr, *unix_buff, *buff_ptr, *cr_ptr;
-	char routing_class_opt = 0, gateway_class_opt = 0, pref_gw_opt = 0, hna_opt = 0;
+	char routing_class_opt = 0, gateway_class_opt = 0, pref_gw_opt = 0, hna_opt = 0, tout_opt = 0;
 	struct ext_type_hna hna_type_request;
 	uint32_t vis_server = 0;
 
@@ -314,8 +477,6 @@ void apply_init_args( int argc, char *argv[] ) {
 	inet_pton( AF_INET, DEF_GW_TUNNEL_PREFIX_STR, &gw_tunnel_prefix );
 
 	
-
-
 	printf( "WARNING: You are using BatMan-eXp %s%s (compatibility version %d) !\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
 
 	while ( 1 ) {
@@ -327,6 +488,8 @@ void apply_init_args( int argc, char *argv[] ) {
    {GENIII_DEFAULTS_SWITCH,     0, 0, 0},
    {BMX_DEFAULTS_SWITCH,        0, 0, 0},
    {GRAZ07_DEFAULTS_SWITCH,     0, 0, 0},
+   {ADD_SRV_SWITCH,             1, 0, 0},
+   {DEL_SRV_SWITCH,             1, 0, 0},
    {AGGREGATIONS_PO_SWITCH,     1, 0, 0},
    {NO_AGGREGATIONS_SWITCH,     0, 0, 0},
    {AGGREGATIONS_SWITCH,        0, 0, 0},
@@ -368,7 +531,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		apply_default_paras_and_break = NO;
 		
-		if ( ( optchar = getopt_long ( argc, argv, "a:A:bcmd:hHio:l:q:t:g:p:r:s:vV", long_options, &option_index ) ) == -1 ) {
+		if ( ( optchar = getopt_long ( argc, argv, "a:A:bcmd:hHio:l:q:g:p:r:s:vV", long_options, &option_index ) ) == -1 ) {
 			
 			if ( found_args == 1 ) {
 						
@@ -399,14 +562,11 @@ void apply_init_args( int argc, char *argv[] ) {
 				printf( "Error - Parametrization set can only be specified once and must be the first given argument !\n" );
 				exit(EXIT_FAILURE);
 			}
-						
-			printf ("Applying %s ! \n", BMX_DEFAULTS_SWITCH); 
-			printf ("ATTENTION!  This parametrization assumes the first given interface argument to be the one and only wireless interface, followed by zero or more lan interfaces ! ");
-			printf ("To change this assumtion mark the interfaces explicitly using /%c to specify the wlan interface(s) and /%c to specify the lan interface(s). Example: batmand eth0 /%c [wlan0 /%c ath1 /%c ...] \n", WLAN_IF_SWITCH, LAN_IF_SWITCH, LAN_IF_SWITCH, WLAN_IF_SWITCH, WLAN_IF_SWITCH);
+			
 	
 	
 			originator_interval = 1500;
-			printf ("-o %d \\ \n", originator_interval );
+			//printf ("-o %d \\ \n", originator_interval );
 	
 			set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "20", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
 	
@@ -487,14 +647,9 @@ void apply_init_args( int argc, char *argv[] ) {
 						exit(EXIT_FAILURE);
 					}
 					
-					printf ("Applying %s ! \n", long_options[option_index].name); 
-					printf ("ATTENTION!  This parametrization assumes the first given interface argument to be the one and only wireless interface, followed by zero or more lan interfaces ! ");
-					printf ("To change this assumtion mark the interfaces explicitly using /%c to specify the wlan interface(s) and /%c to specify the lan interface(s). Example: batmand eth0 /%c [wlan0 /%c ath1 /%c ...] \n", WLAN_IF_SWITCH, LAN_IF_SWITCH, LAN_IF_SWITCH, WLAN_IF_SWITCH, WLAN_IF_SWITCH);
-					
-					printf ("Parametrization based on experience gained from the Wireless Community Weekend in Graz 2007!\n");
 	
 					originator_interval = 1500;
-					printf ("-o %d \\ \n", originator_interval );
+					// printf ("-o %d \\ \n", originator_interval );
 	
 					set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "20", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
 	
@@ -652,7 +807,7 @@ void apply_init_args( int argc, char *argv[] ) {
 					
 				} else if ( strcmp( BASE_PORT_SWITCH, long_options[option_index].name ) == 0 ) {
 
-					set_init_arg( BASE_PORT_SWITCH, optarg, MIN_BASE_PORT, MAX_BASE_PORT, &base_port );
+					set_init_arg( BASE_PORT_SWITCH, optarg, MIN_BASE_PORT, MAX_BASE_PORT, &ogm_port );
 					found_args += 2;
 					break;
 				
@@ -669,6 +824,24 @@ void apply_init_args( int argc, char *argv[] ) {
 					found_args += 2;
 					break;
 				
+				} else if ( strcmp( ADD_SRV_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					prepare_add_del_own_srv( optarg, NO /* do not delete */, YES /* startup-mode */ );
+			
+					tout_opt = YES; /* for activating the add request */
+
+					found_args += 2;
+					break;
+				
+				} else if ( strcmp( DEL_SRV_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					prepare_add_del_own_srv( optarg, YES /*delete*/, YES /* startup-mode */ );
+				
+					tout_opt = YES; /* for activating the del request */
+				
+					found_args += 2;
+					break;
+					
 				/*	this is just a template:
 				} else if ( strcmp( _SWITCH, long_options[option_index].name ) == 0 ) {
 
@@ -760,7 +933,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 					errno = 0;
 					
-					set_init_arg( BASE_PORT_SWITCH,       "14305", MIN_BASE_PORT,       MAX_BASE_PORT,       &base_port ); 
+					set_init_arg( BASE_PORT_SWITCH,       "14305", MIN_BASE_PORT,       MAX_BASE_PORT,       &ogm_port ); 
 					set_init_arg( RT_TABLE_OFFSET_SWITCH, "144",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset ); 
 					set_init_arg( RT_PRIO_OFFSET_SWITCH,  "14500", MIN_RT_PRIO_OFFSET, MAX_RT_PRIO_OFFSET, &rt_prio_offset ); 
 					set_gw_network( "169.254.128.0/22" );
@@ -772,7 +945,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 					errno = 0;
 					
-					set_init_arg( BASE_PORT_SWITCH,       "16305", MIN_BASE_PORT,       MAX_BASE_PORT,       &base_port ); 
+					set_init_arg( BASE_PORT_SWITCH,       "16305", MIN_BASE_PORT,       MAX_BASE_PORT,       &ogm_port ); 
 					set_init_arg( RT_TABLE_OFFSET_SWITCH, "164",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset ); 
 					set_init_arg( RT_PRIO_OFFSET_SWITCH,  "16500", MIN_RT_PRIO_OFFSET, MAX_RT_PRIO_OFFSET, &rt_prio_offset ); 
 					set_gw_network( "169.254.160.0/22" );
@@ -784,7 +957,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 					errno = 0;
 					
-					set_init_arg( BASE_PORT_SWITCH,       "18305", MIN_BASE_PORT,       MAX_BASE_PORT,       &base_port ); 
+					set_init_arg( BASE_PORT_SWITCH,       "18305", MIN_BASE_PORT,       MAX_BASE_PORT,       &ogm_port ); 
 					set_init_arg( RT_TABLE_OFFSET_SWITCH, "184",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset ); 
 					set_init_arg( RT_PRIO_OFFSET_SWITCH,  "18500", MIN_RT_PRIO_OFFSET, MAX_RT_PRIO_OFFSET, &rt_prio_offset ); 
 					set_gw_network( "169.254.192.0/22" );
@@ -816,7 +989,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			case 'a':
 
-				prepare_add_del_own_hna( optarg, NO, A_TYPE_NETWORK, YES );
+				prepare_add_del_own_hna( optarg, NO, A_TYPE_NETWORK, YES /* startup-mode */ );
 				
 				hna_opt = YES; /* for activating the add request */
 				
@@ -826,7 +999,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			case 'A':
 
-				prepare_add_del_own_hna( optarg, YES, A_TYPE_NETWORK, YES );
+				prepare_add_del_own_hna( optarg, YES, A_TYPE_NETWORK, YES /* startup-mode */ );
 				
 				hna_opt = YES; /* for activating the del request */
 				
@@ -988,7 +1161,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
 				break;
-
+			
 			case 'v':
 
 				printf( "BatMan-eXp %s%s (compatibility version %i)\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
@@ -1052,9 +1225,9 @@ void apply_init_args( int argc, char *argv[] ) {
 	if ( ( ( routing_class != 0 ) || ( gateway_class != 0 ) ) && ( !probe_tun(1) ) )
 		exit(EXIT_FAILURE);
 
-	sprintf( unix_path, "%s.%d", DEF_UNIX_PATH, base_port);
+	/* this must be set for unix_clients and non-unix_clients */ 
+	sprintf( unix_path, "%s.%d", DEF_UNIX_PATH, ogm_port);
 
-	
 	
 	if ( !unix_client ) {
 
@@ -1123,6 +1296,7 @@ void apply_init_args( int argc, char *argv[] ) {
 			batman_if->if_bidirect_link_to = bidirect_link_to;
 			batman_if->if_ttl = ttl;
 			batman_if->if_send_clones = send_clones;
+			batman_if->packet_out_len = sizeof( struct bat_header );
 
 			list_add_tail( &batman_if->list, &if_list );
 
@@ -1140,7 +1314,13 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			if( default_para_set == PARA_SET_BMX ) {
 				
-				if ( batman_if->if_num > 0 ) {
+				if ( batman_if->if_num == 0 ) {
+					
+					printf ("Applying %s ! \n", BMX_DEFAULTS_SWITCH); 
+					printf ("ATTENTION!  This parametrization assumes the first given interface argument to be the one and only wireless interface, followed by zero or more lan interfaces ! ");
+					printf ("To change this assumtion mark the interfaces explicitly using /%c to specify the wlan interface(s) and /%c to specify the lan interface(s). Example: batmand eth0 /%c [wlan0 /%c ath1 /%c ...] \n", WLAN_IF_SWITCH, LAN_IF_SWITCH, LAN_IF_SWITCH, WLAN_IF_SWITCH, WLAN_IF_SWITCH);
+				
+				} else {
 					
 					char fake_arg[ADDR_STR_LEN + 4], ifaddr_str[ADDR_STR_LEN];
 					errno = 0;
@@ -1148,37 +1328,45 @@ void apply_init_args( int argc, char *argv[] ) {
 					addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
 					sprintf( fake_arg, "%s/32", ifaddr_str);
 					prepare_add_del_own_hna( fake_arg, NO, A_TYPE_INTERFACE, YES );
-					printf ("Interface %s specific option: /%c \n", batman_if->dev, MAKE_IP_HNA_IF_SWITCH );
+					//printf ("Interface %s specific option: /%c \n", batman_if->dev, MAKE_IP_HNA_IF_SWITCH );
 						
 					batman_if->send_ogm_only_via_owning_if = YES;
-					printf ("Interface %s specific option: /%c \n", batman_if->dev, OGM_ONLY_VIA_OWNING_IF_SWITCH );
+					//printf ("Interface %s specific option: /%c \n", batman_if->dev, OGM_ONLY_VIA_OWNING_IF_SWITCH );
 					batman_if->if_ttl = 1;
-					printf ("Interface %s specific option: /%c %d \n", batman_if->dev, TTL_IF_SWITCH, batman_if->if_ttl );
+					//printf ("Interface %s specific option: /%c %d \n", batman_if->dev, TTL_IF_SWITCH, batman_if->if_ttl );
 
 					batman_if->if_send_clones = 100;
-					printf ("Interface %s specific option: /%c %d \n", batman_if->dev, SEND_CLONES_IF_SWITCH, batman_if->if_send_clones );
+					//printf ("Interface %s specific option: /%c %d \n", batman_if->dev, SEND_CLONES_IF_SWITCH, batman_if->if_send_clones );
 
 				}
 					
 			} else if( default_para_set == PARA_SET_GRAZ07 ) {
 				
-				if ( batman_if->if_num > 0 ) {
+				if ( batman_if->if_num == 0 ) {
+					
+					printf ("Applying %s ! \n", GRAZ07_DEFAULTS_SWITCH); 
+					printf ("ATTENTION!  This parametrization assumes the first given interface argument to be the one and only wireless interface, followed by zero or more lan interfaces ! ");
+					printf ("To change this assumtion mark the interfaces explicitly using /%c to specify the wlan interface(s) and /%c to specify the lan interface(s). Example: batmand eth0 /%c [wlan0 /%c ath1 /%c ...] \n", WLAN_IF_SWITCH, LAN_IF_SWITCH, LAN_IF_SWITCH, WLAN_IF_SWITCH, WLAN_IF_SWITCH);
+					
+					printf ("Parametrization based on experience gained from the Wireless Community Weekend in Graz 2007!\n");
+					
+				} else {
 					
 					char fake_arg[ADDR_STR_LEN + 4], ifaddr_str[ADDR_STR_LEN];
 					errno = 0;
-						
+					
 					addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
 					sprintf( fake_arg, "%s/32", ifaddr_str);
 					prepare_add_del_own_hna( fake_arg, NO, A_TYPE_INTERFACE, YES );
-					printf ("Interface %s specific option: /%c \n", batman_if->dev, MAKE_IP_HNA_IF_SWITCH );
+					//printf ("Interface %s specific option: /%c \n", batman_if->dev, MAKE_IP_HNA_IF_SWITCH );
 						
 					batman_if->send_ogm_only_via_owning_if = YES;
-					printf ("Interface %s specific option: /%c \n", batman_if->dev, OGM_ONLY_VIA_OWNING_IF_SWITCH );
+					//printf ("Interface %s specific option: /%c \n", batman_if->dev, OGM_ONLY_VIA_OWNING_IF_SWITCH );
 					batman_if->if_ttl = 1;
-					printf ("Interface %s specific option: /%c %d \n", batman_if->dev, TTL_IF_SWITCH, batman_if->if_ttl );
+					//printf ("Interface %s specific option: /%c %d \n", batman_if->dev, TTL_IF_SWITCH, batman_if->if_ttl );
 
 					batman_if->if_send_clones = 100;
-					printf ("Interface %s specific option: /%c %d \n", batman_if->dev, SEND_CLONES_IF_SWITCH, batman_if->if_send_clones );
+					//printf ("Interface %s specific option: /%c %d \n", batman_if->dev, SEND_CLONES_IF_SWITCH, batman_if->if_send_clones );
 
 				}
 					
@@ -1194,7 +1382,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 					errno = 0;
 					int16_t tmp = strtol ( argv[ found_args+1 ], NULL , 10 );
-					printf ("Interface %s specific option: /%c %d \n", batman_if->dev, ((argv[found_args])[1]), tmp );
+					//printf ("Interface %s specific option: /%c %d \n", batman_if->dev, ((argv[found_args])[1]), tmp );
 
 					if ( tmp < MIN_BIDIRECT_TIMEOUT || tmp > MAX_BIDIRECT_TIMEOUT ) {
 
@@ -1212,7 +1400,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 					errno = 0;
 					uint8_t tmp = strtol ( argv[ found_args+1 ], NULL , 10 );
-					printf ("Interface %s specific option: /%c %d \n", batman_if->dev, ((argv[found_args])[1]), tmp );
+					//printf ("Interface %s specific option: /%c %d \n", batman_if->dev, ((argv[found_args])[1]), tmp );
 
 					if ( tmp < MIN_TTL || tmp > MAX_TTL ) {
 
@@ -1229,7 +1417,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 					errno = 0;
 					int16_t tmp = strtol ( argv[ found_args+1 ], NULL , 10 );
-					printf ("Interface %s specific option: /%c %d \n", batman_if->dev, ((argv[found_args])[1]), tmp );
+					//printf ("Interface %s specific option: /%c %d \n", batman_if->dev, ((argv[found_args])[1]), tmp );
 
 					if ( tmp < MIN_SEND_CLONES || tmp > MAX_SEND_CLONES ) {
 
@@ -1250,7 +1438,7 @@ void apply_init_args( int argc, char *argv[] ) {
 				} else if ( (argv[found_args])[1] == OGM_ONLY_VIA_OWNING_IF_SWITCH && argc > (found_args) ) {
 
 					errno = 0;
-					printf ("Interface %s specific option: /%c  \n", batman_if->dev, ((argv[found_args])[1]) );
+					//printf ("Interface %s specific option: /%c  \n", batman_if->dev, ((argv[found_args])[1]) );
 
 					batman_if->send_ogm_only_via_owning_if = YES;
 					batman_if->if_ttl = 1;
@@ -1261,8 +1449,8 @@ void apply_init_args( int argc, char *argv[] ) {
 				} else if ( (argv[found_args])[1] == WLAN_IF_SWITCH && argc > (found_args) ) {
 
 					errno = 0;
-					printf ("Interface %s specific option: /%c  \n", batman_if->dev, ((argv[found_args])[1]) );
-					printf (" applying %s specific option: /%c %d \n", batman_if->dev, SEND_CLONES_IF_SWITCH, DEF_WLAN_IF_CLONES );
+					//printf ("Interface %s specific option: /%c  \n", batman_if->dev, ((argv[found_args])[1]) );
+					//printf (" applying %s specific option: /%c %d \n", batman_if->dev, SEND_CLONES_IF_SWITCH, DEF_WLAN_IF_CLONES );
 
 					batman_if->if_send_clones = DEF_WLAN_IF_CLONES;
 
@@ -1272,8 +1460,8 @@ void apply_init_args( int argc, char *argv[] ) {
 				} else if ( (argv[found_args])[1] == LAN_IF_SWITCH && argc > (found_args) ) {
 
 					errno = 0;
-					printf ("Interface %s specific option: /%c  \n", batman_if->dev, ((argv[found_args])[1]) );
-					printf (" applying %s specific option: /%c %d \n", batman_if->dev, SEND_CLONES_IF_SWITCH, DEF_LAN_IF_CLONES );
+					//printf ("Interface %s specific option: /%c  \n", batman_if->dev, ((argv[found_args])[1]) );
+					//printf (" applying %s specific option: /%c %d \n", batman_if->dev, SEND_CLONES_IF_SWITCH, DEF_LAN_IF_CLONES );
 
 					batman_if->if_send_clones = DEF_LAN_IF_CLONES;
 
@@ -1282,7 +1470,7 @@ void apply_init_args( int argc, char *argv[] ) {
 				
 				} else if ( (argv[found_args])[1] == MAKE_IP_HNA_IF_SWITCH && argc > (found_args) ) {
 
-					printf ("Interface %s specific option: /%c  \n", batman_if->dev, ((argv[found_args])[1]) );
+					//printf ("Interface %s specific option: /%c  \n", batman_if->dev, ((argv[found_args])[1]) );
 					
 					if ( batman_if->if_num > 0 ) {
 					
@@ -1308,7 +1496,7 @@ void apply_init_args( int argc, char *argv[] ) {
 							
 				} else if ( (argv[found_args])[1] == UNDO_IP_HNA_IF_SWITCH && argc > (found_args) ) {
 
-					printf ("Interface %s specific option: /%c  \n", batman_if->dev, ((argv[found_args])[1]) );
+					//printf ("Interface %s specific option: /%c  \n", batman_if->dev, ((argv[found_args])[1]) );
 					
 					char fake_arg[ADDR_STR_LEN + 4], ifaddr_str[ADDR_STR_LEN];
 					errno = 0;
@@ -1330,6 +1518,17 @@ void apply_init_args( int argc, char *argv[] ) {
 			}
 
 		}
+		
+	
+		if ( initial_seqno == 0 )
+			initial_seqno = rand_num( FULL_SEQ_RANGE - (10*sequence_range) );
+	
+		if ( my_gw_port == 0 )
+			my_gw_port = ogm_port + 1;
+	
+		if ( my_gw_addr == 0 )
+			my_gw_addr = (list_entry( (&if_list)->next, struct batman_if, list ))->addr.sin_addr.s_addr ;
+	
 		
 		unlink( unix_path );
 		unix_if.unix_sock = socket( AF_LOCAL, SOCK_STREAM, 0 );
@@ -1365,7 +1564,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			}
 
-			openlog( "batmand", LOG_PID, LOG_DAEMON );
+			openlog( "bmxd", LOG_PID, LOG_DAEMON );
 
 		} else {
 			printf( "BatMan-eXp %s%s (compatibility version %i)\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
@@ -1403,7 +1602,7 @@ void apply_init_args( int argc, char *argv[] ) {
 		if ( vis_server ) {
 
 			vis_if.addr.sin_family = AF_INET;
-			vis_if.addr.sin_port = htons(PORT + 2);
+			vis_if.addr.sin_port = htons( vis_port );
 			vis_if.addr.sin_addr.s_addr = vis_server;
 			vis_if.sock = socket( PF_INET, SOCK_DGRAM, 0 );
 
@@ -1492,14 +1691,32 @@ void apply_init_args( int argc, char *argv[] ) {
 		} else if ( hna_opt ) {
 
 			
-			list_for_each( hna_list_pos, &hna_list ) {
+			list_for_each( hna_list_pos, &my_hna_list ) {
 
 				hna_node = list_entry( hna_list_pos, struct hna_node, list );
 				
 				addr_to_string( hna_node->key.addr, str1, sizeof(str1) );
-				printf(" sending a:%d %-3d %u %s\n", hna_node->enabled, hna_node->key.KEY_ANETMASK, hna_node->key.addr, str1 );
+				printf(" sending a:%d %-3d %u %s\n", hna_node->enabled, hna_node->key.KEY_FIELD_ANETMASK, hna_node->key.addr, str1 );
 				
-				snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "a:%d %-3d %u", hna_node->enabled, hna_node->key.KEY_ANETMASK, hna_node->key.addr );
+				snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "a:%d %-3d %u", hna_node->enabled, hna_node->key.KEY_FIELD_ANETMASK, hna_node->key.addr );
+				
+				batch_mode = 1;
+				
+				break;
+			
+			}
+			
+		} else if ( tout_opt ) {
+
+			
+			list_for_each( srv_list_pos, &my_srv_list ) {
+
+				srv_node = list_entry( srv_list_pos, struct srv_node, list );
+				
+				addr_to_string( srv_node->srv_addr, str1, sizeof(str1) );
+				printf(" sending %c %-5d %-3d %u (%s)\n", (srv_node->enabled ? 't':'T'), srv_node->srv_port, srv_node->srv_seqno, srv_node->srv_addr, str1 );
+				
+				snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c%-5d%-3d%u", (srv_node->enabled ? 't':'T'), srv_node->srv_port, srv_node->srv_seqno, srv_node->srv_addr );
 				
 				batch_mode = 1;
 				
@@ -1626,7 +1843,7 @@ void init_interface ( struct batman_if *batman_if ) {
 	}
 
 	batman_if->addr.sin_family = AF_INET;
-	batman_if->addr.sin_port = htons(PORT);
+	batman_if->addr.sin_port = htons(ogm_port);
 	batman_if->addr.sin_addr.s_addr = ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr;
 
 	if ( ioctl( batman_if->udp_recv_sock, SIOCGIFBRDADDR, &int_req ) < 0 ) {
@@ -1638,7 +1855,7 @@ void init_interface ( struct batman_if *batman_if ) {
 	}
 
 	batman_if->broad.sin_family = AF_INET;
-	batman_if->broad.sin_port = htons(PORT);
+	batman_if->broad.sin_port = htons(ogm_port);
 	batman_if->broad.sin_addr.s_addr = ((struct sockaddr_in *)&int_req.ifr_broadaddr)->sin_addr.s_addr;
 
 	if ( batman_if->broad.sin_addr.s_addr == 0 ) {
@@ -1785,7 +2002,7 @@ void init_interface_gw ( struct batman_if *batman_if ) {
 		//memset( gw_client_list, 0, (32-gw_tunnel_netmask) * sizeof( struct gw_client ) );
 
 		
-		batman_if->addr.sin_port = htons(PORT + 1);
+		batman_if->addr.sin_port = htons( my_gw_port );
 
 		batman_if->udp_tunnel_sock = socket( PF_INET, SOCK_DGRAM, 0 );
 
@@ -1809,7 +2026,7 @@ void init_interface_gw ( struct batman_if *batman_if ) {
 		sock_opts = fcntl( batman_if->udp_tunnel_sock, F_GETFL, 0 );
 		fcntl( batman_if->udp_tunnel_sock, F_SETFL, sock_opts | O_NONBLOCK );
 
-		batman_if->addr.sin_port = htons(PORT);
+		batman_if->addr.sin_port = htons( ogm_port );
 
 		pthread_create( &batman_if->listen_thread_id, NULL, &gw_listen, &gw_listen_arg );
 

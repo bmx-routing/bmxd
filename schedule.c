@@ -47,16 +47,17 @@ void schedule_own_packet( struct batman_if *batman_if, uint32_t current_time ) {
 	forw_node_new->if_outgoing = batman_if;
 	forw_node_new->own = 1;
 
-	/* only primary interfaces send extension packets */
+	/* only primary interfaces send usual extension messages */
 	if (  batman_if->if_num == 0  ) {
 		
 		//TBD: Do we really need sizeof(unsigned char) ???
 		
-		forw_node_new->pack_buff_len = sizeof(struct bat_packet) + ((my_gw_ext_array_len + my_hna_ext_array_len) * sizeof(struct ext_packet));
+		forw_node_new->pack_buff_len = calc_ogm_if_size( 0 );
 		
 		forw_node_new->pack_buff = debugMalloc( forw_node_new->pack_buff_len , 502 );
 		
 		memcpy( forw_node_new->pack_buff, (unsigned char *)&batman_if->out, sizeof(struct bat_packet) );
+		
 		
 		if ( my_gw_ext_array_len > 0 )
 			memcpy( forw_node_new->pack_buff + sizeof(struct bat_packet), (unsigned char *)my_gw_ext_array, my_gw_ext_array_len * sizeof(struct ext_packet) );
@@ -64,12 +65,19 @@ void schedule_own_packet( struct batman_if *batman_if, uint32_t current_time ) {
 		if ( my_hna_ext_array_len > 0 )
 			memcpy( forw_node_new->pack_buff + sizeof(struct bat_packet) + (my_gw_ext_array_len * sizeof(struct ext_packet)), (unsigned char *)my_hna_ext_array, my_hna_ext_array_len * sizeof(struct ext_packet) );
 		
-	
+		if ( my_srv_ext_array_len > 0 )
+			memcpy( forw_node_new->pack_buff + sizeof(struct bat_packet) + ((my_gw_ext_array_len + my_hna_ext_array_len) * sizeof(struct ext_packet)), (unsigned char *)my_srv_ext_array, my_srv_ext_array_len * sizeof(struct ext_packet) );
+
+	/* all non-primary interfaces send primary-interface extension message */
 	} else {
 
-		forw_node_new->pack_buff = debugMalloc( sizeof(struct bat_packet), 503 );
+		forw_node_new->pack_buff_len = calc_ogm_if_size( 1 );
+		
+		forw_node_new->pack_buff = debugMalloc( forw_node_new->pack_buff_len , 502 );
+		
 		memcpy( forw_node_new->pack_buff, (unsigned char *)&batman_if->out, sizeof(struct bat_packet) );
-		forw_node_new->pack_buff_len = sizeof(struct bat_packet);
+
+		memcpy( forw_node_new->pack_buff + sizeof(struct bat_packet), (unsigned char *)my_pip_ext_array, my_pip_ext_array_len * sizeof(struct ext_packet) );
 
 	}
 
@@ -100,7 +108,7 @@ void schedule_own_packet( struct batman_if *batman_if, uint32_t current_time ) {
 
 
 
-void schedule_forward_packet( struct bat_packet *in, uint8_t unidirectional, uint8_t directlink, uint8_t cloned, struct ext_packet *gw_array, int16_t gw_array_len, struct ext_packet *hna_array, int16_t hna_array_len, struct batman_if *if_outgoing, uint32_t curr_time, uint32_t neigh ) {
+void schedule_forward_packet( /*struct bat_packet *in,*/ uint8_t unidirectional, uint8_t directlink, uint8_t cloned, /*struct ext_packet *gw_array, int16_t gw_array_len, struct ext_packet *hna_array, int16_t hna_array_len, struct batman_if *if_outgoing, uint32_t curr_time, uint32_t neigh,*/ uint16_t neigh_id ) {
 
 	prof_start( PROF_schedule_forward_packet );
 	struct forw_node *forw_node_new, *forw_packet_tmp = NULL;
@@ -108,7 +116,7 @@ void schedule_forward_packet( struct bat_packet *in, uint8_t unidirectional, uin
 
 	debug_output( 4, "schedule_forward_packet():  \n" );
 
-	if ( !( ( in->ttl == 1 && directlink) || in->ttl > 1 ) ){
+	if ( !( ( (*received_ogm)->ttl == 1 && directlink) || (*received_ogm)->ttl > 1 ) ){
 
 		debug_output( 4, "ttl exceeded \n" );
 
@@ -119,26 +127,44 @@ void schedule_forward_packet( struct bat_packet *in, uint8_t unidirectional, uin
 		INIT_LIST_HEAD( &forw_node_new->list );
 
 
-		forw_node_new->pack_buff_len = sizeof(struct bat_packet) + ((gw_array_len + hna_array_len) * sizeof( struct ext_packet));
+		forw_node_new->pack_buff_len = sizeof(struct bat_packet) + 
+					(((*received_gw_pos) + (*received_hna_pos) + (*received_srv_pos) + (*received_vis_pos) + (*received_pip_pos) ) * sizeof( struct ext_packet));
 		
 		forw_node_new->pack_buff = debugMalloc( forw_node_new->pack_buff_len, 505 );
 		
-		memcpy( forw_node_new->pack_buff, in, sizeof(struct bat_packet) );
+		memcpy( forw_node_new->pack_buff, (*received_ogm), sizeof(struct bat_packet) );
 		
-		if ( gw_array_len > 0 )
-			memcpy( forw_node_new->pack_buff + sizeof(struct bat_packet), (unsigned char *)gw_array, (gw_array_len * sizeof( struct ext_packet)) );
+		if ( (*received_gw_pos) > 0 )
+			memcpy( forw_node_new->pack_buff + sizeof(struct bat_packet), (unsigned char *)(*received_gw_array), ((*received_gw_pos) * sizeof( struct ext_packet)) );
 
-		if ( hna_array_len > 0 )
-			memcpy( forw_node_new->pack_buff + sizeof(struct bat_packet) + (gw_array_len * sizeof( struct ext_packet)), (unsigned char *)hna_array, (hna_array_len * sizeof( struct ext_packet)) );
+		if ( (*received_hna_pos) > 0 )
+			memcpy( forw_node_new->pack_buff + sizeof(struct bat_packet) + 
+					(((*received_gw_pos) ) * sizeof( struct ext_packet)),
+					   (unsigned char *)(*received_hna_array), ((*received_hna_pos) * sizeof( struct ext_packet)) );
 		
+		if ( (*received_srv_pos) > 0 )
+			memcpy( forw_node_new->pack_buff + sizeof(struct bat_packet) + 
+					(((*received_gw_pos) + (*received_hna_pos)) * sizeof( struct ext_packet)), 
+					   (unsigned char *)(*received_srv_array), ((*received_srv_pos) * sizeof( struct ext_packet)) );
 
+		if ( (*received_vis_pos) > 0 )
+			memcpy( forw_node_new->pack_buff + sizeof(struct bat_packet) + 
+					(((*received_gw_pos) + (*received_hna_pos) + (*received_srv_pos)) * sizeof( struct ext_packet)), 
+					    (unsigned char *)(*received_vis_array), ((*received_vis_pos) * sizeof( struct ext_packet)) );
+		
+		if ( (*received_pip_pos) > 0 )
+			memcpy( forw_node_new->pack_buff + sizeof(struct bat_packet) + 
+					(((*received_gw_pos) + (*received_hna_pos) + (*received_srv_pos) + (*received_vis_pos)) * sizeof( struct ext_packet)), 
+					    (unsigned char *)(*received_pip_array), ((*received_pip_pos) * sizeof( struct ext_packet)) );
+		
 		((struct bat_packet *)forw_node_new->pack_buff)->ttl--;
-		((struct bat_packet *)forw_node_new->pack_buff)->prev_hop = neigh;
+		//((struct bat_packet *)forw_node_new->pack_buff)->prev_hop = (*received_neigh);
+		((struct bat_packet *)forw_node_new->pack_buff)->prev_hop_id = neigh_id;
 		
-		forw_node_new->send_time = curr_time + rand_num( rebrc_delay );
+		forw_node_new->send_time = (*received_batman_time) + rand_num( rebrc_delay );
 		forw_node_new->own = 0;
 
-		forw_node_new->if_outgoing = if_outgoing;
+		forw_node_new->if_outgoing = *received_if_incoming;
 
 		((struct bat_packet *)forw_node_new->pack_buff)->flags = 0x00;
 		
@@ -226,7 +252,7 @@ void send_outstanding_packets() {
 			iteration++;
 	
 			aggregated_packets = 0;
-			aggregated_size = 0;
+			aggregated_size = sizeof( struct bat_header );
 			
 			list_for_each( forw_pos, &forw_list ) {
 	
@@ -247,9 +273,11 @@ void send_outstanding_packets() {
 					
 					if ( iteration == 1 ) {
 						
+						//TODO: move this to schedule_forward_packet() and send_own_packet()
 						/* change sequence number to network order */
 						((struct bat_packet *)forw_node->pack_buff)->seqno = htons( ((struct bat_packet *)forw_node->pack_buff)->seqno );
 						
+						// to trigger the scheduling of the next own OGMs at the end of this function
 						if ( forw_node->own )
 							forw_node->if_outgoing->send_own = 1;
 					
@@ -264,9 +292,11 @@ void send_outstanding_packets() {
 			
 								debug_output( 4, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s, len %d\n", orig_str, ntohs( ((struct bat_packet *)forw_node->pack_buff)->seqno ), ((struct bat_packet *)forw_node->pack_buff)->ttl, forw_node->if_outgoing->dev, forw_node->pack_buff_len );
 			
+								//TODO: send only pure bat_packet, no extension headers.
+								memcpy( (forw_node->if_outgoing->packet_out + forw_node->if_outgoing->packet_out_len), forw_node->pack_buff, forw_node->pack_buff_len );
+
+								
 								if ( aggregations_po ) {
-									
-									memcpy( (forw_node->if_outgoing->packet_out + forw_node->if_outgoing->packet_out_len), forw_node->pack_buff, forw_node->pack_buff_len );
 									
 									forw_node->if_outgoing->packet_out_len+= forw_node->pack_buff_len;
 								
@@ -274,7 +304,10 @@ void send_outstanding_packets() {
 								
 								} else {
 									
-									if ( send_udp_packet( forw_node->pack_buff, forw_node->pack_buff_len, &forw_node->if_outgoing->broad, forw_node->if_outgoing->udp_send_sock ) < 0 )
+									((struct bat_header*)&(forw_node->if_outgoing->packet_out))->version = COMPAT_VERSION;
+									((struct bat_header*)&(forw_node->if_outgoing->packet_out))->size = (sizeof(struct bat_header) + forw_node->pack_buff_len)/4;
+
+									if ( send_udp_packet( forw_node->if_outgoing->packet_out, sizeof(struct bat_header) + forw_node->pack_buff_len, &forw_node->if_outgoing->broad, forw_node->if_outgoing->udp_send_sock ) < 0 )
 										restore_and_exit(0);
 								
 								}
@@ -315,14 +348,15 @@ void send_outstanding_packets() {
 								}
 		
 		
-								/* OGMs for non-primary interfaces do not send hna information */
+								/* OGMs for non-primary interfaces do not send extension messages */
+								/*
 								if ( ( forw_node->own ) && ( ((struct bat_packet *)forw_node->pack_buff)->orig != ((struct batman_if *)if_list.next)->addr.sin_addr.s_addr ) ) {
 		
 									debug_output( 4, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s, len %d\n", orig_str, ntohs( ((struct bat_packet *)forw_node->pack_buff)->seqno ), ((struct bat_packet *)forw_node->pack_buff)->ttl, batman_if->dev, sizeof(struct bat_packet) );
 									
+									memcpy( (batman_if->packet_out + batman_if->packet_out_len), forw_node->pack_buff, sizeof(struct bat_packet) );
+									
 									if ( aggregations_po ) {
-										
-										memcpy( (batman_if->packet_out + batman_if->packet_out_len), forw_node->pack_buff, sizeof(struct bat_packet) );
 									
 										batman_if->packet_out_len+= sizeof(struct bat_packet);
 									
@@ -330,30 +364,46 @@ void send_outstanding_packets() {
 										
 									} else {
 										
-										if ( send_udp_packet( forw_node->pack_buff, sizeof(struct bat_packet), &batman_if->broad, batman_if->udp_send_sock ) < 0 )
+										((struct bat_header*)&(batman_if->packet_out))->version = COMPAT_VERSION;
+										((struct bat_header*)&(batman_if->packet_out))->size = (sizeof(struct bat_header) + sizeof(struct bat_packet))/4;
+										
+										if ( send_udp_packet( batman_if->packet_out, sizeof(struct bat_header) + sizeof(struct bat_packet), &batman_if->broad, batman_if->udp_send_sock ) < 0 )
 											restore_and_exit(0);
 									
 									}
 	
 								} else {
+								*/	
+								
+								if ( ( forw_node->own ) && ( ((struct bat_packet *)forw_node->pack_buff)->orig != ((struct batman_if *)if_list.next)->addr.sin_addr.s_addr ) && forw_node->pack_buff_len != (sizeof(struct bat_packet) + sizeof(struct ext_packet)) ) {
 									
-									debug_output( 4, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s, len %d\n", orig_str, ntohs( ((struct bat_packet *)forw_node->pack_buff)->seqno ), ((struct bat_packet *)forw_node->pack_buff)->ttl, batman_if->dev, forw_node->pack_buff_len );
-	
-									if ( aggregations_po ) {
-										
-										memcpy( (batman_if->packet_out + batman_if->packet_out_len), forw_node->pack_buff, forw_node->pack_buff_len );
+									debug_output( 0, "Error - OGM for secondary interface does not have correct size !! \n");
+									restore_and_exit(0);
 									
-										batman_if->packet_out_len+= forw_node->pack_buff_len;
-									
-										aggregated_packets++;
-										
-									} else {
-										
-										if ( send_udp_packet( forw_node->pack_buff, forw_node->pack_buff_len, &batman_if->broad, batman_if->udp_send_sock ) < 0 )
-											restore_and_exit(0);
-										
-									}
 								}
+								
+								debug_output( 4, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s, len %d\n", orig_str, ntohs( ((struct bat_packet *)forw_node->pack_buff)->seqno ), ((struct bat_packet *)forw_node->pack_buff)->ttl, batman_if->dev, forw_node->pack_buff_len );
+	
+								memcpy( (batman_if->packet_out + batman_if->packet_out_len), forw_node->pack_buff, forw_node->pack_buff_len );
+								
+								if ( aggregations_po ) {
+									
+									batman_if->packet_out_len+= forw_node->pack_buff_len;
+								
+									aggregated_packets++;
+									
+								} else {
+									
+									((struct bat_header*)&(batman_if->packet_out))->version = COMPAT_VERSION;
+									((struct bat_header*)&(batman_if->packet_out))->size = (sizeof(struct bat_header) + forw_node->pack_buff_len)/4;
+									
+									if ( send_udp_packet( batman_if->packet_out, sizeof( struct bat_header ) + forw_node->pack_buff_len, &batman_if->broad, batman_if->udp_send_sock ) < 0 )
+										restore_and_exit(0);
+									
+								}
+								/*
+								}
+								*/
 							}
 						}
 						
@@ -368,12 +418,11 @@ void send_outstanding_packets() {
 					if ( aggregated_packets == 0 ) {
 						
 						debug_output( 0, "Error - single packet to large to fit in allowed maximum packet size !! \n");
-						
 						restore_and_exit(0);
 						
 					}
 					
-					//wo dont want a small but later packet to sneak in here.
+					//we dont want a small but later packet to sneak in here.
 					break;
 					
 				}
@@ -387,14 +436,24 @@ void send_outstanding_packets() {
 			
 					batman_if = list_entry(if_pos, struct batman_if, list);
 				
-					if ( batman_if->packet_out_len > 0 ) {
+					if ( batman_if->packet_out_len > sizeof( struct bat_header ) ) {
+						
+						((struct bat_header*)&(batman_if->packet_out))->version = COMPAT_VERSION;
+						((struct bat_header*)&(batman_if->packet_out))->size = (batman_if->packet_out_len)/4;
+						
+						if ( (batman_if->packet_out_len)%4 != 0) {
+							
+							debug_output( 0, "Error - trying to send strange packet length %d oktets.\n", batman_if->packet_out_len );
+							restore_and_exit(0);
+							
+						}
 						
 						if ( send_udp_packet( batman_if->packet_out, batman_if->packet_out_len, &batman_if->broad, batman_if->udp_send_sock ) < 0 )
 							restore_and_exit(0);
 						
 					}
 								
-					batman_if->packet_out_len = 0;
+					batman_if->packet_out_len = sizeof( struct bat_header );
 				
 				}
 			}		
@@ -409,7 +468,7 @@ void send_outstanding_packets() {
 		
 		/* remove all the send packets from forw_list */
 		
-		aggregated_size = 0;
+		aggregated_size = sizeof( struct bat_header );
 		
 		list_for_each_safe( forw_pos, forw_temp, &forw_list ) {
 	

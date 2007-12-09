@@ -235,7 +235,6 @@ int8_t add_default_route() {
 	curr_gw_data = debugMalloc( sizeof(struct curr_gw_data), 207 );
 	curr_gw_data->orig = curr_gateway->orig_node->orig;
 	curr_gw_data->gw_node = curr_gateway;
-//	curr_gw_data->batman_if = curr_gateway->orig_node->batman_if;
 	curr_gw_data->batman_if = list_entry( (&if_list)->next , struct batman_if, list );
 
 	if ( pthread_create( &curr_gateway_thread_id, NULL, &client_to_gw_tun, curr_gw_data ) != 0 ) {
@@ -251,8 +250,7 @@ int8_t add_default_route() {
 }
 
 
-
-int8_t receive_packet( struct bat_packet **ogm, struct ext_packet **gw_array, int16_t *gw_array_len, struct ext_packet **hna_array, int16_t *hna_array_len, uint32_t *neigh, uint32_t timeout, struct batman_if **if_incoming, uint32_t *batman_time ) {
+int8_t receive_packet( uint32_t timeout ) {
 
 	
 	static unsigned char packet_in[2001];
@@ -270,18 +268,24 @@ int8_t receive_packet( struct bat_packet **ogm, struct ext_packet **gw_array, in
 	struct list_head *if_pos;
 	struct batman_if *batman_if;
 	int8_t res;
-	int16_t hna_pos = 0, gw_pos = 0;
+//	int16_t hna_pos = 0, gw_pos = 0;
+	int16_t left_pos, ext_type, done_pos, ext_pos;
+	struct ext_packet *ext_array;
 	fd_set tmp_wait_set;
 	
-	if( ! (len == 0 || len >= sizeof(struct bat_packet)) ) {
+	debug_output(4, "receive_packet() remaining len %d, timeout %d \n", len, timeout );
+	
+	if( len != 0 && len < sizeof( struct bat_packet_common ) ) {
 		
 		addr_to_string( rcvd_neighbor, str, sizeof(str) );
 		debug_output(0, "Drop packet: processing strange packet buffer size. %i from: %s !!!!!!!!!!!!!!\n", len, str );
+		len = 0;
 		return -1;
 	}
 
 
-	if ( len < sizeof(struct bat_packet) ) {
+	if ( len < sizeof( struct bat_packet_common ) ) {
+		
 		
 		pos = packet_in;
 
@@ -293,7 +297,7 @@ int8_t receive_packet( struct bat_packet **ogm, struct ext_packet **gw_array, in
 		
 		res = select( receive_max_sock + 1, &tmp_wait_set, NULL, NULL, &tv );
 		
-		*batman_time = rcvd_time = get_time();
+		*received_batman_time = rcvd_time = get_time();
 		
 		if ( res < 0 && errno != EINTR ) {
 		
@@ -304,8 +308,7 @@ int8_t receive_packet( struct bat_packet **ogm, struct ext_packet **gw_array, in
 		if ( res <= 0 )
 			return 0;
 		
-			
-			
+		
 		list_for_each( if_pos, &if_list ) {
 		
 			batman_if = list_entry( if_pos, struct batman_if, list );
@@ -320,7 +323,7 @@ int8_t receive_packet( struct bat_packet **ogm, struct ext_packet **gw_array, in
 					return -1;
 				}
 		
-				(*if_incoming) = batman_if;
+				(*received_if_incoming) = batman_if;
 				
 				rcvd_neighbor = addr.sin_addr.s_addr;
 		
@@ -328,67 +331,168 @@ int8_t receive_packet( struct bat_packet **ogm, struct ext_packet **gw_array, in
 			}
 		}
 		
-		if ( len < sizeof(struct bat_packet) )
+		if ( len < sizeof(struct bat_header) + sizeof(struct bat_packet_common) ) {
+			len = 0;
 			return 0;
+		}
 	
-	}
+		// we acceppt longer packets than specified by pos->size to allow padding for equal packet sizes
+		if ( ((struct bat_header *)pos)->version != COMPAT_VERSION  ||  (((struct bat_header *)pos)->size)<<2 > len ) {
 		
-	if ( ((struct bat_packet *)pos)->version != COMPAT_VERSION || (((struct bat_packet *)&pos)->flags & EXTENSION_FLAG) != 0 ) {
+			addr_to_string( rcvd_neighbor, str, sizeof(str) );
+		
+			debug_output( 3, "Drop packet: rcvd incompatible batman version %i, flags? %X, size? %i, via NB %s. My version is %d \n", ((struct bat_header *)pos)->version, ((struct bat_packet_common *)(pos+sizeof(struct bat_header)))->reserved1, len, str, COMPAT_VERSION );
+			len = 0;
+			return 0;
+		}
+	
+		len = ((((struct bat_header *)pos)->size)<<2) - sizeof(struct bat_header);
+		
+		pos = pos + sizeof(struct bat_header);
+		
+	}
+
+	*received_batman_time = rcvd_time;
+		
+	if ( 	((struct bat_packet_common *)pos)->ext_msg != 0 ||
+		(((struct bat_packet_common *)pos)->size)  == 0 ||
+		(((struct bat_packet_common *)pos)->size)<<2 > len
+	   ) {
+
+		addr_to_string( rcvd_neighbor, str, sizeof(str) );
+		
+		debug_output(0, "Drop remaining super packet: rcvd incompatible batman order: ext_msg %d, reserved %X, size %d len %i, via NB %s. \n",  ((struct bat_packet_common *)pos)->ext_msg, ((struct bat_packet_common *)pos)->reserved1, ((struct bat_packet_common *)pos)->size, len, str );
+		len = 0;
+		return 0;
+	}
+	
+	if ( ((struct bat_packet_common *)pos)->bat_type == BAT_TYPE_OGM  ) {
+		
+
+		((struct bat_packet *)pos)->seqno = ntohs( ((struct bat_packet *)pos)->seqno ); /* network to host order for our 16bit seqno. */
+
+		*received_neigh = rcvd_neighbor;
+
+		*received_ogm = (struct bat_packet *)pos;
+	
+		*received_batman_time = rcvd_time;
+	
+	
+		/* process optional gateway extension messages */
+	
+		left_pos  = (len - sizeof(struct bat_packet)) / sizeof(struct ext_packet);
+		done_pos  = 0;
+	
+		*received_gw_array = NULL;
+		*received_gw_pos   = 0;
+	
+		*received_hna_array = NULL;
+		*received_hna_pos = 0;
+
+		*received_srv_array = NULL;
+		*received_srv_pos = 0;
+	
+		*received_vis_array = NULL;
+		*received_vis_pos = 0;
+	
+		*received_pip_array = NULL;
+		*received_pip_pos = 0;
+
+		ext_type = 0;
+	
+		ext_array = (struct ext_packet *) (pos + sizeof(struct bat_packet) + (done_pos * sizeof(struct ext_packet)) );
+		ext_pos = 0;
+	
+		while ( done_pos < left_pos && ((ext_array)[0]).EXT_FIELD_MSG == YES && ext_type <= EXT_TYPE_MAX ) {
+		
+			while( (ext_pos + done_pos) < left_pos && ((ext_array)[ext_pos]).EXT_FIELD_MSG == YES ) {
+			
+				if ( ((ext_array)[ext_pos]).EXT_FIELD_TYPE == ext_type  ) {
+				
+					(ext_pos)++;
+				
+				} else if ( ((ext_array)[ext_pos]).EXT_FIELD_TYPE > ext_type  ) {
+				
+					break;
+				
+				} else {
+				
+					debug_output( 3, "Drop packet: rcvd incompatible extension message order: size? %i, ext_type %d, via NB %s, originator? %s. \n",  
+							len, ((ext_array)[ext_pos]).EXT_FIELD_TYPE, str, str2 );
+					len = 0;
+					return 0;
+				}
+				
+			}
+
+			done_pos = done_pos + ext_pos;
+		
+			if ( ext_pos != 0 ) {
+			
+				if ( ext_type == EXT_TYPE_GW ) {
+				
+					*received_gw_array = ext_array;
+					*received_gw_pos = ext_pos;
+				
+				} else if ( ext_type == EXT_TYPE_HNA ) {
+				
+					*received_hna_array = ext_array;
+					*received_hna_pos = ext_pos;
+				
+				} else if ( ext_type == EXT_TYPE_SRV ) {
+				
+					*received_srv_array = ext_array;
+					*received_srv_pos = ext_pos;
+				
+				} else if ( ext_type == EXT_TYPE_VIS ) {
+				
+					*received_vis_array = ext_array;
+					*received_vis_pos = ext_pos;
+				
+				} else if ( ext_type == EXT_TYPE_PIP ) {
+				
+					*received_pip_array = ext_array;
+					*received_pip_pos = ext_pos;
+				
+				}
+			
+			}
+	
+			ext_array = (struct ext_packet *) (pos + sizeof(struct bat_packet) + (done_pos * sizeof(struct ext_packet)) );
+			ext_pos = 0;
+			ext_type++;
+	
+		}
+	
+	
+		/* prepare for next ogm and attached extension messages */
+	
+		debug_output( 4, "Received packet batman flags. %X, total size. %i, gw_pos %d, hna_pos: %d, srv_pos %d, pip_pos %d, remaining bytes %d \n", ((struct bat_packet *)pos)->flags, len, *received_gw_pos, *received_hna_pos, *received_srv_pos, *received_pip_pos, len - ( sizeof(struct bat_packet) + (done_pos * sizeof(struct ext_packet)) ) );
+
+	
+		len = len - ( sizeof(struct bat_packet) + (done_pos * sizeof(struct ext_packet)) );
+		pos = pos + ( sizeof(struct bat_packet) + (done_pos * sizeof(struct ext_packet)) );
+		
+
+		return 1;
+
+		
+	} else {
+		
 		
 		addr_to_string( rcvd_neighbor, str, sizeof(str) );
 		addr_to_string( ((struct bat_packet *)pos)->orig, str2, sizeof(str2) );
 		
-		debug_output( 3, "Drop packet: rcvd incompatible batman version: %i, flags. %X, size. %i, via NB %s, originator? %s. My version is %d \n", ((struct bat_packet *)pos)->version, ((struct bat_packet *)pos)->flags, len, str, str2, COMPAT_VERSION );
-		len = 0;
-		*batman_time = rcvd_time;
+		debug_output( 1, "Drop single unkown bat_type bat_type %X, size? %i, via NB %s, originator? %s. \n",  ((struct bat_packet_common *)pos)->bat_type, len, str, str2 );
+		
+		len = len - ((((struct bat_packet_common *)pos)->size)<<2) ;
+		pos = pos + ((((struct bat_packet_common *)pos)->size)<<2) ;
+	
 		return 0;
 	}
-	
-	((struct bat_packet *)pos)->seqno = ntohs( ((struct bat_packet *)pos)->seqno ); /* network to host order for our 16bit seqno. */
 
-	*neigh = rcvd_neighbor;
-
-	*ogm = (struct bat_packet *)pos;
-	
-	*batman_time = rcvd_time;
-	
-	
-	*gw_array = (struct ext_packet *) (pos + sizeof(struct bat_packet));
-	
-	gw_pos = 0;
-	
-	while( gw_pos < (len - sizeof(struct bat_packet)) / sizeof(struct ext_packet)   &&   
-		      ((*gw_array)[gw_pos]).ext_flag & EXTENSION_FLAG    &&   ((*gw_array)[gw_pos]).ext_type == EXT_TYPE_GW  )
-		gw_pos++;
-	
-	*gw_array_len = gw_pos;
-	
-	if ( gw_pos == 0 )
-		*gw_array = NULL;
-
-	
-	
-	
-	*hna_array = (struct ext_packet *) (pos + sizeof(struct bat_packet) + (gw_pos * sizeof(struct ext_packet)) );
-	
-	hna_pos = 0;
-	
-	while( (hna_pos + gw_pos) < (len - sizeof(struct bat_packet)) / sizeof(struct ext_packet)   &&   
-		       ((*hna_array)[hna_pos]).ext_flag & EXTENSION_FLAG    &&   ((*hna_array)[hna_pos]).ext_type == EXT_TYPE_HNA )
-		hna_pos++;
-	
-	*hna_array_len = hna_pos;
-	
-	if ( hna_pos == 0 )
-		*hna_array = NULL;
-	
-//	debug_output( 4, "Received packet batman version: %i, flags. %X, size. %i, hna_pos: %d, hna_max: %d hna_type: %X \n", ((struct bat_packet *)pos)->version, ((struct bat_packet *)pos)->flags, len, hna_pos, (len - sizeof(struct bat_packet)) / sizeof(struct hna_packet), *hna_array != NULL ? ((*hna_array)[hna_pos]).type : 0 );
-
-	
-	len = len - ( sizeof(struct bat_packet) + ((gw_pos+hna_pos) * sizeof(struct ext_packet)) );
-	pos = pos + ( sizeof(struct bat_packet) + ((gw_pos+hna_pos) * sizeof(struct ext_packet)) );
-	
-	return 1;
+	len = 0;
+	return 0;	
 
 }
 
@@ -660,7 +764,10 @@ int main( int argc, char *argv[] ) {
 
 	int8_t res;
 	struct tms tp;
-
+	
+	g_argc = argc;
+	g_argv = argv;
+	
 
 	/* check if user is root */
 	if ( ( getuid() ) || ( getgid() ) ) {
@@ -674,9 +781,13 @@ int main( int argc, char *argv[] ) {
 	INIT_LIST_HEAD_FIRST( forw_list );
 	INIT_LIST_HEAD_FIRST( gw_list );
 	INIT_LIST_HEAD_FIRST( if_list );
-	INIT_LIST_HEAD_FIRST( hna_list );
+	INIT_LIST_HEAD_FIRST( my_hna_list );
+	INIT_LIST_HEAD_FIRST( my_srv_list );
 	INIT_LIST_HEAD_FIRST( todo_list );
+	//INIT_LIST_HEAD_FIRST( link_list );
+	INIT_LIST_HEAD_FIRST( pifnb_list );
 
+	
 	todo_mutex = debugMalloc( sizeof(pthread_mutex_t), 229 );
 	pthread_mutex_init( (pthread_mutex_t *)todo_mutex, NULL );
 

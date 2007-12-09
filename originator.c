@@ -70,13 +70,14 @@ struct orig_node *get_orig_node( uint32_t addr ) {
 	struct orig_node *orig_node;
 	struct hashtable_t *swaphash;
 	static char orig_str[ADDR_STR_LEN];
-	uint16_t i;
+//	uint16_t i;
 
 
 	orig_node = ((struct orig_node *)hash_find( orig_hash, &addr ));
 
 	if ( orig_node != NULL ) {
 
+		orig_node->last_aware = *received_batman_time;
 		prof_stop( PROF_get_orig_node );
 		return orig_node;
 
@@ -94,23 +95,7 @@ struct orig_node *get_orig_node( uint32_t addr ) {
 	orig_node->router = NULL;
 	orig_node->batman_if = NULL;
 
-	orig_node->bidirect_link = debugMalloc( found_ifs * sizeof(uint16_t), 402 );
-	memset( orig_node->bidirect_link, 0, found_ifs * sizeof(uint16_t) );
-	
-	orig_node->bi_link_bits = NULL;
-	orig_node->last_bi_link_seqno = NULL;	
-	orig_node->lq_bits = NULL;
-	
-	
-	/*TODO: 
-	this actually just postpones the problem to the moment of wrap-arounds but its probably less confusing in the beginning!
-	if orig_node->bidirect_link[i] is regulary updated with
-	 ((uint16_t) (if_incoming->out.bat_packet.seqno - OUT_SEQNO_OFFSET - bidirect_link_to)); 
-	it may work !
-	*/
-	for ( i=0; i < found_ifs; i++ ) {
-		orig_node->bidirect_link[i] = ((uint16_t) (0 - OUT_SEQNO_OFFSET - MAX_BIDIRECT_TIMEOUT) ); 
-	}
+	orig_node->link_node = NULL;
 	
 	hash_add( orig_hash, orig_node );
 
@@ -129,6 +114,8 @@ struct orig_node *get_orig_node( uint32_t addr ) {
 
 	}
 
+	orig_node->last_aware = *received_batman_time;
+
 	prof_stop( PROF_get_orig_node );
 	return orig_node;
 
@@ -136,26 +123,26 @@ struct orig_node *get_orig_node( uint32_t addr ) {
 
 
 
-void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t neigh, struct batman_if *if_incoming, struct ext_packet *gw_array, int16_t gw_array_len, struct ext_packet *hna_array, int16_t hna_array_len, uint32_t rcvd_time ) {
+void update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node ) {
 
 	prof_start( PROF_update_originator );
 	struct list_head *neigh_pos;
 	struct neigh_node *neigh_node = NULL, *tmp_neigh_node = NULL, *best_neigh_node = NULL;
 	uint8_t max_packet_count = 0, is_new_seqno = 0; // TBD: check max_packet_count for overflows if MAX_SEQ_RANGE > 256
 	static char new_gw_str[ADDR_STR_LEN], old_gw_str[ADDR_STR_LEN];
-	
+	struct bat_packet *in = *received_ogm;
 
 	debug_output( 4, "update_originator(): Searching and updating originator entry of received packet,  \n" );
 
 	/* it seems we missed a lot of packets or the other host restarted */
 	if (  orig_node->first_valid_sec == 0  ||  ((int16_t)(in->seqno - orig_node->last_seqno)) > sequence_range  ||  ((int16_t)(in->seqno - orig_node->last_seqno)) < -sequence_range  )
-		orig_node->first_valid_sec = rcvd_time/1000;
+		orig_node->first_valid_sec = (*received_batman_time)/1000;
 	
 	list_for_each( neigh_pos, &orig_node->neigh_list ) {
 
 		tmp_neigh_node = list_entry( neigh_pos, struct neigh_node, list );
 
-		if ( ( tmp_neigh_node->addr == neigh ) && ( tmp_neigh_node->if_incoming == if_incoming ) ) {
+		if ( ( tmp_neigh_node->addr == *received_neigh ) && ( tmp_neigh_node->if_incoming == *received_if_incoming ) ) {
 
 			neigh_node = tmp_neigh_node;
 
@@ -184,8 +171,8 @@ void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t n
 		memset( neigh_node, 0, sizeof(struct neigh_node) );
 		INIT_LIST_HEAD( &neigh_node->list );
 
-		neigh_node->addr = neigh;
-		neigh_node->if_incoming = if_incoming;
+		neigh_node->addr = *received_neigh;
+		neigh_node->if_incoming = *received_if_incoming;
 		neigh_node->last_considered_seqno = in->seqno;
 				
 		list_add_tail( &neigh_node->list, &orig_node->neigh_list );
@@ -210,9 +197,12 @@ void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t n
 	bit_get_packet( orig_node->send_old_seq_bits, in->seqno - orig_node->last_seqno, 0 );
 */
 	
-	orig_node->last_valid = rcvd_time;
-	neigh_node->last_valid = rcvd_time;
-
+	
+	orig_node->last_valid = orig_node->last_aware =  orig_neigh_node->last_aware = neigh_node->last_valid = *received_batman_time;
+	
+	if ( orig_node->primary_orig_node != NULL )
+		orig_node->primary_orig_node->last_aware = *received_batman_time;
+	
 	if ( is_new_seqno ) {
 
 		debug_output( 4, "updating last_seqno: old %d, new %d \n", orig_node->last_seqno, in->seqno  );
@@ -226,6 +216,7 @@ void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t n
 	if ( orig_node->last_seqno == in->seqno && in->ttl > orig_node->last_seqno_largest_ttl )
 		orig_node->last_seqno_largest_ttl = in->ttl;
 	
+	/*
 	if( penalty_min > 0 ) {
 		
 		uint16_t max_penalty_count, challenger_penalty_count, penalty_round;
@@ -281,31 +272,48 @@ void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t n
 			}
 		}
 	}
-	
+	*/
 	
 	
 	
 	
 	/* update routing table and check for changed hna announcements */
-	update_routes( orig_node, best_neigh_node, hna_array, hna_array_len );
+	update_routes( orig_node, best_neigh_node, *received_hna_array, *received_hna_pos );
 
 	
-	if (orig_node->gwflags > 0 && gw_array_len == 0) {
+	/* may be service announcements changed */
+	if ( ( *received_srv_pos != orig_node->srv_array_len ) || ( ( *received_srv_pos > 0 )  && 
+		      ( memcmp( orig_node->srv_array, *received_srv_array, *received_srv_pos * sizeof(struct ext_packet) ) != 0 ) ) ) 
+	{
+
+		debug_output( 3, "announced services changed\n");
 		
-		update_gw_list( orig_node, 0, 0 );
+		if ( orig_node->srv_array_len > 0 )
+			add_del_other_srv( orig_node, NULL, 0 );
+
+		if ( ( *received_srv_pos > 0 ) && ( *received_srv_array != NULL ) )
+			add_del_other_srv( orig_node, *received_srv_array, *received_srv_pos );
+
+	}
+
+	
+	
+	
+	if (orig_node->gw_msg  &&  orig_node->gw_msg->EXT_GW_FIELD_GWFLAGS  &&  *received_gw_pos == 0) {
 		
-	} else if (orig_node->gwflags == 0 && gw_array_len > 0 && gw_array != NULL) {
+		update_gw_list( orig_node, 0, NULL );
 		
-		update_gw_list( orig_node, gw_array[0].EXT_GW_FLAGS, gw_array[0].EXT_GW_TYPES );
+	} else if ( orig_node->gw_msg == NULL  &&  *received_gw_pos > 0  &&  *received_gw_array != NULL ) {
+		
+		update_gw_list( orig_node, *received_gw_pos, *received_gw_array /*, gw_array[0].EXT_GW_FIELD_GWFLAGS, gw_array[0].EXT_GW_FIELD_GWTYPES */ );
 		 
-	} else if ( orig_node->gwflags > 0  &&  gw_array_len > 0  &&  gw_array != NULL  && 
-			   ( (orig_node->gwflags != gw_array[0].EXT_GW_FLAGS) || (orig_node->gwtypes != gw_array[0].EXT_GW_TYPES) ) ) {
+	} else if ( orig_node->gw_msg != NULL  &&  *received_gw_pos > 0  &&  *received_gw_array != NULL  &&  memcmp( orig_node->gw_msg, *received_gw_array, sizeof(struct ext_packet) ) ) {
 		
-		update_gw_list( orig_node, gw_array[0].EXT_GW_FLAGS, gw_array[0].EXT_GW_TYPES );
+			update_gw_list( orig_node, *received_gw_pos, *received_gw_array  );
 	}
 	
 	/* restart gateway selection if we have more packets and routing class 3 */
-	if ( routing_class == 3  &&  curr_gateway != NULL  &&  orig_node->gwflags  && (orig_node->gwtypes & ((two_way_tunnel?TWO_WAY_TUNNEL_FLAG:0) | (one_way_tunnel?ONE_WAY_TUNNEL_FLAG:0)))  ) {
+	if ( routing_class == 3  &&  curr_gateway != NULL  &&  orig_node->gw_msg  &&  orig_node->gw_msg->EXT_GW_FIELD_GWFLAGS  &&  (orig_node->gw_msg->EXT_GW_FIELD_GWTYPES & ((two_way_tunnel?TWO_WAY_TUNNEL_FLAG:0) | (one_way_tunnel?ONE_WAY_TUNNEL_FLAG:0)))  ) {
 
 		if ( ( curr_gateway->orig_node != orig_node ) && (pref_gateway == 0 || pref_gateway == orig_node->orig ) && ( (curr_gateway->orig_node->router->packet_count + gw_change_hysteresis) <= orig_node->router->packet_count ) ) {
 			
@@ -324,6 +332,225 @@ void update_orig( struct orig_node *orig_node, struct bat_packet *in, uint32_t n
 
 }
 
+
+
+void free_pifnb_node( struct orig_node *orig_node ) {
+	struct pifnb_node *pn;
+	struct list_head *pifnb_pos, *pifnb_pos_tmp, *prev_list_head;
+	
+	if ( orig_node->id4him == 0 ) {
+		debug_output( 0, "Error - free_pifnb_node(): requested to free pifnb_node with id4him of zero\n");
+		restore_and_exit(0);
+	}
+	
+	prev_list_head = (struct list_head *)&pifnb_list;
+
+	list_for_each_safe( pifnb_pos, pifnb_pos_tmp, &pifnb_list ) {
+
+		pn = list_entry(pifnb_pos, struct pifnb_node, list);
+
+		if ( pn->pog == orig_node ) {
+			
+			list_del( prev_list_head, pifnb_pos, &pifnb_list );
+			
+			orig_node->id4him = 0;
+			
+			debugFree( pn, 1428 );
+
+			break;
+
+		} else {
+
+			prev_list_head = &pn->list;
+
+		}
+	}
+	
+	if ( orig_node->id4him != 0 ) {
+		debug_output( 0, "Error - free_pifnb_node(): requested to free non-existent pifnb_node \n");
+		restore_and_exit(0);
+	}
+	
+	
+}
+
+
+void init_pifnb_node( struct orig_node *orig_node ) {
+	struct pifnb_node *pn, *pn_tmp = NULL;
+	struct list_head *list_pos, *prev_list_head;
+	
+	if ( orig_node->id4him != 0 ) {
+		debug_output( 0, "Error - init_pifnb_node(): requested to init already existing pifnb_node\n");
+		restore_and_exit(0);
+	}
+	
+	pn = debugMalloc( sizeof(struct pifnb_node), 428 );
+	memset( pn, 0, sizeof(struct pifnb_node) );
+	
+	INIT_LIST_HEAD( &pn->list );
+	
+	pn->pog = orig_node;
+	
+	
+	orig_node->id4him = 1;
+	
+	prev_list_head = (struct list_head *)&pifnb_list;
+
+	list_for_each( list_pos, &pifnb_list ) {
+
+		pn_tmp = list_entry( list_pos, struct pifnb_node, list );
+
+		if ( pn_tmp->pog->id4him > orig_node->id4him ) {
+
+			list_add_before( prev_list_head, list_pos, &pn->list );
+			break;
+
+		}
+		
+		if ( orig_node->id4him == MAX_ID4HIM ) {
+			debug_output( 0, "Error - init_pifnb_node(): Max numbers of pifnb_nodes reached !!\n");
+			restore_and_exit(0);
+		}
+		
+		(orig_node->id4him)++;
+		
+		prev_list_head = &pn_tmp->list;
+
+	}
+
+	if ( ( pn_tmp == NULL ) || ( pn_tmp->pog->id4him <= orig_node->id4him ) )
+		list_add_tail( &pn->list, &pifnb_list );
+
+	
+}
+
+void free_link_node( struct orig_node *orig_node ) {
+	//struct link_node *ln;
+	//struct list_head *link_pos, *link_pos_tmp, *prev_list_head;
+	
+	if ( orig_node->link_node == NULL ) {
+		debug_output( 0, "Error - free_link_node(): requested to free non-existing link_node\n");
+		restore_and_exit(0);
+	}
+	
+	debugFree( orig_node->link_node->lq_bits, 1408 );
+	
+	debugFree( orig_node->link_node->bi_link_bits, 1406 );
+			
+	debugFree( orig_node->link_node->last_bi_link_seqno, 1407 );
+	
+	debugFree( orig_node->link_node->bidirect_link, 1402 );
+	
+	/*
+	prev_list_head = (struct list_head *)&link_list;
+
+	list_for_each_safe( link_pos, link_pos_tmp, &link_list ) {
+
+		ln = list_entry(link_pos, struct link_node, list);
+
+		if ( ln == orig_node->link_node ) {
+			
+			list_del( prev_list_head, link_pos, &link_list );
+
+		} else {
+
+			prev_list_head = &ln->list;
+
+		}
+	}
+	*/
+
+	
+	debugFree( orig_node->link_node, 1428 );
+	
+	orig_node->link_node = NULL;
+}
+
+
+
+void init_link_node( struct orig_node *orig_node ) {
+	int i;
+	struct link_node *ln;
+	//struct link_node *ln_tmp = NULL;
+	//struct list_head *list_pos, *prev_list_head;
+	
+	if ( orig_node->link_node != NULL ) {
+		debug_output( 0, "Error - init_link_node(): requested to init already existing link_node\n");
+		restore_and_exit(0);
+	}
+	
+	ln = orig_node->link_node = debugMalloc( sizeof(struct link_node), 428 );
+	memset( ln, 0, sizeof(struct link_node) );
+	
+	//INIT_LIST_HEAD( &ln->list );
+	
+	ln->orig_node = orig_node;
+	ln->addr = orig_node->orig;
+	
+	ln->lq_bits = debugMalloc( found_ifs * MAX_NUM_WORDS * sizeof( TYPE_OF_WORD ), 408 );
+	memset( ln->lq_bits, 0, found_ifs * MAX_NUM_WORDS * sizeof( TYPE_OF_WORD ) );
+	
+	ln->bi_link_bits = debugMalloc( found_ifs * MAX_NUM_WORDS * sizeof( TYPE_OF_WORD ), 406 );
+	memset( ln->bi_link_bits, 0, found_ifs * MAX_NUM_WORDS * sizeof( TYPE_OF_WORD ) );
+			
+	ln->last_bi_link_seqno = debugMalloc( found_ifs * sizeof(uint16_t), 407 );
+	memset( ln->last_bi_link_seqno, 0, found_ifs * sizeof(uint16_t) );
+	
+	ln->bidirect_link = debugMalloc( found_ifs * sizeof(uint16_t), 402 );
+	memset( ln->bidirect_link, 0, found_ifs * sizeof(uint16_t) );
+	
+	
+	/* this actually just postpones the problem to the moment of wrap-arounds but 
+	* its probably less confusing if it happens later than right at the beginning!
+	* if orig_node->bidirect_link[i] is regulary updated with
+	*  ((uint16_t) (if_incoming->out.bat_packet.seqno - OUT_SEQNO_OFFSET - bidirect_link_to)); 
+	* it may work !
+	*/
+	
+	for ( i=0; i < found_ifs; i++ ) {
+		ln->bidirect_link[i] = ((uint16_t) (0 - OUT_SEQNO_OFFSET - MAX_BIDIRECT_TIMEOUT) ); 
+	}
+	
+	/*
+	ln->id = 1;
+	
+	prev_list_head = (struct list_head *)&link_list;
+
+	list_for_each( list_pos, &link_list ) {
+
+		ln_tmp = list_entry( list_pos, struct link_node, list );
+
+		if ( ln_tmp->id > ln->id ) {
+
+			list_add_before( prev_list_head, list_pos, &ln->list );
+			break;
+
+		}
+		
+		if ( ln->id == MAX_LINK_ID ) {
+			debug_output( 0, "Error - init_link_node(): Max numbers of link_nodes reached !!\n");
+			restore_and_exit(0);
+		}
+		
+		(ln->id)++;
+		
+		prev_list_head = &ln_tmp->list;
+
+	}
+
+	if ( ( ln_tmp == NULL ) || ( ln_tmp->id <= ln->id ) )
+		list_add_tail( &ln->list, &link_list );
+	*/
+	
+}
+
+
+
+
+
+
+
+
 void purge_orig( uint32_t curr_time ) {
 
 	prof_start( PROF_purge_originator );
@@ -337,70 +564,22 @@ void purge_orig( uint32_t curr_time ) {
 	static char orig_str[ADDR_STR_LEN], neigh_str[ADDR_STR_LEN];
 	struct list_head *if_pos;
 	struct batman_if *batman_if;
-	uint8_t free_bi_link_bits, free_lq_bits;
+	uint8_t free_ln;//free_bi_link_bits, free_lq_bits;
 	
 	/* for all origins... */
 	while ( NULL != ( hashit = hash_iterate( orig_hash, hashit ) ) ) {
 
 		orig_node = hashit->bucket->data;
 		
-		if ( orig_node->bi_link_bits != NULL ) {
-			
-			free_bi_link_bits = YES;
-			
-			list_for_each( if_pos, &if_list ) {
-				
-				batman_if = list_entry( if_pos, struct batman_if, list );
-				
-				if ( update_bi_link_bits ( orig_node, batman_if, NO, sequence_range ) > 0 ) {
-					free_bi_link_bits = NO;
-					break;
-				}
-			}
-			
-			if ( free_bi_link_bits == YES ) {
-
-				if( orig_node->bi_link_bits != NULL ) { 
-					debugFree( orig_node->bi_link_bits, 1406 );
-					orig_node->bi_link_bits = NULL;
-				}
-				
-				if( orig_node->last_bi_link_seqno != NULL ) {
-					debugFree( orig_node->last_bi_link_seqno, 1407 );
-					orig_node->last_bi_link_seqno = NULL;
-				}
-			}
-
-		}
 		
-		if ( orig_node->lq_bits != NULL ) {
-			
-			free_lq_bits = YES;
-			
-			list_for_each( if_pos, &if_list ) {
-				
-				batman_if = list_entry( if_pos, struct batman_if, list );
-				
-				if ( get_lq_bits( orig_node, batman_if, sequence_range ) > 0 ) {
-					free_lq_bits = NO;
-					break;
-				}
-			}
-			
-			if ( free_lq_bits == YES ) {
-
-				if( orig_node->lq_bits != NULL ) { 
-					debugFree( orig_node->lq_bits, 1408 );
-					orig_node->lq_bits = NULL;
-				}
-			}			
-			
-		}
 		
-		if ( (int)( ( orig_node->last_valid + PURGE_TIMEOUT ) < curr_time ) ) {
+		
+		/* purge outdated originators completely */
+		
+		if ( (int)( ( orig_node->last_aware + PURGE_TIMEOUT ) < curr_time ) ) {
 
 			addr_to_string( orig_node->orig, orig_str, ADDR_STR_LEN );
-			debug_output( 4, "Originator timeout: originator %s, last_valid %u \n", orig_str, orig_node->last_valid );
+			debug_output( 3, "Originator timeout: originator %s, last_valid %u, last_aware %u  \n", orig_str, orig_node->last_valid, orig_node->last_aware );
 
 			hash_remove_bucket( orig_hash, hashit );
 
@@ -413,56 +592,106 @@ void purge_orig( uint32_t curr_time ) {
 				debugFree( neigh_node, 1401 );
 
 			}
+			
+			/* remove potential gw record of this node */
+			prev_list_head = (struct list_head *)&gw_list;
 
-			list_for_each( gw_pos, &gw_list ) {
+			list_for_each_safe( gw_pos, gw_pos_tmp, &gw_list ) {
 
-				gw_node = list_entry( gw_pos, struct gw_node, list );
-
-				if ( gw_node->deleted )
-					continue;
+				gw_node = list_entry(gw_pos, struct gw_node, list);
 
 				if ( gw_node->orig_node == orig_node ) {
-
+			
 					addr_to_string( gw_node->orig_node->orig, orig_str, ADDR_STR_LEN );
 					debug_output( 3, "Removing gateway %s from gateway list \n", orig_str );
 
-					gw_node->deleted = get_time();
+					list_del( prev_list_head, gw_pos, &gw_list );
+					debugFree( gw_pos, 1405 );
 
 					gw_purged = 1;
 
 					break;
 
+				} else {
+
+					prev_list_head = &gw_node->list;
+
 				}
 
 			}
 
+			if( orig_node->gw_msg != NULL ) {
+				debugFree( orig_node->gw_msg, 1123 );
+				orig_node->gw_msg = NULL;
+			}
+
+			
+			
 			update_routes( orig_node, NULL, NULL, 0 );
 			
-			if( orig_node->bi_link_bits != NULL ) { 
-				debugFree( orig_node->bi_link_bits, 1406 );
-				orig_node->bi_link_bits = NULL;
-			}
-				
-			if( orig_node->last_bi_link_seqno != NULL ) {
-				debugFree( orig_node->last_bi_link_seqno, 1407 );
-				orig_node->last_bi_link_seqno = NULL;
-			}
+			if ( orig_node->srv_array_len > 0 )
+				add_del_other_srv( orig_node, NULL, 0 );
+
 			
-			if( orig_node->lq_bits != NULL ) {
-				debugFree( orig_node->lq_bits, 1408 );
-				orig_node->lq_bits = NULL;
-			}
+			
+			/* remove link information of node */
 			
 			if( orig_node->dbg_rcvd_bits != NULL ) {
 				debugFree( orig_node->dbg_rcvd_bits, 1409 );
 				orig_node->dbg_rcvd_bits = NULL;
 			}
 			
-			debugFree( orig_node->bidirect_link, 1402 );
+			if ( orig_node->link_node != NULL )
+				free_link_node( orig_node );
+			
+			if ( orig_node->id4him != 0 )
+				free_pifnb_node( orig_node );
+			
 			debugFree( orig_node, 1403 );
+								
 
 		} else {
 
+			/* purge selected outdated originator elements */
+			
+			
+			/* purge outdated links */
+		
+			if ( orig_node->link_node != NULL ) {
+			
+				free_ln = YES;
+		
+				list_for_each( if_pos, &if_list ) {
+				
+					batman_if = list_entry( if_pos, struct batman_if, list );
+				
+					if ( get_lq_bits( orig_node, batman_if, sequence_range ) > 0 ) {
+						free_ln = NO;
+						break;
+					}
+				
+					if ( update_bi_link_bits ( orig_node, batman_if, NO, sequence_range ) > 0 ) {
+						free_ln = NO;
+						break;
+					}
+				
+				
+				}
+			
+				if ( free_ln )
+					free_link_node( orig_node );
+			
+			}
+					
+
+			
+			/* purge outdated PrimaryInterFace NeighBor Identifier */
+			if ( orig_node->id4him > 0 && ( (int)( ( orig_node->last_link + PURGE_TIMEOUT ) < curr_time ) ) )
+				free_pifnb_node( orig_node );
+			
+			
+			/* purge outdated neighbor nodes */
+			
 			best_neigh_node = NULL;
 			neigh_purged = 0;
 			prev_list_head = (struct list_head *)&orig_node->neigh_list;
@@ -515,6 +744,8 @@ void purge_orig( uint32_t curr_time ) {
 
 	}
 
+	
+	/* purge outdated gateways */
 
 	prev_list_head = (struct list_head *)&gw_list;
 
@@ -523,6 +754,13 @@ void purge_orig( uint32_t curr_time ) {
 		gw_node = list_entry(gw_pos, struct gw_node, list);
 
 		if ( ( gw_node->deleted ) && ( (int)((gw_node->deleted + (2 * PURGE_TIMEOUT)) < curr_time) ) ) {
+			
+			if( gw_node->orig_node != NULL && gw_node->orig_node->gw_msg != NULL ) {
+				
+				debugFree( gw_node->orig_node->gw_msg, 1123 );
+				gw_node->orig_node->gw_msg = NULL;
+				
+			}
 
 			list_del( prev_list_head, gw_pos, &gw_list );
 			debugFree( gw_pos, 1405 );
@@ -535,6 +773,7 @@ void purge_orig( uint32_t curr_time ) {
 
 	}
 
+	
 	prof_stop( PROF_purge_originator );
 
 	if ( gw_purged )
@@ -602,29 +841,93 @@ int get_dbg_rcvd_all_bits( struct orig_node *orig_node, struct batman_if *this_i
 
 
 void set_lq_bits( struct orig_node *orig_node, uint16_t in_seqno, struct batman_if *this_if, uint8_t direct_undupl_neigh_ogm ) {
-	
+	static char orig_str[ADDR_STR_LEN], prev_pip_str[ADDR_STR_LEN], new_pip_str[ADDR_STR_LEN];
 	uint8_t is_new_lq_seqno = 0;
 	int i;
-	static char orig_str[ADDR_STR_LEN];
 	
 	addr_to_string( orig_node->orig, orig_str, sizeof(orig_str) );
 //	debug_output( 4, "set_lq_bits(): %s latest seqno: %d \n", orig_str, orig_node->last_lq_seqno );
 	
+	
+	if( direct_undupl_neigh_ogm ) {
+		
+		if ( *received_pip_array != NULL ) {
+			
+			if ( orig_node->primary_orig_node != NULL ) { 
+				
+				if ( orig_node->primary_orig_node->orig != (*received_pip_array)->EXT_PIP_FIELD_ADDR ) { 
+					
+					addr_to_string( orig_node->primary_orig_node->orig, prev_pip_str, sizeof(prev_pip_str) );
+					addr_to_string( (*received_pip_array)->EXT_PIP_FIELD_ADDR, new_pip_str, sizeof(new_pip_str) );
+
+					debug_output( 0, "STRANGE: neighbor %s changed his primary interface from %s to %s !!!!!!!! \n", orig_str, prev_pip_str, new_pip_str );
+					
+					if ( orig_node->primary_orig_node->id4him != 0 )
+						free_pifnb_node( orig_node->primary_orig_node );
+					
+					orig_node->primary_orig_node = get_orig_node( (*received_pip_array)->EXT_PIP_FIELD_ADDR );
+				
+				}
+				
+			} else {
+			
+				orig_node->primary_orig_node = get_orig_node( (*received_pip_array)->EXT_PIP_FIELD_ADDR );
+				
+			}
+			
+		} else {
+			
+			if ( orig_node->primary_orig_node != NULL ) { 
+				
+				if ( orig_node->primary_orig_node->orig != orig_node->orig ) { 
+					
+					addr_to_string( orig_node->primary_orig_node->orig, prev_pip_str, sizeof(prev_pip_str) );
+					
+					debug_output( 0, "STRANGE: neighbor %s changed primary interface from %s to %s !!!!!!!! \n", orig_str, prev_pip_str, orig_str );
+					
+					if ( orig_node->primary_orig_node->id4him != 0 )
+						free_pifnb_node( orig_node->primary_orig_node );
+					
+					orig_node->primary_orig_node = orig_node;
+				
+				}
+			
+			} else {
+				
+				orig_node->primary_orig_node = orig_node;
+			
+			}
+			
+		}
+			
+				
+		if ( orig_node->primary_orig_node->id4him == 0 )
+			init_pifnb_node( orig_node->primary_orig_node );
+	
+		orig_node->last_aware = orig_node->primary_orig_node->last_aware = orig_node->primary_orig_node->last_link = *received_batman_time;
+	
+		if (  orig_node->link_node == NULL )
+			init_link_node( orig_node );
+	
+	}
+	
+	/*
 	if ( direct_undupl_neigh_ogm && orig_node->lq_bits == NULL ) {
 		orig_node->lq_bits = debugMalloc( found_ifs * MAX_NUM_WORDS * sizeof( TYPE_OF_WORD ), 408 );
 		memset( orig_node->lq_bits, 0, found_ifs * MAX_NUM_WORDS * sizeof( TYPE_OF_WORD ) );
 	}
+	*/
 	
-	if ( orig_node->lq_bits != NULL ) {
+	if ( orig_node->link_node != NULL ) {
 		
 		for( i=0; i < found_ifs; i++ ) {
-			is_new_lq_seqno = bit_get_packet( (&orig_node->lq_bits[ i * MAX_NUM_WORDS ]), 
-								( in_seqno - orig_node->last_lq_seqno ),
+			is_new_lq_seqno = bit_get_packet( ( &orig_node->link_node->lq_bits[ i * MAX_NUM_WORDS ] ), 
+								( in_seqno - orig_node->link_node->last_lq_seqno ),
 								( ( direct_undupl_neigh_ogm && this_if->if_num == i ) ? YES : NO ) );
 		}
 		
 		if ( is_new_lq_seqno ) 
-			orig_node->last_lq_seqno = in_seqno;
+			orig_node->link_node->last_lq_seqno = in_seqno;
 			
 	}
 	
@@ -641,11 +944,12 @@ int get_lq_bits( struct orig_node *orig_node, struct batman_if *this_if, uint16_
 	addr_to_string( orig_node->orig, orig_str, sizeof(orig_str) );
 //	debug_output( 4, "get_lq_bits(): %s latest seqno: %d \n", orig_str, orig_node->last_lq_seqno );
 		
-	if ( orig_node->lq_bits != NULL ) {
+	if ( orig_node->link_node != NULL ) {
 		
 		if ( read_range > 0 ) {
 			
-			ret_pcnt = bit_packet_count( ( &orig_node->lq_bits[ this_if->if_num * MAX_NUM_WORDS ] ), read_range  ); /* not perfect until sequence_range OGMs have been send by neighbor */
+			// not perfect until sequence_range OGMs have been send by neighbor
+			ret_pcnt = bit_packet_count(  &orig_node->link_node->lq_bits[ this_if->if_num * MAX_NUM_WORDS ] , read_range  ); 
 			
 //			debug_output( 4, "get_lq_bits(): returns %d \n", ret_pcnt );
 			return ret_pcnt;
@@ -666,6 +970,10 @@ int update_bi_link_bits ( struct orig_node *orig_neigh_node, struct batman_if * 
 	
 //	debug_output( 4, "update_bi_link_bits(): \n" );
 
+	if( write && orig_neigh_node->link_node == NULL )
+		return -1;
+	
+	/*
 	if( write ) { 
 		if ( orig_neigh_node->bi_link_bits == NULL ) {
 			orig_neigh_node->bi_link_bits = debugMalloc( found_ifs * MAX_NUM_WORDS * sizeof( TYPE_OF_WORD ), 406 );
@@ -677,20 +985,21 @@ int update_bi_link_bits ( struct orig_node *orig_neigh_node, struct batman_if * 
 			memset( orig_neigh_node->last_bi_link_seqno, 0, found_ifs * sizeof(uint16_t) );
 		}
 	}
+	*/
 	
-	if ( orig_neigh_node->bi_link_bits != NULL && orig_neigh_node->last_bi_link_seqno != NULL ) {
+	if ( orig_neigh_node->link_node != NULL ) {
 	
 		is_new_bi_link_seqno = bit_get_packet( 
-				( &orig_neigh_node->bi_link_bits[ this_if->if_num * MAX_NUM_WORDS ] ),
-				( ( this_if->out.seqno - OUT_SEQNO_OFFSET ) - orig_neigh_node->last_bi_link_seqno[this_if->if_num] ),
+				( &orig_neigh_node->link_node->bi_link_bits[ this_if->if_num * MAX_NUM_WORDS ] ),
+				( ( this_if->out.seqno - OUT_SEQNO_OFFSET ) - orig_neigh_node->link_node->last_bi_link_seqno[this_if->if_num] ),
 					( ( write ) ? 1 : 0) );
 	
 		if ( is_new_bi_link_seqno ) 
-			orig_neigh_node->last_bi_link_seqno[this_if->if_num] = ( this_if->out.seqno - OUT_SEQNO_OFFSET );
+			orig_neigh_node->link_node->last_bi_link_seqno[this_if->if_num] = ( this_if->out.seqno - OUT_SEQNO_OFFSET );
 		
 		if ( read_range > 0 ) {
 			
-			rcvd_bi_link_packets = bit_packet_count( ( &orig_neigh_node->bi_link_bits[ this_if->if_num * MAX_NUM_WORDS ] ), read_range ); /*TBD: not perfect until sequence_range OGMs have been send */
+			rcvd_bi_link_packets = bit_packet_count( ( &orig_neigh_node->link_node->bi_link_bits[ this_if->if_num * MAX_NUM_WORDS ] ), read_range ); /*TBD: not perfect until sequence_range OGMs have been send */
 			
 		}
 		
@@ -754,7 +1063,7 @@ void debug_orig() {
 	int dbg_ogm_out = 0, dbg_ogm_out2 = 0, lq, nlq, l2q;
 	static char dbg_ogm_str[MAX_DBG_STR_SIZE + 1], dbg_ogm_str2[MAX_DBG_STR_SIZE + 1]; // TBD: must be checked for overflow when using with sprintf
 	uint8_t debug_neighbor = NO, blocked;
-	uint16_t hna_count = 0;
+	uint16_t hna_count = 0, srv_count = 0;
 //	uint32_t hna, netmask;
 //	uint8_t atype;
 	struct hna_key key;
@@ -771,21 +1080,21 @@ void debug_orig() {
 
 		} else {
 
-			debug_output( DBGL_GATEWAYS, "%12s     %15s (%s/%i) \n", "Gateway", "Router", "#", sequence_range );  
+			debug_output( DBGL_GATEWAYS, "%12s     %15s (%s/%3i) \n", "Originator", "bestNextHop", "#", sequence_range );  
 
 			list_for_each( orig_pos, &gw_list ) {
 
 				gw_node = list_entry( orig_pos, struct gw_node, list );
 
-				if ( gw_node->deleted )
+				if ( gw_node->deleted || gw_node->orig_node->gw_msg == NULL )
 					continue;
 
 				addr_to_string( gw_node->orig_node->orig, str, sizeof (str) );
 				addr_to_string( gw_node->orig_node->router->addr, str2, sizeof (str2) );
 				
-				get_gw_speeds( gw_node->orig_node->gwflags, &download_speed, &upload_speed );
+				get_gw_speeds( gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWFLAGS, &download_speed, &upload_speed );
 				
-				debug_output( DBGL_GATEWAYS, "%s %-15s %''15s (%3i), gw_class %2i - %i%s/%i%s, reliability: %i, supported tunnel types %s, %s \n", ( curr_gateway == gw_node ? "=>" : "  " ), str, str2, gw_node->orig_node->router->packet_count, gw_node->orig_node->gwflags, ( download_speed > 2048 ? download_speed / 1024 : download_speed ), ( download_speed > 2048 ? "MBit" : "KBit" ), ( upload_speed > 2048 ? upload_speed / 1024 : upload_speed ), ( upload_speed > 2048 ? "MBit" : "KBit" ), gw_node->unavail_factor, ((gw_node->orig_node->gwtypes&TWO_WAY_TUNNEL_FLAG)?"2WT":"-"), ((gw_node->orig_node->gwtypes&ONE_WAY_TUNNEL_FLAG)?"1WT":"-") );
+				debug_output( DBGL_GATEWAYS, "%s %-15s %''15s (%3i), gw_class %2i - %i%s/%i%s, reliability: %i, supported tunnel types %s, %s \n", ( curr_gateway == gw_node ? "=>" : "  " ), str, str2, gw_node->orig_node->router->packet_count, gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWFLAGS, ( download_speed > 2048 ? download_speed / 1024 : download_speed ), ( download_speed > 2048 ? "MBit" : "KBit" ), ( upload_speed > 2048 ? upload_speed / 1024 : upload_speed ), ( upload_speed > 2048 ? "MBit" : "KBit" ), gw_node->unavail_factor, ((gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWTYPES & TWO_WAY_TUNNEL_FLAG)?"2WT":"-"), ((gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWTYPES & ONE_WAY_TUNNEL_FLAG)?"1WT":"-") );
 				
 				batman_count++;
 
@@ -832,7 +1141,7 @@ void debug_orig() {
 
 		}
 		
-		debug_output( DBGL_DETAILS, "Neighbor        outgoingIF     bestNextHop (brc rcvd knownSince lseq lvld) [     viaIF RTQ  RQ  TQ]..\n");
+		debug_output( DBGL_DETAILS, "Neighbor        outgoingIF     bestNextHop (brc rcvd knownSince lseq lvld) ris sid [     viaIF RTQ  RQ  TQ]..\n");
 
 		
 		while ( NULL != ( hashit = hash_iterate( orig_hash, hashit ) ) ) {
@@ -856,7 +1165,7 @@ void debug_orig() {
 			
 			addr_to_string( orig_node->orig, str, sizeof (str) );
 			addr_to_string( orig_node->router->addr, str2, sizeof (str2) );
-			dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s %10s %15s (%3i %3i %3id%2ih%2im %5i %4i)",
+			dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s %10s %15s (%3i %3i %3id%2ih%2im %5i %4i) %3d %3d",
 					str, orig_node->router->if_incoming->dev, str2,
 					orig_node->router->packet_count /* accepted */,
 					get_dbg_rcvd_all_bits( orig_node, orig_node->router->if_incoming, sequence_range ), /* all */
@@ -864,7 +1173,9 @@ void debug_orig() {
 					(((uptime_sec-(orig_node->first_valid_sec))%86400)/3600),
 					(((uptime_sec-(orig_node->first_valid_sec))%3600)/60),
 			    		orig_node->last_seqno,
-					( uptime_sec - (orig_node->last_valid/1000) ) ); 
+					( uptime_sec - (orig_node->last_valid/1000) ),
+					( orig_node->primary_orig_node != NULL ? orig_node->primary_orig_node->id4me : -1 ),
+					( orig_node->primary_orig_node != NULL ? orig_node->primary_orig_node->id4him : -1 )   ); 
 					
 			list_for_each( neigh_pos, &orig_node->neigh_list ) {
 				neigh_node = list_entry( neigh_pos, struct neigh_node, list );
@@ -891,6 +1202,7 @@ void debug_orig() {
 		debug_output( DBGL_DETAILS, "Originator      outgoingIF     bestNextHop (brc rcvd knownSince lseq lvld), alternativeNextHop(s)...\n");
 		
 		int nodes_count = 0, avg_packet_count = 0, avg_rcvd_all_bits = 0, avg_lvld = 0;
+		
 		
 		while ( NULL != ( hashit = hash_iterate( orig_hash, hashit ) ) ) {
 
@@ -967,8 +1279,9 @@ void debug_orig() {
 		
 		debug_output( DBGL_DETAILS, "%s \n", dbg_ogm_str );
 
-			
-			
+		
+		
+		
 		debug_output( DBGL_DETAILS, "\n");
 		debug_output( DBGL_DETAILS, "Originator      Announced networks HNAs:  network/netmask or interface/IF (B:blocked)...\n");
 		
@@ -987,9 +1300,9 @@ void debug_orig() {
 			while ( hna_count < orig_node->hna_array_len ) {
 
 
-				key.addr     = orig_node->hna_array[hna_count].EXT_HNA_ADDR;
-				key.KEY_ANETMASK = orig_node->hna_array[hna_count].EXT_HNA_NETMASK;
-				key.KEY_ATYPE    = orig_node->hna_array[hna_count].EXT_HNA_TYPE;
+				key.addr     = orig_node->hna_array[hna_count].EXT_HNA_FIELD_ADDR;
+				key.KEY_FIELD_ANETMASK = orig_node->hna_array[hna_count].EXT_HNA_FIELD_NETMASK;
+				key.KEY_FIELD_ATYPE    = orig_node->hna_array[hna_count].EXT_HNA_FIELD_TYPE;
 
 				
 				addr_to_string( key.addr, str, sizeof (str) );
@@ -1003,10 +1316,10 @@ void debug_orig() {
 					blocked = YES;
 
 
-				if ( key.KEY_ATYPE == A_TYPE_NETWORK )
+				if ( key.KEY_FIELD_ATYPE == A_TYPE_NETWORK )
 					dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), " %15s/%2d %c ", 
-						str, key.KEY_ANETMASK, (blocked?'B':' ') );
-				else if ( key.KEY_ATYPE == A_TYPE_INTERFACE )
+						str, key.KEY_FIELD_ANETMASK, (blocked?'B':' ') );
+				else if ( key.KEY_FIELD_ATYPE == A_TYPE_INTERFACE )
 					dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), " %15s/IF %c ", 
 						str, (blocked?'B':' ') );
 
@@ -1017,7 +1330,41 @@ void debug_orig() {
 			debug_output( DBGL_DETAILS, "%s \n", dbg_ogm_str );
 
 		}			
+		
+		
+		
+		
+		debug_output( DBGL_DETAILS, "\n");
+		debug_output( DBGL_DETAILS, "Originator      Announced services ip:port:seqno ...\n");
+		
+		while ( NULL != ( hashit = hash_iterate( orig_hash, hashit ) ) ) {
+
+			orig_node = hashit->bucket->data;
+
+			if ( orig_node->router == NULL || orig_node->srv_array_len == 0)
+				continue;
+
+			addr_to_string( orig_node->orig, str, sizeof (str) );
+			dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s", str ); 
+				
+			srv_count = 0;
 			
+			while ( srv_count < orig_node->srv_array_len ) {
+
+				addr_to_string( orig_node->srv_array[srv_count].EXT_SRV_FIELD_ADDR, str, sizeof (str) );
+
+				dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), " %15s:%d:%d", 
+						str, ntohs( orig_node->srv_array[srv_count].EXT_SRV_FIELD_PORT ), orig_node->srv_array[srv_count].EXT_SRV_FIELD_SEQNO );
+
+				srv_count++;
+
+			}
+
+			debug_output( DBGL_DETAILS, "%s \n", dbg_ogm_str );
+
+		}			
+
+		
 
 		if ( batman_count == 0 ) {
 

@@ -54,9 +54,10 @@ int8_t set_tun_addr( int32_t fd, uint32_t tun_addr, char *tun_dev );
 
 /* init.c */
 
-#define MAX_UNIX_REQ_SIZE 20 /* there is a magic limit beyond 20 which I dont understand ??? */
+#define MAX_UNIX_REQ_SIZE 20 /* there is a strange limit of 20 which I dont understand ??? */
 
 void prepare_add_del_own_hna ( char *optarg_str, int8_t del, uint8_t atype, uint8_t startup  );
+void prepare_add_del_own_srv ( char *optarg_str, int8_t del, int8_t startup );
 void apply_init_args( int argc, char *argv[] );
 void init_interface ( struct batman_if *batman_if );
 void init_interface_gw ( struct batman_if *batman_if );
@@ -77,7 +78,7 @@ int8_t use_gateway_module();
 void print_animation( void );
 void   del_default_route();
 int8_t add_default_route();
-int8_t receive_packet( struct bat_packet **ogm, struct ext_packet **gw_array, int16_t *gw_array_len, struct ext_packet **hna_array, int16_t *hna_array_len, uint32_t *neigh, uint32_t timeout, struct batman_if **if_incoming, uint32_t *batman_time );
+int8_t receive_packet( uint32_t timeout );
 int8_t send_udp_packet( unsigned char *packet_buff, int packet_buff_len, struct sockaddr_in *broad, int send_sock );
 void restore_defaults();
 void cleanup();

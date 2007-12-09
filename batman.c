@@ -123,7 +123,11 @@ int32_t penalty_exceed = DEF_PENALTY_EXCEED;
 
 int16_t num_words = ( DEFAULT_SEQ_RANGE / WORD_BIT_SIZE ) + ( ( DEFAULT_SEQ_RANGE % WORD_BIT_SIZE > 0)? 1 : 0 );
 
-int32_t base_port = DEF_BASE_PORT;
+int32_t ogm_port = DEF_BASE_PORT;
+int32_t my_gw_port = DEF_GW_PORT;
+uint32_t my_gw_addr = DEF_GW_ADDR;
+int32_t vis_port = DEF_VIS_PORT;
+
 
 int32_t rt_table_offset   = DEF_RT_TABLE_OFFSET;
 
@@ -161,10 +165,19 @@ uint8_t no_policy_routing = 0;
 
 struct ext_packet *my_hna_ext_array = NULL;
 uint16_t my_hna_ext_array_len = 0;
+uint16_t my_hna_list_enabled = 0;
+
+struct ext_packet *my_srv_ext_array = NULL;
+uint16_t my_srv_ext_array_len = 0;
+uint16_t my_srv_list_enabled = 0;
 
 struct ext_packet my_gw_extension_packet; //currently only one gw_extension_packet considered
 struct ext_packet *my_gw_ext_array = &my_gw_extension_packet;
 uint16_t my_gw_ext_array_len = 0;
+
+struct ext_packet my_pip_extension_packet; //currently only one gw_extension_packet considered
+struct ext_packet *my_pip_ext_array = &my_pip_extension_packet;
+uint16_t my_pip_ext_array_len = 0;
 
 uint8_t found_ifs = 0;
 int32_t receive_max_sock = 0;
@@ -172,18 +185,38 @@ fd_set receive_wait_set;
 
 uint8_t unix_client = 0;
 
+int g_argc;
+char **g_argv;
+
+struct bat_packet **received_ogm;
+uint32_t           *received_neigh;
+struct batman_if  **received_if_incoming;
+uint32_t           *received_batman_time;
+
+struct ext_packet **received_gw_array;
+int16_t            *received_gw_pos;
+struct ext_packet **received_hna_array;
+int16_t            *received_hna_pos;
+struct ext_packet **received_srv_array;
+int16_t            *received_srv_pos;
+struct ext_packet **received_vis_array;
+int16_t            *received_vis_pos;
+struct ext_packet **received_pip_array;
+int16_t            *received_pip_pos;
+
 struct hashtable_t *orig_hash;
 struct hashtable_t *hna_hash;
 
 struct list_head_first forw_list;
-struct list_head_first gw_list;
 struct list_head_first if_list;
-struct list_head_first hna_list;
+struct list_head_first gw_list;
+struct list_head_first my_hna_list;
+struct list_head_first my_srv_list;
+//struct list_head_first link_list;
+struct list_head_first pifnb_list;
 
 struct list_head_first todo_list;
 pthread_mutex_t *todo_mutex = NULL;
-
-uint16_t hna_list_enabled = 0;
 
 struct vis_if vis_if;
 struct unix_if unix_if;
@@ -195,9 +228,13 @@ uint16_t vis_packet_size = 0;
 
 void print_advanced_opts ( int verbose ) {
 	
-	fprintf( stderr, "\n\n Advanced and dangerous options (better do not touch):\n" );
+	fprintf( stderr, "\n\n Advanced and dangerous options (only touch if you know what you are doing):\n" );
 	fprintf( stderr, "\n For more background informations see: http://open-mesh.net/batman/doc/BMX/\n" );
 	
+	
+	
+	fprintf( stderr, "\n\n Network adaption:\n" );
+
 	fprintf( stderr, "\n       --%s : does not set the unreachable rule for host routes.\n", NO_UNREACHABLE_RULE_SWITCH );
 	
 	fprintf( stderr, "\n       --%s : does not set the default priority rules.\n", NO_PRIO_RULES_SWITCH );
@@ -206,25 +243,8 @@ void print_advanced_opts ( int verbose ) {
 	
 	fprintf( stderr, "\n       --%s : Set unreachable rule. Limits scope of batman routing table. \n", MORE_RULES_SWITCH);
 	
-	
-	fprintf( stderr, "\n       --%s : Disable OGM aggregation \n", NO_AGGREGATIONS_SWITCH);
-	
-	fprintf( stderr, "\n       --%s : Send aggregated OGMs every 1/%sth of the originator inteval. \n", AGGREGATIONS_SWITCH, ENABLED_AGGREGATIONS_PO);
-
-	fprintf( stderr, "\n       --%s <value>: Set number of aggregations per originator interval manually.\n", AGGREGATIONS_PO_SWITCH );
-	if ( verbose )
-		fprintf( stderr, "          default: %s, allowed values: %d <= value <= %d \n", ENABLED_AGGREGATIONS_PO, MIN_AGGREGATIONS_PO, MAX_AGGREGATIONS_PO  );
-
-	
-	fprintf( stderr, "\n       --%s : disables the unresponsive-GW check.\n", NO_UNRESP_CHECK_SWITCH );
-	
 	fprintf( stderr, "\n       --%s : lets daemon survive if firewall blocks outgoing OGMs.\n", RESIST_BLOCKED_SEND_SWITCH );
 	
-	fprintf( stderr, "\n       --%s <vlue>: Use hysteresis for fast-switch gw connections (-r 3).\n", GW_CHANGE_HYSTERESIS_SWITCH );
-	fprintf( stderr, "          <value> for number additional rcvd OGMs before changing to more stable GW.\n");
-	if ( verbose )
-		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_GW_CHANGE_HYSTERESIS, MIN_GW_CHANGE_HYSTERESIS, MAX_GW_CHANGE_HYSTERESIS  );
-		
 	fprintf( stderr, "\n       --%s <value> : set base udp port used by batmand.\n", BASE_PORT_SWITCH );
 	fprintf( stderr, "          <value> for OGMs, <value+1> for GW tunnels, <value+2> for visualization server.\n");
 	if ( verbose )
@@ -241,6 +261,31 @@ void print_advanced_opts ( int verbose ) {
 		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_RT_PRIO_OFFSET, MIN_RT_PRIO_OFFSET, MAX_RT_PRIO_OFFSET  );
 	
 	
+	
+	
+	
+	
+	fprintf( stderr, "\n\n Gateway and tunneling options:\n" );
+	
+	fprintf( stderr, "\n       --%s <ip-address/netmask> : set tunnel IP-address range leased out by GW nodes.\n", GW_TUNNEL_NETW_SWITCH );
+	fprintf( stderr, "         Only relevant for GW-nodes in %s mode\n", TWO_WAY_TUNNEL_SWITCH );
+	if ( verbose )
+		fprintf( stderr, "          default: %s/%d, allowed netmask values: %d <= value <= %d \n", DEF_GW_TUNNEL_PREFIX_STR, DEF_GW_TUNNEL_NETMASK, MIN_GW_TUNNEL_NETMASK, MAX_GW_TUNNEL_NETMASK );
+	
+	fprintf( stderr, "\n       --%s <value> : set lease time in seconds of virtual two-way tunnel IPs.\n", TUNNEL_IP_LEASE_TIME_SWITCH );
+	fprintf( stderr, "         Only relevant for GW-nodes in %s mode\n", TWO_WAY_TUNNEL_SWITCH );
+	if ( verbose )
+		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_TUNNEL_IP_LEASE_TIME, MIN_TUNNEL_IP_LEASE_TIME, MAX_TUNNEL_IP_LEASE_TIME  );
+	
+	fprintf( stderr, "\n       --%s : disables the unresponsive-GW check.\n", NO_UNRESP_CHECK_SWITCH );
+	fprintf( stderr, "         Only relevant for GW-client nodes in %s mode\n", TWO_WAY_TUNNEL_SWITCH );
+	
+	fprintf( stderr, "\n       --%s <vlue>: Use hysteresis for fast-switch gw connections (-r 3).\n", GW_CHANGE_HYSTERESIS_SWITCH );
+	fprintf( stderr, "          <value> for number additional rcvd OGMs before changing to more stable GW.\n");
+	fprintf( stderr, "         Only relevant for GW-client nodes in %s mode\n", TWO_WAY_TUNNEL_SWITCH );
+	if ( verbose )
+		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_GW_CHANGE_HYSTERESIS, MIN_GW_CHANGE_HYSTERESIS, MAX_GW_CHANGE_HYSTERESIS  );
+		
 	fprintf( stderr, "\n       --%s <value> : set preference for %s mode.\n", ONE_WAY_TUNNEL_SWITCH, ONE_WAY_TUNNEL_SWITCH );
 	fprintf( stderr, "         For GW-nodes:  0 disables this tunnel mode, a larger value enables this tunnel mode.\n" );
 	fprintf( stderr, "         For GW-cliets: 0 disables this tunnel mode, a larger value sets the preference for this mode.\n" );
@@ -253,17 +298,29 @@ void print_advanced_opts ( int verbose ) {
 	if ( verbose )
 		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_TWO_WAY_TUNNEL, MIN_TWO_WAY_TUNNEL, MAX_TWO_WAY_TUNNEL  );
 	
-	fprintf( stderr, "\n       --%s <ip-address/netmask> : set tunnel IP-address range leased out by GW nodes.\n", GW_TUNNEL_NETW_SWITCH );
-	fprintf( stderr, "         Only relevant for GW-nodes in %s mode\n", TWO_WAY_TUNNEL_SWITCH );
+	
+	
+	
+	
+	fprintf( stderr, "\n\n Service announcement:\n" );
+	
+	fprintf( stderr, "\n       --%s <ip-address:port:seqno> : announce the given ip and port with seqno (0-255) to other nodes.\n", ADD_SRV_SWITCH );
+	
+	fprintf( stderr, "\n       --%s <ip-address:port> : stop announcing the given ip and port to other nodes.\n", DEL_SRV_SWITCH );
+	
+	
+	
+	
+	fprintf( stderr, "\n\n Core routing protocol options:\n" );
+	
+	fprintf( stderr, "\n       --%s : Disable OGM aggregation \n", NO_AGGREGATIONS_SWITCH);
+	
+	fprintf( stderr, "\n       --%s : Send aggregated OGMs every 1/%sth of the originator inteval. \n", AGGREGATIONS_SWITCH, ENABLED_AGGREGATIONS_PO);
+
+	fprintf( stderr, "\n       --%s <value>: Set number of aggregations per originator interval manually.\n", AGGREGATIONS_PO_SWITCH );
 	if ( verbose )
-		fprintf( stderr, "          default: %s/%d, allowed netmask values: %d <= value <= %d \n", DEF_GW_TUNNEL_PREFIX_STR, DEF_GW_TUNNEL_NETMASK, MIN_GW_TUNNEL_NETMASK, MAX_GW_TUNNEL_NETMASK );
-	
-	fprintf( stderr, "\n       --%s <value> : set lease time in seconds of virtual two-way tunnel IPs.\n", TUNNEL_IP_LEASE_TIME_SWITCH );
-	fprintf( stderr, "         Only relevant for GW-nodes in %s mode\n", TWO_WAY_TUNNEL_SWITCH );
-	if ( verbose )
-		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_TUNNEL_IP_LEASE_TIME, MIN_TUNNEL_IP_LEASE_TIME, MAX_TUNNEL_IP_LEASE_TIME  );
-	
-	
+		fprintf( stderr, "          default: %s, allowed values: %d <= value <= %d \n", ENABLED_AGGREGATIONS_PO, MIN_AGGREGATIONS_PO, MAX_AGGREGATIONS_PO  );
+
 	fprintf( stderr, "\n       --%s <value> : change default TTL of originator packets.\n", TTL_SWITCH );
 	fprintf( stderr, "        /%c <value> : attached after an interface name\n", TTL_IF_SWITCH );
 	fprintf( stderr, "          to change the TTL only for the OGMs representing a specific interface\n");
@@ -497,14 +554,14 @@ struct hna_hash_node *get_hna_node( struct hna_key *hk /*, struct orig_node *ori
 
 
 	addr_to_string( hk->addr, hna_str, ADDR_STR_LEN );
-	debug_output( 4, "  creating new and empty hna_hash_node: %s/%d, type %d \n", hna_str, hk->KEY_ANETMASK, hk->KEY_ATYPE );
+	debug_output( 4, "  creating new and empty hna_hash_node: %s/%d, type %d \n", hna_str, hk->KEY_FIELD_ANETMASK, hk->KEY_FIELD_ATYPE );
 
 	hash_node = debugMalloc( sizeof(struct hna_hash_node), 401 );
 	memset(hash_node, 0, sizeof(struct hna_hash_node));
 
 	hash_node->key.addr = hk->addr;
-	hash_node->key.KEY_ATYPE = hk->KEY_ATYPE;
-	hash_node->key.KEY_ANETMASK = hk->KEY_ANETMASK;
+	hash_node->key.KEY_FIELD_ATYPE = hk->KEY_FIELD_ATYPE;
+	hash_node->key.KEY_FIELD_ANETMASK = hk->KEY_FIELD_ANETMASK;
 	hash_node->orig = NULL; //orig_node;
 	hash_node->status = HNA_HASH_NODE_EMPTY;
 	
@@ -546,7 +603,7 @@ void add_del_other_hna( struct orig_node *orig_node, struct ext_packet *hna_arra
 	if ( orig_node == NULL || 
 		    (hna_array_len != 0 && (hna_array == NULL || orig_node->hna_array_len != 0 )) || 
 		    (hna_array_len == 0 && (hna_array != NULL || orig_node->hna_array_len == 0 || orig_node->hna_array == NULL  ) ) ) {
-		debug_output( 0, "Error - add_del_hna(): invalid hna information !\n");
+		debug_output( 0, "Error - add_del_other_hna(): invalid hna information !\n");
 		restore_and_exit(0);
 	}
 	
@@ -561,28 +618,28 @@ void add_del_other_hna( struct orig_node *orig_node, struct ext_packet *hna_arra
 	
 	while ( hna_count < orig_node->hna_array_len ) {
 		
-		key.addr     = orig_node->hna_array[hna_count].EXT_HNA_ADDR;
-		key.KEY_ANETMASK = orig_node->hna_array[hna_count].EXT_HNA_NETMASK;
-		key.KEY_ATYPE    = orig_node->hna_array[hna_count].EXT_HNA_TYPE;
+		key.addr     = orig_node->hna_array[hna_count].EXT_HNA_FIELD_ADDR;
+		key.KEY_FIELD_ANETMASK = orig_node->hna_array[hna_count].EXT_HNA_FIELD_NETMASK;
+		key.KEY_FIELD_ATYPE    = orig_node->hna_array[hna_count].EXT_HNA_FIELD_TYPE;
 		
-		rt_table = ( key.KEY_ATYPE == A_TYPE_INTERFACE ? BATMAN_RT_TABLE_INTERFACES : (key.KEY_ATYPE == A_TYPE_NETWORK ? BATMAN_RT_TABLE_NETWORKS : 0 ) );
+		rt_table = ( key.KEY_FIELD_ATYPE == A_TYPE_INTERFACE ? BATMAN_RT_TABLE_INTERFACES : (key.KEY_FIELD_ATYPE == A_TYPE_NETWORK ? BATMAN_RT_TABLE_NETWORKS : 0 ) );
 		
 		hash_node = get_hna_node( &key );
 		
-		if ( ( key.KEY_ANETMASK > 0 ) && ( key.KEY_ANETMASK <= 32 ) && rt_table ) {
+		if ( ( key.KEY_FIELD_ANETMASK > 0 ) && ( key.KEY_FIELD_ANETMASK <= 32 ) && rt_table ) {
 			
 			/* when to be deleted check if HNA has been accepted during assignement 
 			 * when to be created check if HNA is not blocked by other OG */
 			if ( del && hash_node->status == HNA_HASH_NODE_OTHER && hash_node->orig == orig_node ) {
 				
-				add_del_route( key.addr, key.KEY_ANETMASK, orig_node->router->addr, orig_node->router->if_incoming->addr.sin_addr.s_addr, orig_node->batman_if->if_index, orig_node->batman_if->dev, rt_table, 0, del );
+				add_del_route( key.addr, key.KEY_FIELD_ANETMASK, orig_node->router->addr, orig_node->router->if_incoming->addr.sin_addr.s_addr, orig_node->batman_if->if_index, orig_node->batman_if->dev, rt_table, 0, del );
 				
 				hash_node->status = HNA_HASH_NODE_EMPTY;
 				hash_node->orig = NULL;
 				
 			} else if ( !del && hash_node->status == HNA_HASH_NODE_EMPTY && hash_node->orig == NULL ) {
 				
-				add_del_route( key.addr, key.KEY_ANETMASK, orig_node->router->addr, orig_node->router->if_incoming->addr.sin_addr.s_addr, orig_node->batman_if->if_index, orig_node->batman_if->dev, rt_table, 0, del );
+				add_del_route( key.addr, key.KEY_FIELD_ANETMASK, orig_node->router->addr, orig_node->router->if_incoming->addr.sin_addr.s_addr, orig_node->batman_if->if_index, orig_node->batman_if->dev, rt_table, 0, del );
 				
 				hash_node->status = HNA_HASH_NODE_OTHER;
 				hash_node->orig = orig_node;
@@ -590,8 +647,8 @@ void add_del_other_hna( struct orig_node *orig_node, struct ext_packet *hna_arra
 			} else {
 				
 				addr_to_string( key.addr, hna_str, ADDR_STR_LEN );
-				debug_output( 3, "add_del_hna(): NOT %s HNA %s/%d type %d ! HNA %s blocked \n",
-					    (del?"removing":"adding"), hna_str, key.KEY_ANETMASK, key.KEY_ATYPE, (del?"was":"is") );
+				debug_output( 3, "add_del_other_hna(): NOT %s HNA %s/%d type %d ! HNA %s blocked \n",
+					    (del?"removing":"adding"), hna_str, key.KEY_FIELD_ANETMASK, key.KEY_FIELD_ATYPE, (del?"was":"is") );
 				
 			}
 			
@@ -611,6 +668,41 @@ void add_del_other_hna( struct orig_node *orig_node, struct ext_packet *hna_arra
 
 }
 
+/*
+ * updates service announcement information maintained for other orig_node
+ * updates are made according to given srv_array and srv_array_len arguments
+ */
+void add_del_other_srv( struct orig_node *orig_node, struct ext_packet *srv_array, int16_t srv_array_len /*int8_t del*/ ) {
+
+	if ( orig_node == NULL || 
+		    (srv_array_len != 0 && (srv_array == NULL || orig_node->srv_array_len != 0 )) || 
+		    (srv_array_len == 0 && (srv_array != NULL || orig_node->srv_array_len == 0 || orig_node->srv_array == NULL  ) ) ) 
+	{
+		
+		debug_output( 0, "Error - add_del_other_srv(): invalid srv information !\n");
+		restore_and_exit(0);
+		
+	}
+		    
+	if ( srv_array_len > 0 ) {
+		
+		orig_node->srv_array = debugMalloc( srv_array_len * sizeof(struct ext_packet), 121 );
+		orig_node->srv_array_len = srv_array_len;
+
+		memcpy( orig_node->srv_array, srv_array, srv_array_len * sizeof(struct ext_packet) );
+		
+		debug_output( 3, "adding service announcement \n");
+
+	} else {
+
+		debugFree( orig_node->srv_array, 1121 );
+		orig_node->srv_array_len = 0;
+		orig_node->srv_array = NULL;
+		debug_output( 3, "removing service announcement \n");
+
+	}
+
+}
 
 
 
@@ -621,7 +713,7 @@ void add_del_own_hna( uint8_t purge ) {
 	static char str[ADDR_STR_LEN], str2[ADDR_STR_LEN];
 
 	
-	list_for_each_safe( list_pos, hna_pos_tmp, &hna_list ) {
+	list_for_each_safe( list_pos, hna_pos_tmp, &my_hna_list ) {
 
 		hna_node = list_entry( list_pos, struct hna_node, list );
 		
@@ -632,11 +724,11 @@ void add_del_own_hna( uint8_t purge ) {
 		if ( hash_node->status == HNA_HASH_NODE_MYONE ) {
 			
 			/* del throw routing entries for own hna */
-			add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_INTERFACES, 1, 1 );
-			add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS,   1, 1 );
-			add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS,      1, 1 );
-			add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH,    1, 1 );
-			add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL,     1, 1 );
+			add_del_route( hna_node->key.addr, hna_node->key.KEY_FIELD_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_INTERFACES, 1, 1 );
+			add_del_route( hna_node->key.addr, hna_node->key.KEY_FIELD_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS,   1, 1 );
+			add_del_route( hna_node->key.addr, hna_node->key.KEY_FIELD_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS,      1, 1 );
+			add_del_route( hna_node->key.addr, hna_node->key.KEY_FIELD_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH,    1, 1 );
+			add_del_route( hna_node->key.addr, hna_node->key.KEY_FIELD_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL,     1, 1 );
 			
 			hash_node->status = HNA_HASH_NODE_EMPTY;
 		}
@@ -658,12 +750,12 @@ void add_del_own_hna( uint8_t purge ) {
 
 	
 	
-	if ( ! purge  &&  !( list_empty( &hna_list ) )  ) {
+	if ( ! purge  &&  !( list_empty( &my_hna_list ) )  ) {
 		
-		my_hna_ext_array = debugMalloc( hna_list_enabled * sizeof(struct ext_packet), 15 );
-		memset( my_hna_ext_array, 0, hna_list_enabled * sizeof(struct ext_packet) );
+		my_hna_ext_array = debugMalloc( my_hna_list_enabled * sizeof(struct ext_packet), 15 );
+		memset( my_hna_ext_array, 0, my_hna_list_enabled * sizeof(struct ext_packet) );
 
-		list_for_each( list_pos, &hna_list ) {
+		list_for_each( list_pos, &my_hna_list ) {
 			
 
 			hna_node = list_entry( list_pos, struct hna_node, list );
@@ -679,27 +771,27 @@ void add_del_own_hna( uint8_t purge ) {
 					hash_node->status = HNA_HASH_NODE_MYONE;
 					hash_node->orig = NULL;
 					
-					my_hna_ext_array[my_hna_ext_array_len].ext_flag = EXTENSION_FLAG;
-					my_hna_ext_array[my_hna_ext_array_len].ext_type = EXT_TYPE_HNA;
+					my_hna_ext_array[my_hna_ext_array_len].EXT_FIELD_MSG  = YES;
+					my_hna_ext_array[my_hna_ext_array_len].EXT_FIELD_TYPE = EXT_TYPE_HNA;
 		
-					my_hna_ext_array[my_hna_ext_array_len].EXT_HNA_ADDR    = hna_node->key.addr;
-					my_hna_ext_array[my_hna_ext_array_len].EXT_HNA_NETMASK = hna_node->key.KEY_ANETMASK;
-					my_hna_ext_array[my_hna_ext_array_len].EXT_HNA_TYPE    = hna_node->key.KEY_ATYPE;
+					my_hna_ext_array[my_hna_ext_array_len].EXT_HNA_FIELD_ADDR    = hna_node->key.addr;
+					my_hna_ext_array[my_hna_ext_array_len].EXT_HNA_FIELD_NETMASK = hna_node->key.KEY_FIELD_ANETMASK;
+					my_hna_ext_array[my_hna_ext_array_len].EXT_HNA_FIELD_TYPE    = hna_node->key.KEY_FIELD_ATYPE;
 					
 					my_hna_ext_array_len++;
 					
 					/* add throw routing entries for own hna */  
-					add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_INTERFACES, 1, 0 );
-					add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS,   1, 0 );
-					add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS,      1, 0 );
-					add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH,    1, 0 ); 
-					add_del_route( hna_node->key.addr, hna_node->key.KEY_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL,     1, 0 );
+					add_del_route( hna_node->key.addr, hna_node->key.KEY_FIELD_ANETMASK, 0,0,0, "unknown", BATMAN_RT_TABLE_INTERFACES, 1, 0 );
+					add_del_route( hna_node->key.addr, hna_node->key.KEY_FIELD_ANETMASK, 0,0,0, "unknown", BATMAN_RT_TABLE_NETWORKS,   1, 0 );
+					add_del_route( hna_node->key.addr, hna_node->key.KEY_FIELD_ANETMASK, 0,0,0, "unknown", BATMAN_RT_TABLE_HOSTS,      1, 0 );
+					add_del_route( hna_node->key.addr, hna_node->key.KEY_FIELD_ANETMASK, 0,0,0, "unknown", BATMAN_RT_TABLE_UNREACH,    1, 0 ); 
+					add_del_route( hna_node->key.addr, hna_node->key.KEY_FIELD_ANETMASK, 0,0,0, "unknown", BATMAN_RT_TABLE_TUNNEL,     1, 0 );
 					
 				} else {
 					
 					addr_to_string( hna_node->key.addr, str, ADDR_STR_LEN );
 					addr_to_string( hash_node->orig->orig, str2, ADDR_STR_LEN );
-					debug_output( DBGL_SYSTEM, "Error - Could not announce network %s/%d, atype %d. Blocked by Originator %s. Disabling request! \n", str, hna_node->key.KEY_ANETMASK, hna_node->key.KEY_ATYPE, str2);
+					debug_output( DBGL_SYSTEM, "Error - Could not announce network %s/%d, atype %d. Blocked by Originator %s. Disabling request! \n", str, hna_node->key.KEY_FIELD_ANETMASK, hna_node->key.KEY_FIELD_ATYPE, str2);
 					hna_node->enabled = NO;
 					
 				}
@@ -708,6 +800,60 @@ void add_del_own_hna( uint8_t purge ) {
 		}
 	
 	}
+	
+	((struct batman_if *)if_list.next)->out.size = (calc_ogm_if_size( 0 ))/4;
+		
+}
+
+
+
+void add_del_own_srv( uint8_t purge ) {
+	struct list_head *list_pos, *srv_pos_tmp;
+	struct srv_node *srv_node;
+	
+	if ( purge ) { 
+				
+		list_for_each_safe( list_pos, srv_pos_tmp, &my_srv_list ) {
+
+		srv_node = list_entry( list_pos, struct srv_node, list );
+		
+		debugFree( srv_node, 1123 );
+
+		}
+	}
+
+	if ( my_srv_ext_array != NULL )
+		debugFree( my_srv_ext_array, 1124 );
+		
+	my_srv_ext_array_len = 0;
+	
+	
+	if ( ! purge  &&  !( list_empty( &my_srv_list ) )  ) {
+		
+		my_srv_ext_array = debugMalloc( my_srv_list_enabled * sizeof(struct ext_packet), 125 );
+		memset( my_srv_ext_array, 0, my_srv_list_enabled * sizeof(struct ext_packet) );
+
+		list_for_each( list_pos, &my_srv_list ) {
+
+			srv_node = list_entry( list_pos, struct srv_node, list );
+
+			if ( srv_node->enabled ) {
+					
+				my_srv_ext_array[my_srv_ext_array_len].EXT_FIELD_MSG  = YES;
+				my_srv_ext_array[my_srv_ext_array_len].EXT_FIELD_TYPE = EXT_TYPE_SRV;
+	
+				my_srv_ext_array[my_srv_ext_array_len].EXT_SRV_FIELD_ADDR  = srv_node->srv_addr;
+				my_srv_ext_array[my_srv_ext_array_len].EXT_SRV_FIELD_PORT  = htons( srv_node->srv_port );
+				my_srv_ext_array[my_srv_ext_array_len].EXT_SRV_FIELD_SEQNO = srv_node->srv_seqno;
+				
+				my_srv_ext_array_len++;
+					
+			}
+		}
+	
+	}
+	
+	((struct batman_if *)if_list.next)->out.size = (calc_ogm_if_size( 0 ))/4;
 		
 }
 
@@ -758,23 +904,20 @@ void choose_gw() {
 		if ( ( gw_node->unavail_factor * gw_node->unavail_factor * MAX_GW_UNAVAIL_TIMEOUT ) + gw_node->last_failure > current_time )
 			continue;
 
-		if ( gw_node->orig_node->router == NULL )
-			continue;
-
-		if ( gw_node->deleted )
+		if ( gw_node->orig_node->router == NULL || gw_node->deleted || gw_node->orig_node->gw_msg == NULL )
 			continue;
 		
-		if ( !( gw_node->orig_node->gwtypes & ( (two_way_tunnel?TWO_WAY_TUNNEL_FLAG:0) | (one_way_tunnel?ONE_WAY_TUNNEL_FLAG:0) ) ) )
+		if ( !( gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWTYPES & ( (two_way_tunnel?TWO_WAY_TUNNEL_FLAG:0) | (one_way_tunnel?ONE_WAY_TUNNEL_FLAG:0) ) ) )
 			continue;
 			
 		switch ( routing_class ) {
 
 			case 1:   /* fast connection */
-				get_gw_speeds( gw_node->orig_node->gwflags, &download_speed, &upload_speed );
+				get_gw_speeds( gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWFLAGS, &download_speed, &upload_speed );
 
 				tmp_gw_factor = ( ( ( gw_node->orig_node->router->packet_count * 100 ) / sequence_range ) *
-						( ( gw_node->orig_node->router->packet_count * 100 ) / sequence_range ) *
-						( download_speed / 64 ) );
+						  ( ( gw_node->orig_node->router->packet_count * 100 ) / sequence_range ) *
+						  ( download_speed / 64 ) );
 				
 				if ( ( tmp_gw_factor > max_gw_factor ) || 
 				     ( ( tmp_gw_factor == max_gw_factor ) && ( gw_node->orig_node->router->packet_count > max_packets ) ) )
@@ -794,8 +937,8 @@ void choose_gw() {
 
 		}
 
-		if ( gw_node->orig_node->gwflags > max_gw_class )
-			max_gw_class = gw_node->orig_node->gwflags;
+		if ( gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWFLAGS > max_gw_class )
+			max_gw_class = gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWFLAGS;
 
 		if ( gw_node->orig_node->router->packet_count > max_packets )
 			max_packets = gw_node->orig_node->router->packet_count;
@@ -808,7 +951,7 @@ void choose_gw() {
 			tmp_curr_gw = gw_node;
 
 			addr_to_string( tmp_curr_gw->orig_node->orig, orig_str, ADDR_STR_LEN );
-			debug_output( 3, "Preferred gateway found: %s (gw_flags: %i, packet_count: %i, gw_product: %i)\n", orig_str, gw_node->orig_node->gwflags, gw_node->orig_node->router->packet_count, tmp_gw_factor );
+			debug_output( 3, "Preferred gateway found: %s (gw_flags: %i, packet_count: %i, gw_product: %i)\n", orig_str, gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWFLAGS, gw_node->orig_node->router->packet_count, tmp_gw_factor );
 			
 			break;
 
@@ -911,7 +1054,8 @@ void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, 
 	} else if ( orig_node != NULL ) {
 
 		/* may be just HNA changed */
-		if ( ( hna_array_len != orig_node->hna_array_len ) || ( ( hna_array_len > 0 ) && ( orig_node->hna_array_len > 0 ) && ( memcmp( orig_node->hna_array, hna_array, hna_array_len * sizeof(struct ext_packet) ) != 0 ) ) ) {
+		if ( ( hna_array_len != orig_node->hna_array_len ) || ( ( hna_array_len > 0 ) && ( orig_node->hna_array_len > 0 ) && 
+				     ( memcmp( orig_node->hna_array, hna_array, hna_array_len * sizeof(struct ext_packet) ) != 0 ) ) ) {
 
 			if ( orig_node->hna_array_len > 0 )
 				add_del_other_hna( orig_node, NULL, 0 );
@@ -929,12 +1073,12 @@ void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, 
 
 
 
-void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags, uint8_t new_gwtypes ) {
+void update_gw_list( struct orig_node *orig_node, int16_t gw_array_len, struct ext_packet *gw_array /*,uint8_t new_gwflags, uint8_t new_gwtypes*/ ) {
 
 	prof_start( PROF_update_gw_list );
 	struct list_head *gw_pos, *gw_pos_tmp;
 	struct gw_node *gw_node;
-	static char orig_str[ADDR_STR_LEN];
+	static char orig_str[ADDR_STR_LEN], gw_str[ADDR_STR_LEN];
 	int download_speed, upload_speed;
 
 	list_for_each_safe( gw_pos, gw_pos_tmp, &gw_list ) {
@@ -944,25 +1088,38 @@ void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags, uint8_t n
 		if ( gw_node->orig_node == orig_node ) {
 
 			addr_to_string( gw_node->orig_node->orig, orig_str, ADDR_STR_LEN );
+			addr_to_string( (gw_array ? gw_array->EXT_GW_FIELD_GWADDR : 0), gw_str, ADDR_STR_LEN );
 			
-			debug_output( 3, "Gateway class of originator %s changed from %i to %i, new supported tunnel types %s, %s\n", orig_str, gw_node->orig_node->gwflags, new_gwflags, ((new_gwtypes&TWO_WAY_TUNNEL_FLAG)?"TWT":"-"), ((new_gwtypes&ONE_WAY_TUNNEL_FLAG)?"OWT":"-") );
+			debug_output( 3, "Gateway class of originator %s changed from %i to %i, port %d, addr %s, new supported tunnel types %s, %s\n", orig_str,
+			    gw_node->orig_node->gw_msg ? gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWFLAGS : 0 ,
+			    gw_array ?   gw_array->EXT_GW_FIELD_GWFLAGS : 0 , 
+			    gw_array ?   gw_array->EXT_GW_FIELD_GWPORT  : 0 , gw_str,
+			    gw_array ? ((gw_array->EXT_GW_FIELD_GWTYPES & TWO_WAY_TUNNEL_FLAG)?"TWT":"-") : "-",
+			    gw_array ? ((gw_array->EXT_GW_FIELD_GWTYPES & ONE_WAY_TUNNEL_FLAG)?"OWT":"-") : "-" );
 
-			if ( !new_gwflags || (!( new_gwtypes & ( (two_way_tunnel?TWO_WAY_TUNNEL_FLAG:0) | (one_way_tunnel?ONE_WAY_TUNNEL_FLAG:0) ) )) ) {
+			if ( gw_array_len > 0 && gw_array != NULL && 
+				( gw_array->EXT_GW_FIELD_GWFLAGS ) &&
+				( gw_array->EXT_GW_FIELD_GWTYPES & ( (two_way_tunnel?TWO_WAY_TUNNEL_FLAG:0) | (one_way_tunnel?ONE_WAY_TUNNEL_FLAG:0) ) ) &&
+				( gw_array->EXT_GW_FIELD_GWPORT  ) &&
+				( gw_array->EXT_GW_FIELD_GWADDR  )  )  {
+
+				gw_node->deleted = 0;
+				if ( gw_node->orig_node->gw_msg == NULL )
+					gw_node->orig_node->gw_msg = debugMalloc( sizeof( struct ext_packet ), 123 );
+				
+				memcpy( gw_node->orig_node->gw_msg, gw_array, sizeof( struct ext_packet ) );
+
+			} else {
 
 				gw_node->deleted = get_time();
-				gw_node->orig_node->gwflags = new_gwflags;
-				gw_node->orig_node->gwtypes = new_gwtypes;
+				
+				if ( gw_node->orig_node->gw_msg != NULL )
+					memset( gw_node->orig_node->gw_msg, 0, sizeof( struct ext_packet ) );
 				
 				debug_output( 3, "Gateway %s removed from gateway list\n", orig_str );
 
 				if( gw_node == curr_gateway )
 					choose_gw();
-
-			} else {
-
-				gw_node->deleted = 0;
-				gw_node->orig_node->gwflags = new_gwflags;
-				gw_node->orig_node->gwtypes = new_gwtypes;
 
 			}
 
@@ -973,24 +1130,40 @@ void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags, uint8_t n
 
 	}
 
-	addr_to_string( orig_node->orig, orig_str, ADDR_STR_LEN );
-	get_gw_speeds( new_gwflags, &download_speed, &upload_speed );
-
-	debug_output( 3, "Found new gateway %s -> class: %i - %i%s/%i%s, new supported tunnel types %s, %s\n", orig_str, new_gwflags, ( download_speed > 2048 ? download_speed / 1024 : download_speed ), ( download_speed > 2048 ? "MBit" : "KBit" ), ( upload_speed > 2048 ? upload_speed / 1024 : upload_speed ), ( upload_speed > 2048 ? "MBit" : "KBit" ), ((new_gwtypes&TWO_WAY_TUNNEL_FLAG)?"TWT":"-"), ((new_gwtypes&ONE_WAY_TUNNEL_FLAG)?"OWT":"-" ) );
-
-	gw_node = debugMalloc( sizeof(struct gw_node), 103 );
-	memset( gw_node, 0, sizeof(struct gw_node) );
-	INIT_LIST_HEAD( &gw_node->list );
-
-	gw_node->orig_node = orig_node;
-	orig_node->gwflags = new_gwflags;
-	orig_node->gwtypes = new_gwtypes;
-	gw_node->unavail_factor = 0;
-	gw_node->last_failure = get_time();
+	if ( gw_array_len > 0 && gw_array != NULL ) {
 	
-
-	list_add_tail( &gw_node->list, &gw_list );
-
+		addr_to_string( orig_node->orig, orig_str, ADDR_STR_LEN );
+		addr_to_string( gw_array->EXT_GW_FIELD_GWADDR, gw_str, ADDR_STR_LEN );
+		get_gw_speeds( gw_array->EXT_GW_FIELD_GWFLAGS, &download_speed, &upload_speed );
+	
+		debug_output( 3, "Found new gateway %s, announced by %s -> class: %i - %i%s/%i%s, new supported tunnel types %s, %s\n", 
+			gw_str, orig_str, 
+			gw_array->EXT_GW_FIELD_GWFLAGS, 
+			( download_speed > 2048 ? download_speed / 1024 : download_speed ),
+			( download_speed > 2048 ? "MBit" : "KBit" ),
+			( upload_speed > 2048 ? upload_speed / 1024 : upload_speed ), 
+			( upload_speed > 2048 ? "MBit" : "KBit" ), 
+			((gw_array->EXT_GW_FIELD_GWTYPES & TWO_WAY_TUNNEL_FLAG)?"TWT":"-"), 
+			((gw_array->EXT_GW_FIELD_GWTYPES & ONE_WAY_TUNNEL_FLAG)?"OWT":"-" ) );
+	
+		gw_node = debugMalloc( sizeof(struct gw_node), 103 );
+		memset( gw_node, 0, sizeof(struct gw_node) );
+		INIT_LIST_HEAD( &gw_node->list );
+	
+		gw_node->orig_node = orig_node;
+		
+		if ( orig_node->gw_msg == NULL )
+			orig_node->gw_msg = debugMalloc( sizeof( struct ext_packet ), 123 );
+		
+		memcpy( orig_node->gw_msg, gw_array, sizeof( struct ext_packet ) );
+		
+		gw_node->unavail_factor = 0;
+		gw_node->last_failure = get_time();
+	
+		list_add_tail( &gw_node->list, &gw_list );
+	
+	}
+	
 	prof_stop( PROF_update_gw_list );
 
 }
@@ -1130,7 +1303,10 @@ int isBntog( uint32_t neigh, struct orig_node *orig_tog_node ) {
 
 int isBidirectionalNeigh( struct orig_node *orig_neigh_node, struct batman_if *if_incoming ) {
 
-	if ( ((uint16_t)( (if_incoming->out.seqno - OUT_SEQNO_OFFSET) - orig_neigh_node->bidirect_link[if_incoming->if_num] )) < bidirect_link_to )
+	if ( orig_neigh_node->link_node == NULL )
+		return 0;
+	
+	if ( ((uint16_t)( (if_incoming->out.seqno - OUT_SEQNO_OFFSET) - orig_neigh_node->link_node->bidirect_link[if_incoming->if_num] )) < bidirect_link_to )
 		return 1;
 
 	return 0;
@@ -1218,9 +1394,9 @@ void generate_vis_packet() {
 	}
 
 	/* hna announcements */
-	if ( !( list_empty( &hna_list ) ) ) {
+	if ( !( list_empty( &my_hna_list ) ) ) {
 
-		list_for_each( list_pos, &hna_list ) {
+		list_for_each( list_pos, &my_hna_list ) {
 
 			hna_node = list_entry( list_pos, struct hna_node, list );
 
@@ -1233,7 +1409,7 @@ void generate_vis_packet() {
 			//TBD: why not simply assign: vis_data->ip = hna_node->addr; ???
 			memcpy( &vis_data->ip, (unsigned char *)&hna_node->key.addr, 4 );
 			
-			vis_data->data = hna_node->key.KEY_ANETMASK;
+			vis_data->data = hna_node->key.KEY_FIELD_ANETMASK;
 			vis_data->type = DATA_TYPE_HNA;
 
 		}
@@ -1265,7 +1441,7 @@ void send_vis_packet() {
 void check_todos() {
 	struct list_head *todo_pos, *todo_pos_tmp;
 	struct todo_node *todo_node;
-	char fake_arg[ADDR_STR_LEN + 4], ifaddr_str[ADDR_STR_LEN];
+	char fake_arg[ADDR_STR_LEN + 12], addr_str[ADDR_STR_LEN];
 
 	if ( pthread_mutex_trylock( (pthread_mutex_t *)todo_mutex ) != 0 ) {
 		debug_output( 0, "Error - could not trylock todo_mutex: %s \n", strerror( errno ) );
@@ -1273,16 +1449,32 @@ void check_todos() {
 	
 		list_for_each_safe( todo_pos, todo_pos_tmp, &todo_list) {
 			todo_node = list_entry( todo_pos, struct todo_node, list );
-
 			
 			if ( todo_node->todo_type == TODO_TYPE_HNA ) {
 				
-				addr_to_string( todo_node->key.addr, ifaddr_str, sizeof(ifaddr_str) );
-				debug_output( 3, "found todo item, %s HNA %s/%d atype %d \n", todo_node->add ? "adding":"removing", ifaddr_str, todo_node->key.KEY_ANETMASK, todo_node->key.KEY_ATYPE );
-				sprintf( fake_arg, "%s/%d", ifaddr_str, todo_node->key.KEY_ANETMASK);
-				prepare_add_del_own_hna( fake_arg, (todo_node->add ? NO : YES), todo_node->key.KEY_ATYPE, NO /*not during startup*/ );
+				addr_to_string( todo_node->key.addr, addr_str, sizeof(addr_str) );
 				
-				add_del_own_hna( NO );
+				debug_output( 3, "found todo item, %s HNA %s/%d atype %d \n", todo_node->add ? "adding":"removing", addr_str, todo_node->key.KEY_FIELD_ANETMASK, todo_node->key.KEY_FIELD_ATYPE );
+				
+				sprintf( fake_arg, "%s/%d", addr_str, todo_node->key.KEY_FIELD_ANETMASK);
+				
+				prepare_add_del_own_hna( fake_arg, (todo_node->add ? NO : YES), todo_node->key.KEY_FIELD_ATYPE, NO /*not during startup*/ );
+				
+				add_del_own_hna( NO /* do not purge */ );
+				
+				
+			} else if ( todo_node->todo_type == TODO_TYPE_SRV ) {
+				
+				addr_to_string( todo_node->def32, addr_str, sizeof(addr_str) );
+				
+				debug_output( 3, "found todo item, %s SRV IP %s, port %d, seqno %d \n", todo_node->add ? "adding":"removing", addr_str, todo_node->def16, todo_node->def8 );
+				
+				sprintf( fake_arg, "%s:%d:%d", addr_str, todo_node->def16, todo_node->def8 );
+				
+				prepare_add_del_own_srv( fake_arg, (todo_node->add ? NO : YES), NO /*not during startup*/ );
+				
+				add_del_own_srv( NO /* do not purge */ );
+				
 				
 			} else {
 				
@@ -1304,31 +1496,60 @@ void check_todos() {
 	
 }
 
+int calc_ogm_if_size( int if_num ) {
+	if ( if_num == 0 )
+		return ( sizeof(struct bat_packet) + ((my_gw_ext_array_len + my_hna_ext_array_len + my_srv_ext_array_len) * sizeof(struct ext_packet)) );
+	else
+		return ( sizeof(struct bat_packet) + sizeof(struct ext_packet) );
+}
+
 int8_t batman() {
 
 	struct list_head *list_pos, *forw_pos_tmp;
 	struct orig_node *orig_neigh_node, *orig_node; 
-	struct batman_if *batman_if, *if_incoming;
+	struct batman_if *batman_if;
 	struct neigh_node *neigh_node;
 	struct forw_node *forw_node;
-	uint32_t neigh, debug_timeout, vis_timeout, select_timeout, aggregation_time = 0, curr_time;
+	uint32_t debug_timeout, vis_timeout, select_timeout, aggregation_time = 0;
+	uint16_t neigh_id4him;
 	//uint32_t hna;
 	//uint8_t netmask, atype, 
 	struct hna_key key;
 	uint8_t drop_it;
-	struct bat_packet *ogm;
-	struct ext_packet *hna_array, *gw_array;
-	int16_t hna_count, hna_array_len, /*gw_count,*/ gw_array_len;
 	struct hna_hash_node *hash_node;
 
 	uint16_t aggr_interval;
 	
 	static char orig_str[ADDR_STR_LEN], blocker_str[ADDR_STR_LEN], hna_str[ADDR_STR_LEN], neigh_str[ADDR_STR_LEN], ifaddr_str[ADDR_STR_LEN];
 	uint8_t forward_old, if_rp_filter_all_old, if_rp_filter_default_old, if_send_redirects_all_old, if_send_redirects_default_old;
-	uint8_t is_my_addr, is_my_orig, is_broadcast, is_my_path, is_duplicate, is_bidirectional, is_accepted, is_direct_neigh, is_bntog, forward_duplicate_packet, has_unidirectional_flag, has_directlink_flag, has_duplicated_flag, has_version;
+	uint8_t is_my_addr, is_my_orig, is_broadcast, is_my_path, is_duplicate, is_bidirectional, is_accepted, is_direct_neigh, is_bntog, forward_duplicate_packet, has_unidirectional_flag, has_directlink_flag, has_duplicated_flag /*, has_version*/ ;
 	int nlq_rate_value, rand_num_value, acceptance_rate_value;
-	int res;
+	int res, i;
 	
+	
+	struct bat_packet *ogm;
+	struct ext_packet *hna_array, *gw_array, *srv_array, *vis_array, *pip_array;
+	int16_t hna_count, hna_array_len, /*gw_count,*/ gw_array_len, srv_array_len, vis_array_len, pip_array_len;
+
+	uint32_t neigh, curr_time;
+	struct batman_if *if_incoming;
+
+	received_ogm = &ogm;
+	received_neigh = &neigh;
+	received_if_incoming = &if_incoming;
+	received_batman_time = &curr_time;
+
+	received_gw_array  = &gw_array;
+	received_gw_pos    = &gw_array_len;
+	received_hna_array = &hna_array;
+	received_hna_pos   = &hna_array_len;
+	received_srv_array = &srv_array;
+	received_srv_pos   = &srv_array_len;
+	received_vis_array = &vis_array;
+	received_vis_pos   = &vis_array_len;
+	received_pip_array = &pip_array;
+	received_pip_pos   = &pip_array_len;
+
 	curr_time = debug_timeout = vis_timeout = get_time();
 		
 	if ( aggregations_po )
@@ -1352,45 +1573,66 @@ int8_t batman() {
 	prof_init( PROF_schedule_forward_packet, "schedule_forward_packet" );
 	prof_init( PROF_send_outstanding_packets, "send_outstanding_packets" );
 
+	add_del_own_srv( NO /*do not purge*/ );	
+	
 	add_del_own_hna( NO /*do not purge*/ );	
-	
-	if ( initial_seqno == 0 )
-		initial_seqno = rand_num( FULL_SEQ_RANGE - (10*sequence_range) );
-	
-	list_for_each( list_pos, &if_list ) {
-
-		batman_if = list_entry( list_pos, struct batman_if, list );
-		
-		batman_if->out.version = COMPAT_VERSION;
-		batman_if->out.flags = 0x00;
-		batman_if->out.ttl = batman_if->if_ttl;
-		batman_if->out.seqno = initial_seqno;
-		batman_if->out.orig = batman_if->addr.sin_addr.s_addr;
-		batman_if->out.prev_hop = 0x00;
-
-		batman_if->if_rp_filter_old = get_rp_filter( batman_if->dev );
-		set_rp_filter( 0 , batman_if->dev );
-
-		batman_if->if_send_redirects_old = get_send_redirects( batman_if->dev );
-		set_send_redirects( 0 , batman_if->dev );
-
-		schedule_own_packet( batman_if, curr_time );
-
-	}
 	
 	memset( my_gw_ext_array, 0, sizeof(struct ext_packet) );
 	my_gw_ext_array_len = 0;
 	
 	if ( gateway_class && ( two_way_tunnel || one_way_tunnel ) ) {
 		
-		my_gw_ext_array->ext_flag = EXTENSION_FLAG;
-		my_gw_ext_array->ext_type = EXT_TYPE_GW;
+		my_gw_ext_array->EXT_FIELD_MSG  = YES;
+		my_gw_ext_array->EXT_FIELD_TYPE = EXT_TYPE_GW;
 		
-		my_gw_ext_array->EXT_GW_FLAGS = ( ( two_way_tunnel || one_way_tunnel ) ? gateway_class : 0 );
-		my_gw_ext_array->EXT_GW_TYPES = ( gateway_class ? ( (two_way_tunnel?TWO_WAY_TUNNEL_FLAG:0) | (one_way_tunnel?ONE_WAY_TUNNEL_FLAG:0) ) : 0 );
+		my_gw_ext_array->EXT_GW_FIELD_GWFLAGS = ( ( two_way_tunnel || one_way_tunnel ) ? gateway_class : 0 );
+		my_gw_ext_array->EXT_GW_FIELD_GWTYPES = ( gateway_class ? ( (two_way_tunnel?TWO_WAY_TUNNEL_FLAG:0) | (one_way_tunnel?ONE_WAY_TUNNEL_FLAG:0) ) : 0);
+		
+		my_gw_ext_array->EXT_GW_FIELD_GWPORT = htons( my_gw_port );
+		my_gw_ext_array->EXT_GW_FIELD_GWADDR = my_gw_addr;
+		
 		my_gw_ext_array_len = 1;
 	
 	}
+	
+	memset( my_pip_ext_array, 0, sizeof(struct ext_packet) );
+	my_pip_ext_array->EXT_FIELD_MSG = YES;
+	my_pip_ext_array->EXT_FIELD_TYPE = EXT_TYPE_PIP;
+	my_pip_ext_array->EXT_PIP_FIELD_ADDR = (list_entry( (&if_list)->next, struct batman_if, list ))->addr.sin_addr.s_addr;
+	
+	my_pip_ext_array_len = 0;
+
+	list_for_each( list_pos, &if_list ) {
+
+		batman_if = list_entry( list_pos, struct batman_if, list );
+		
+//		batman_if->out.version = COMPAT_VERSION;
+		batman_if->out.ext_msg = NO;
+		batman_if->out.bat_type = BAT_TYPE_OGM;
+		batman_if->out.flags = 0x00;
+		batman_if->out.size = (calc_ogm_if_size( batman_if->if_num ))/4;
+		
+		batman_if->out.nbrf     = sequence_range;
+		
+		batman_if->out.ttl      = batman_if->if_ttl;
+		batman_if->out.seqno    = initial_seqno;
+		batman_if->out.orig     = batman_if->addr.sin_addr.s_addr;
+//		batman_if->out.prev_hop = 0x00;
+
+		batman_if->if_rp_filter_old = get_rp_filter( batman_if->dev );
+		set_rp_filter( 0 , batman_if->dev );
+
+		batman_if->if_send_redirects_old = get_send_redirects( batman_if->dev );
+		set_send_redirects( 0 , batman_if->dev );
+		
+		if ( batman_if->if_num > 0 )
+			my_pip_ext_array_len = 1;
+		
+		schedule_own_packet( batman_if, curr_time );
+
+	}
+	
+	
 	
 	if_rp_filter_all_old = get_rp_filter( "all" );
 	if_rp_filter_default_old = get_rp_filter( "default" );
@@ -1409,6 +1651,11 @@ int8_t batman() {
 
 	curr_time = get_time();
 
+	for (i=0; i < g_argc; i++)
+		debug_output(0, "%s ",g_argv[i]);
+	
+	debug_output(0, "\n");
+
 	
 	while ( !is_aborted() ) {
 
@@ -1421,13 +1668,13 @@ int8_t batman() {
 		
 			select_timeout = ((struct forw_node *)forw_list.next)->send_time - curr_time ;
 			
-			res = receive_packet( &ogm, &gw_array, &gw_array_len, &hna_array, &hna_array_len, &neigh, select_timeout, &if_incoming, &curr_time );
+			res = receive_packet( select_timeout );
 			
 		} else if ( aggregations_po  &&  curr_time < aggregation_time ) { 
 		
 			select_timeout = aggregation_time - curr_time ;
 			
-			res = receive_packet( &ogm, &gw_array, &gw_array_len, &hna_array, &hna_array_len, &neigh, select_timeout, &if_incoming, &curr_time );
+			res = receive_packet( select_timeout );
 		
 		} else {
 			
@@ -1450,11 +1697,11 @@ int8_t batman() {
 			has_unidirectional_flag = ogm->flags & UNIDIRECTIONAL_FLAG ? 1 : 0;
 			has_directlink_flag     = ogm->flags & DIRECTLINK_FLAG ? 1 : 0;
 			has_duplicated_flag     = ogm->flags & CLONED_FLAG ? 1 : 0;
-			has_version             = ogm->version;
+//			has_version             = ogm->version;
 
 			is_direct_neigh = (ogm->orig == neigh) ? 1 : 0;
 
-			debug_output( 4, "Received BATMAN packet via NB: %s , IF: %s %s (from OG: %s, seqno %d, TTL %d, V %d, UDF %d, IDF %d, DPF %d) \n", neigh_str, if_incoming->dev, ifaddr_str, orig_str, ogm->seqno, ogm->ttl, has_version, has_unidirectional_flag, has_directlink_flag, has_duplicated_flag );
+			debug_output( 4, "Received BATMAN packet via NB: %s , IF: %s %s (from OG: %s, seqno %d, TTL %d, V %d, UDF %d, IDF %d, DPF %d, direct_neigh %d) \n", neigh_str, if_incoming->dev, ifaddr_str, orig_str, ogm->seqno, ogm->ttl, COMPAT_VERSION, has_unidirectional_flag, has_directlink_flag, has_duplicated_flag, is_direct_neigh );
 
 			list_for_each( list_pos, &if_list ) {
 
@@ -1469,14 +1716,15 @@ int8_t batman() {
 				if ( neigh == batman_if->broad.sin_addr.s_addr )
 					is_broadcast = 1;
 
-				if ( ogm->prev_hop == batman_if->addr.sin_addr.s_addr )
-					is_my_path = 1;
+				//TODO: remove this !!
+				//if ( ogm->prev_hop == batman_if->addr.sin_addr.s_addr )
+				//	is_my_path = 1;
 
 			}
 
 
-			if ( gw_array_len > 0 && gw_array != NULL && gw_array[0].EXT_GW_FLAGS != 0 && gw_array[0].EXT_GW_TYPES != 0 )
-				debug_output( 4, "Is an internet gateway (class %i, types %i) \n", gw_array[0].EXT_GW_FLAGS, gw_array[0].EXT_GW_TYPES );
+			if ( gw_array_len > 0 && gw_array != NULL && gw_array->EXT_GW_FIELD_GWFLAGS != 0 && gw_array->EXT_GW_FIELD_GWTYPES != 0 )
+				debug_output( 4, "Is an internet gateway (class %i, types %i) \n", gw_array->EXT_GW_FIELD_GWFLAGS, gw_array->EXT_GW_FIELD_GWTYPES );
 
 
 			if ( is_my_addr ) {
@@ -1491,7 +1739,7 @@ int8_t batman() {
 
 				orig_neigh_node = get_orig_node( neigh );
 
-				debug_output( 4, "received my own OGM via NB, lastTxIfSeqno: %d, currRxSeqno: %d, prevRxSeqno: %d, currRxSeqno-prevRxSeqno %d \n", ( if_incoming->out.seqno - OUT_SEQNO_OFFSET ), ogm->seqno, orig_neigh_node->bidirect_link[if_incoming->if_num], ogm->seqno - orig_neigh_node->bidirect_link[if_incoming->if_num] );
+				debug_output( 4, "received my own OGM via NB, lastTxIfSeqno: %d, currRxSeqno: %d, prevRxSeqno: %d, currRxSeqno-prevRxSeqno %d, link_node %s \n", ( if_incoming->out.seqno - OUT_SEQNO_OFFSET ), ogm->seqno, 0, 0, (orig_neigh_node->link_node ? "exist":"NOT exists") /*, orig_neigh_node->bidirect_link[if_incoming->if_num], ogm->seqno - orig_neigh_node->bidirect_link[if_incoming->if_num] */ );
 
 				if ( ( has_directlink_flag ) &&
 				   ( if_incoming->addr.sin_addr.s_addr == ogm->orig ) &&
@@ -1499,7 +1747,7 @@ int8_t batman() {
 				   ( ogm->seqno != ( if_incoming->out.seqno - OUT_SEQNO_OFFSET ) )
 				   ) {
 				
-					debug_output( 3, "STRANGE: received own OGM via NB: %s, lastTxIfSeqno: %d, currRxSeqno: %d, prevRxSeqno: %d, currRxSeqno-prevRxSeqno %d \n", neigh_str, ( if_incoming->out.seqno - OUT_SEQNO_OFFSET ), ogm->seqno, orig_neigh_node->bidirect_link[if_incoming->if_num], ogm->seqno - orig_neigh_node->bidirect_link[if_incoming->if_num] );
+					debug_output( 3, "STRANGE: received own OGM via NB: %s, lastTxIfSeqno: %d, currRxSeqno: %d, prevRxSeqno: %d, currRxSeqno-prevRxSeqno %d \n", neigh_str, ( if_incoming->out.seqno - OUT_SEQNO_OFFSET ), ogm->seqno, 0, 0 /* orig_neigh_node->bidirect_link[if_incoming->if_num], ogm->seqno - orig_neigh_node->bidirect_link[if_incoming->if_num]*/ );
 
 				}							   
 				
@@ -1508,12 +1756,21 @@ int8_t batman() {
 				if ( ( has_directlink_flag ) &&
 					( if_incoming->addr.sin_addr.s_addr == ogm->orig ) &&
 					( !has_duplicated_flag ) &&
-					( ogm->seqno == ( if_incoming->out.seqno - OUT_SEQNO_OFFSET ) )
-				   ) {
+					( ogm->seqno == ( if_incoming->out.seqno - OUT_SEQNO_OFFSET ) ) &&
+					( orig_neigh_node->link_node != NULL ) &&
+					( orig_neigh_node->primary_orig_node != NULL )  ){
 
 					update_bi_link_bits( orig_neigh_node, if_incoming, YES, NO );
 
-					orig_neigh_node->bidirect_link[if_incoming->if_num] = ( if_incoming->out.seqno - OUT_SEQNO_OFFSET );
+					orig_neigh_node->link_node->bidirect_link[if_incoming->if_num] = ( if_incoming->out.seqno - OUT_SEQNO_OFFSET );
+					
+					if ( orig_neigh_node->primary_orig_node->id4me != ogm->prev_hop_id ) {
+					
+						if( orig_neigh_node->primary_orig_node->id4me != 0 ) 
+							debug_output( 0, "STRANGE: received changed prev_hop_id from neighbor %s !!!!!!!\n", neigh_str );
+						
+						orig_neigh_node->primary_orig_node->id4me = ogm->prev_hop_id;
+					}
 
 					debug_output( 4, "indicating bidirectional link - updating bidirect_link seqno \n");
 
@@ -1524,10 +1781,6 @@ int8_t batman() {
 				}
 
 				debug_output( 4, "Drop packet: originator packet from myself (via neighbour) \n" );
-
-			} else if ( is_my_path ) {
-
-				debug_output( 4, "Drop packet: received packet which already passed along here (two-hops ago) \n" );
 
 			} else if ( ogm->flags & UNIDIRECTIONAL_FLAG ) {
 
@@ -1540,14 +1793,30 @@ int8_t batman() {
 				/* if sender is a direct neighbor the sender ip equals originator ip */
 				orig_neigh_node = ( is_direct_neigh ? orig_node : get_orig_node( neigh ) );
 				
+				
 				drop_it = NO;
 					
 				/* drop packet if sender is not a direct neighbor and if we have no route towards the rebroadcasting neighbor */
-				if ( ( ogm->orig != neigh ) && ( orig_neigh_node->router == NULL ) ) {
+				if ( !is_direct_neigh  &&  orig_neigh_node->router == NULL  ) {
 
 					debug_output( 4, "Drop packet: OGM via unkown neighbor! \n" );
 					drop_it = YES;
 
+				} else if ( !is_direct_neigh  &&  ( orig_neigh_node->primary_orig_node == NULL ||
+								orig_neigh_node->primary_orig_node->id4me == 0 ||
+								orig_neigh_node->primary_orig_node->id4me == ogm->prev_hop_id ) ) {
+
+					debug_output( 4, "Drop packet: OGM vi unknown NB or via two-hop loop !!!! \n" );
+					drop_it = YES;
+
+				//TODO: remove this !!
+				/*
+				} else if ( is_my_path ) {
+
+					debug_output( 0, "Drop packet: received packet which already passed along here (two-hops ago) \n" );
+					restore_and_exit(0);
+				*/
+					
 				} else if ( ogm->ttl == 0 ) {
 
 					debug_output( 4, "Drop packet: TTL of zero! \n" );
@@ -1575,6 +1844,11 @@ int8_t batman() {
 					debug_output( 4, "Drop packet: Already considered this OGM and SEQNO via this link neighbor ! \n" );
 					drop_it = YES;
 
+				} else if ( has_duplicated_flag && orig_neigh_node->primary_orig_node == NULL ) {
+
+					debug_output( 4, "Drop packet: First contact with neighbor MUST be without duplicated flag ! \n" );
+					drop_it = YES;
+
 				} else {
 				
 					/* check if received HNA information is already blocked by other node */
@@ -1585,9 +1859,9 @@ int8_t batman() {
 	
 						while ( hna_count < hna_array_len ) {
 							
-							key.addr     = (hna_array[hna_count]).EXT_HNA_ADDR;
-							key.KEY_ANETMASK = (hna_array[hna_count]).EXT_HNA_NETMASK;
-							key.KEY_ATYPE    = (hna_array[hna_count]).EXT_HNA_TYPE;
+							key.addr               = (hna_array[hna_count]).EXT_HNA_FIELD_ADDR;
+							key.KEY_FIELD_ANETMASK = (hna_array[hna_count]).EXT_HNA_FIELD_NETMASK;
+							key.KEY_FIELD_ATYPE    = (hna_array[hna_count]).EXT_HNA_FIELD_TYPE;
 			
 							hash_node = get_hna_node( &key );
 			
@@ -1604,14 +1878,14 @@ int8_t batman() {
 									sprintf( blocker_str, "myself");
 									
 								debug_output( 3, "Dropping packet: hna: %s/%d type %d, announced by %s is blocked by %s !\n",
-										hna_str, key.KEY_ANETMASK, key.KEY_ATYPE, orig_str, blocker_str );
+										hna_str, key.KEY_FIELD_ANETMASK, key.KEY_FIELD_ATYPE, orig_str, blocker_str );
 				
 							} else {
 	
-								if (  key.KEY_ANETMASK > 0  &&  key.KEY_ANETMASK <= 32  &&  key.KEY_ATYPE <= A_TYPE_MAX )
-									debug_output( 4, "  hna: %s/%i, type %d\n", hna_str, key.KEY_ANETMASK, key.KEY_ATYPE );
+								if (  key.KEY_FIELD_ANETMASK > 0  &&  key.KEY_FIELD_ANETMASK <= 32  &&  key.KEY_FIELD_ATYPE <= A_TYPE_MAX )
+									debug_output( 4, "  hna: %s/%i, type %d\n", hna_str, key.KEY_FIELD_ANETMASK, key.KEY_FIELD_ATYPE );
 								else
-									debug_output( 4, "  hna: %s/%i, type %d -> ignoring (invalid netmask or type) \n", hna_str, key.KEY_ANETMASK, key.KEY_ATYPE );
+									debug_output( 4, "  hna: %s/%i, type %d -> ignoring (invalid netmask or type) \n", hna_str, key.KEY_FIELD_ANETMASK, key.KEY_FIELD_ATYPE );
 	
 							}
 							
@@ -1623,12 +1897,24 @@ int8_t batman() {
 				if ( ! drop_it ) {
 					
 //					is_alreadyConsidered = alreadyConsidered( orig_node, ogm->seqno, neigh, if_incoming );
-
+					
 					is_duplicate = isDuplicate( orig_node, ogm->seqno );
 
 					is_bidirectional = isBidirectionalNeigh( orig_neigh_node, if_incoming );
 					
 					set_lq_bits( orig_node, ogm->seqno, if_incoming, ( !has_duplicated_flag && is_direct_neigh ) );
+					
+					//must be after init_link_node() which is called from set_lq_bits()
+					if ( orig_neigh_node->primary_orig_node != NULL ) {
+						
+						neigh_id4him = orig_neigh_node->primary_orig_node->id4him;
+					
+					} else { 
+						
+						neigh_id4him = 0;
+						debug_output( 3, "STRANGE: not yet identified orig_neigh_node->primary_orig_node->id4him !!! \n");
+						
+					}
 
 					nlq_rate_value = nlq_rate( orig_neigh_node, if_incoming );
 					
@@ -1655,16 +1941,15 @@ int8_t batman() {
 						  )
 						) ) {
 						
-						update_orig( orig_node, ogm , neigh, if_incoming, gw_array, gw_array_len, hna_array, hna_array_len, curr_time );
+						update_orig( orig_node, orig_neigh_node );
 					
 					}
 								 
 					set_dbg_rcvd_all_bits( orig_node, ogm->seqno, if_incoming, (is_bidirectional && ( !is_duplicate || 
 							( dup_ttl_limit && 
-									( orig_node->last_seqno == ogm->seqno && 
-									orig_node->last_seqno_largest_ttl < ogm->ttl + dup_ttl_limit) ) ) ) );
+							( orig_node->last_seqno == ogm->seqno && 
+							orig_node->last_seqno_largest_ttl < ogm->ttl + dup_ttl_limit) ) ) ) );
 
-					
 					is_bntog = isBntog( neigh, orig_node );
 					
 					debug_output( 4, "  received via bidirectional link: %s, accepted OGM: %s, BNTOG: %s, iam a mobile device: %s, nlq_rate: %d, rand_num: %d, acceptance_rate: %d !\n", 
@@ -1680,7 +1965,7 @@ int8_t batman() {
 						/* we are an asocial mobile device and dont want to forward other nodes packet */
 						if( mobile_device ) {
 
-							schedule_forward_packet( ogm, 1, 1, has_duplicated_flag, gw_array, gw_array_len, hna_array, hna_array_len, if_incoming, curr_time, neigh );
+							schedule_forward_packet( 1, 1, has_duplicated_flag, neigh_id4him );
 
 							debug_output( 4, "Forward packet: with mobile device policy: rebroadcast neighbour packet with direct link and unidirectional flag \n" );
 
@@ -1688,7 +1973,7 @@ int8_t batman() {
 						} else if ( is_accepted && is_bntog ) {
 
 							/* mark direct link on incoming interface */
-							schedule_forward_packet( ogm, 0, 1, has_duplicated_flag, gw_array, gw_array_len, hna_array, hna_array_len, if_incoming, curr_time, neigh );
+							schedule_forward_packet( 0, 1, has_duplicated_flag, neigh_id4him );
 
 							debug_output( 4, "Forward packet: rebroadcast neighbour packet with direct link flag \n" );
 /*
@@ -1698,11 +1983,13 @@ int8_t batman() {
 							}
 */							
 							
-						/* if an unidirectional neighbour sends us a packet - retransmit it with unidirectional flag to tell him that we get his packets */
-						/* if a bidirectional neighbour sends us a packet who is not our best link to him- retransmit it with unidirectional flag in order to prevent routing problems */
+						/* if an unidirectional neighbour sends us a packet:
+							 - retransmit it with unidirectional flag to tell him that we get his packets */
+						/* if a bidirectional neighbour sends us a packet who is not our best link to him: 
+							- retransmit it with unidirectional flag in order to prevent routing problems */
 						} else if ( ( is_accepted && !is_bntog ) || ( !is_accepted ) ) {
 
-							schedule_forward_packet( ogm, 1, 1, has_duplicated_flag, gw_array, gw_array_len, hna_array, hna_array_len, if_incoming, curr_time, neigh );
+							schedule_forward_packet( 1, 1, has_duplicated_flag, neigh_id4him );
 
 							debug_output( 4, "Forward packet: rebroadcast neighbour packet with direct link and unidirectional flag \n" );
 
@@ -1712,10 +1999,11 @@ int8_t batman() {
 					} else {
 
 						if ( is_accepted && is_bntog && !mobile_device ) {
-
+	
+							//TODO: remove this, I think we should forward anyting left at this point
 							if ( !is_duplicate ) {
 
-								schedule_forward_packet( ogm, 0, 0, has_duplicated_flag, gw_array, gw_array_len, hna_array, hna_array_len, if_incoming, curr_time, neigh );
+								schedule_forward_packet( 0, 0, has_duplicated_flag, neigh_id4him );
 
 								debug_output( 4, "Forward packet: rebroadcast originator packet \n" );
 
@@ -1731,10 +2019,16 @@ int8_t batman() {
 
 											forward_duplicate_packet = 1;
 
-											/* also update only last_valid time if arrived (and rebroadcasted because of best neighbor) */
-											orig_node->last_valid = curr_time;
-											neigh_node->last_valid = curr_time;
-
+											/* also update only last_valid time if arrived 
+											(and rebroadcasted because of best neighbor) */
+											//orig_node->last_valid  = curr_time;
+											//neigh_node->last_valid = curr_time;
+											
+											orig_node->last_aware = orig_neigh_node->last_aware = neigh_node->last_valid = curr_time;
+										
+											if ( orig_node->primary_orig_node )
+												orig_node->primary_orig_node->last_aware = curr_time;
+										
 										}
 
 										break;
@@ -1746,7 +2040,7 @@ int8_t batman() {
 								/* we are forwarding duplicate o-packets if they come via our best neighbour and ttl is valid */
 								if ( forward_duplicate_packet ) {
 
-									schedule_forward_packet( ogm, 0, 0, has_duplicated_flag, gw_array, gw_array_len, hna_array, hna_array_len, if_incoming, curr_time, neigh );
+									schedule_forward_packet( 0, 0, has_duplicated_flag, neigh_id4him );
 
 									debug_output( 4, "Forward packet: duplicate packet received via best neighbour with best ttl \n" );
 /*
@@ -1756,7 +2050,7 @@ int8_t batman() {
 */
 								} else {
 
-									debug_output( 4, "Drop packet: duplicate packet received via best neighbour but not best ttl \n" );
+									debug_output( 3, "Drop packet: duplicate packet received via best neighbour but not best ttl \n" );
 
 								}
 
@@ -1831,6 +2125,8 @@ int8_t batman() {
 		printf( "Deleting all BATMAN routes\n" );
 
 	purge_orig( get_time() + ( 5 * PURGE_TIMEOUT ) + originator_interval );
+	
+	add_del_own_srv( YES /*purge*/ );
 	
 	add_del_own_hna( YES /*purge*/ );
 	

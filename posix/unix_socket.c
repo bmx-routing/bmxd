@@ -160,9 +160,9 @@ void internal_output(uint32_t sock)
 	dprintf(sock, "source_version=%s\n", SOURCE_VERSION);
 	dprintf(sock, "compat_version=%i\n", COMPAT_VERSION);
 	dprintf(sock, "vis_compat_version=%i\n", VIS_COMPAT_VERSION);
-	dprintf(sock, "ogm_port=%i\n", PORT);
-	dprintf(sock, "gw_port=%i\n", PORT + 1);
-	dprintf(sock, "vis_port=%i\n", PORT + 2);
+	dprintf(sock, "ogm_port=%i\n", ogm_port );
+	dprintf(sock, "gw_port=%i\n", my_gw_port );
+	dprintf(sock, "vis_port=%i\n", vis_port );
 	dprintf(sock, "unix_socket_path=%s\n", unix_path);
 	dprintf(sock, "own_ogm_jitter=%i\n", JITTER);
 	dprintf(sock, "default_ttl=%i\n", ttl);
@@ -188,6 +188,7 @@ void *unix_listen( void *arg ) {
 	struct debug_level_info *debug_level_info;
 	struct list_head *client_list_pos, *i_list_pos, *unix_pos_tmp, *debug_pos, *debug_pos_tmp, *prev_list_head, *prev_list_head_unix;
 	struct hna_node *hna_node;
+	struct srv_node *srv_node;
 	struct batman_if *batman_if;
 	struct timeval tv;
 	struct sockaddr_un sun_addr;
@@ -199,6 +200,8 @@ void *unix_listen( void *arg ) {
 	socklen_t sun_size = sizeof(struct sockaddr_un);
 	uint8_t unix_client_deleted = NO;
 	uint32_t tmp_enabled, tmp_netmask, tmp_address;
+	uint16_t tmp_port;
+	uint8_t tmp_seqno;
 
 	INIT_LIST_HEAD_FIRST(unix_if.client_list);
 
@@ -353,12 +356,16 @@ void *unix_listen( void *arg ) {
 										
 										if ( is_gateway ) {
 										
-											my_gw_ext_array->ext_flag = EXTENSION_FLAG;
-											my_gw_ext_array->ext_type = EXT_TYPE_GW;
+											my_gw_ext_array->EXT_FIELD_MSG = YES;
+											my_gw_ext_array->EXT_FIELD_TYPE = EXT_TYPE_GW;
 										
-											my_gw_ext_array->EXT_GW_FLAGS = ( ( two_way_tunnel || one_way_tunnel ) ? gateway_class : 0 );
+											my_gw_ext_array->EXT_GW_FIELD_GWFLAGS = ( ( two_way_tunnel || one_way_tunnel ) ? gateway_class : 0 );
 											
-											my_gw_ext_array->EXT_GW_TYPES = ( gateway_class ? ( (two_way_tunnel?TWO_WAY_TUNNEL_FLAG:0) | (one_way_tunnel?ONE_WAY_TUNNEL_FLAG:0) ) : 0 );
+											my_gw_ext_array->EXT_GW_FIELD_GWTYPES = ( gateway_class ? ( (two_way_tunnel?TWO_WAY_TUNNEL_FLAG:0) | (one_way_tunnel?ONE_WAY_TUNNEL_FLAG:0) ) : 0 );
+										
+											my_gw_ext_array->EXT_GW_FIELD_GWPORT = htons( my_gw_port );
+											my_gw_ext_array->EXT_GW_FIELD_GWADDR = my_gw_addr;
+
 											
 											my_gw_ext_array_len = 1;
 										
@@ -397,13 +404,11 @@ void *unix_listen( void *arg ) {
 
 								if ( status > 2 ) {
 									
-									debug_output( 3, "Unix socket: 1. changing to -r %d \n", tmp_unix_value );
-									
 									if ((buff[2] == 0) || (probe_tun(0))) {
 
 										tmp_unix_value = buff[2];
 
-										if ( ( tmp_unix_value >= 0 ) && ( tmp_unix_value <= 3 ) ) {
+										if ( /*( tmp_unix_value >= 0 ) &&*/ ( tmp_unix_value <= 3 ) ) {
 
 											debug_output( 3, "Unix socket: changing to -r %d \n", tmp_unix_value );
 										
@@ -469,7 +474,7 @@ void *unix_listen( void *arg ) {
 									if ( pthread_mutex_lock( (pthread_mutex_t *)todo_mutex ) != 0 )
 										debug_output( 0, "Error - could not lock todo_mutex: %s \n", strerror( errno ) );
 
-									debug_output( 3, "Unix socket: todo_mutex locked, requesting %s of HNA %s/%d - put this on todo list... \n", tmp_enabled?"adding":"removing", str, tmp_netmask   );
+									debug_output( 3, "Unix socket: Requesting %s of HNA %s/%d - put this on todo list... \n", tmp_enabled?"adding":"removing", str, tmp_netmask   );
 									
 									
 									new_todo_node = debugMalloc( sizeof( struct todo_node ), 220 );
@@ -478,9 +483,55 @@ void *unix_listen( void *arg ) {
 									INIT_LIST_HEAD( &new_todo_node->list );
 									new_todo_node->add = tmp_enabled;
 									new_todo_node->todo_type = TODO_TYPE_HNA;
-									new_todo_node->key.KEY_ANETMASK = tmp_netmask;
-									new_todo_node->key.KEY_ATYPE = A_TYPE_NETWORK;
+									new_todo_node->key.KEY_FIELD_ANETMASK = tmp_netmask;
+									new_todo_node->key.KEY_FIELD_ATYPE = A_TYPE_NETWORK;
 									new_todo_node->key.addr = tmp_address;
+									
+									list_add_tail( &new_todo_node->list, &todo_list );
+									
+									if ( pthread_mutex_unlock( (pthread_mutex_t *)todo_mutex ) != 0 )
+										debug_output( 0, "Error - could not unlock mutex (unix_listen => 2): %s \n", strerror( errno ) );
+									
+								}
+
+								dprintf( unix_client->sock, "EOD\n" );
+
+							} else if ( buff[0] == 't' || buff[0] == 'T' ) {
+
+								if ( status > 10 ) {
+									struct todo_node *new_todo_node;
+									
+									tmp_enabled = ( buff[0] == 't' ? YES : NO );
+									
+									memcpy( str, buff+1, 5 );
+									str[5] = '\0';
+									tmp_port    = strtoul( str, NULL, 10 );
+									
+									
+									memcpy( str, buff+6, 3 );
+									str[3] = '\0';
+									tmp_seqno   = strtoul( str, NULL, 10 );
+									
+									tmp_address = strtoul( buff+9, NULL, 10 );
+									addr_to_string( tmp_address, str, sizeof (str) );
+									
+									if ( pthread_mutex_lock( (pthread_mutex_t *)todo_mutex ) != 0 )
+										debug_output( 0, "Error - could not lock todo_mutex: %s \n", strerror( errno ) );
+
+									debug_output( 3, "Unix socket: Requesting %s of service announcement %s:%d:%d - put this on todo list... \n", tmp_enabled?"adding":"removing", str, tmp_seqno, tmp_port   );
+									
+									new_todo_node = debugMalloc( sizeof( struct todo_node ), 220 );
+									
+									memset( new_todo_node, 0,  sizeof( struct todo_node ) );
+									
+									
+									new_todo_node->add = tmp_enabled;
+									new_todo_node->todo_type = TODO_TYPE_SRV;
+									new_todo_node->def16 = tmp_port;
+									new_todo_node->def8  = tmp_seqno;
+									new_todo_node->def32 = tmp_address;
+									
+									INIT_LIST_HEAD( &new_todo_node->list );
 									
 									list_add_tail( &new_todo_node->list, &todo_list );
 									
@@ -516,17 +567,29 @@ void *unix_listen( void *arg ) {
 								}
 
 								//TODO: this needs a mutex !?
-								list_for_each( i_list_pos, &hna_list ) {
+								list_for_each( i_list_pos, &my_hna_list ) {
 
 									hna_node = list_entry( i_list_pos, struct hna_node, list );
 
 									addr_to_string( hna_node->key.addr, str, sizeof (str) );
 									
 									if ( hna_node->enabled )
-										dprintf( unix_client->sock, " -a %s/%i", str, hna_node->key.KEY_ANETMASK );
+										dprintf( unix_client->sock, " -a %s/%i", str, hna_node->key.KEY_FIELD_ANETMASK );
 
 								}
 
+								//TODO: this needs a mutex !?
+								list_for_each( i_list_pos, &my_srv_list ) {
+
+									srv_node = list_entry( i_list_pos, struct srv_node, list );
+
+									addr_to_string( srv_node->srv_addr, str, sizeof (str) );
+									
+									if ( srv_node->enabled )
+										dprintf( unix_client->sock, " -t %s:%d:%i", str, srv_node->srv_port, srv_node->srv_seqno );
+
+								}
+								
 								list_for_each( i_list_pos, &if_list ) {
 
 									batman_if = list_entry( i_list_pos, struct batman_if, list );
