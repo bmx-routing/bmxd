@@ -55,7 +55,7 @@ extern char unix_path[];
 #define YES 1
 #define NO 0
 
-#define DEBUG_RCVD_ALL_BITS NO
+#define DEBUG_RCVD_ALL_BITS YES
 
 /***
  *
