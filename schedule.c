@@ -348,32 +348,6 @@ void send_outstanding_packets() {
 								}
 		
 		
-								/* OGMs for non-primary interfaces do not send extension messages */
-								/*
-								if ( ( forw_node->own ) && ( ((struct bat_packet *)forw_node->pack_buff)->orig != ((struct batman_if *)if_list.next)->addr.sin_addr.s_addr ) ) {
-		
-									debug_output( 4, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s, len %d\n", orig_str, ntohs( ((struct bat_packet *)forw_node->pack_buff)->seqno ), ((struct bat_packet *)forw_node->pack_buff)->ttl, batman_if->dev, sizeof(struct bat_packet) );
-									
-									memcpy( (batman_if->packet_out + batman_if->packet_out_len), forw_node->pack_buff, sizeof(struct bat_packet) );
-									
-									if ( aggregations_po ) {
-									
-										batman_if->packet_out_len+= sizeof(struct bat_packet);
-									
-										aggregated_packets++;
-										
-									} else {
-										
-										((struct bat_header*)&(batman_if->packet_out))->version = COMPAT_VERSION;
-										((struct bat_header*)&(batman_if->packet_out))->size = (sizeof(struct bat_header) + sizeof(struct bat_packet))/4;
-										
-										if ( send_udp_packet( batman_if->packet_out, sizeof(struct bat_header) + sizeof(struct bat_packet), &batman_if->broad, batman_if->udp_send_sock ) < 0 )
-											restore_and_exit(0);
-									
-									}
-	
-								} else {
-								*/	
 								
 								if ( ( forw_node->own ) && ( ((struct bat_packet *)forw_node->pack_buff)->orig != ((struct batman_if *)if_list.next)->addr.sin_addr.s_addr ) && forw_node->pack_buff_len != (sizeof(struct bat_packet) + sizeof(struct ext_packet)) ) {
 									

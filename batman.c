@@ -1243,10 +1243,17 @@ uint8_t alreadyConsidered( struct orig_node *orig_node, uint16_t seqno, uint32_t
 
 		if ( neigh == neigh_node->addr && if_incoming == neigh_node->if_incoming ) {
 			
-			if ( seqno == neigh_node->last_considered_seqno || ( seqno - neigh_node->last_considered_seqno ) > ( FULL_SEQ_RANGE - sequence_range ) ) {
+			if ( seqno == neigh_node->last_considered_seqno ) { 
 				
 				return YES;
-		
+				
+			/* remove this else branch: */	
+			} else if ( ( seqno - neigh_node->last_considered_seqno ) > ( FULL_SEQ_RANGE - sequence_range ) ) {
+
+				debug_output( 0, "alreadyConsidered(): This should not happen, we only acceppt current packets anyway !!!!!!!\n");
+				return YES;
+				
+				
 			} else {
 		
 				neigh_node->last_considered_seqno = seqno;
@@ -1512,8 +1519,6 @@ int8_t batman() {
 	struct forw_node *forw_node;
 	uint32_t debug_timeout, vis_timeout, select_timeout, aggregation_time = 0;
 	uint16_t neigh_id4him;
-	//uint32_t hna;
-	//uint8_t netmask, atype, 
 	struct hna_key key;
 	uint8_t drop_it;
 	struct hna_hash_node *hash_node;
@@ -1522,7 +1527,7 @@ int8_t batman() {
 	
 	static char orig_str[ADDR_STR_LEN], blocker_str[ADDR_STR_LEN], hna_str[ADDR_STR_LEN], neigh_str[ADDR_STR_LEN], ifaddr_str[ADDR_STR_LEN];
 	uint8_t forward_old, if_rp_filter_all_old, if_rp_filter_default_old, if_send_redirects_all_old, if_send_redirects_default_old;
-	uint8_t is_my_addr, is_my_orig, is_broadcast, is_my_path, is_duplicate, is_bidirectional, is_accepted, is_direct_neigh, is_bntog, forward_duplicate_packet, has_unidirectional_flag, has_directlink_flag, has_duplicated_flag /*, has_version*/ ;
+	uint8_t is_my_addr, is_my_orig, is_broadcast, is_my_path, is_duplicate, is_bidirectional, is_accepted, is_direct_neigh, is_bntog, forward_duplicate_packet, update_ranking, has_unidirectional_flag, has_directlink_flag, has_duplicated_flag;
 	int nlq_rate_value, rand_num_value, acceptance_rate_value;
 	int res, i;
 	
@@ -1606,7 +1611,6 @@ int8_t batman() {
 
 		batman_if = list_entry( list_pos, struct batman_if, list );
 		
-//		batman_if->out.version = COMPAT_VERSION;
 		batman_if->out.ext_msg = NO;
 		batman_if->out.bat_type = BAT_TYPE_OGM;
 		batman_if->out.flags = 0x00;
@@ -1632,7 +1636,7 @@ int8_t batman() {
 
 	}
 	
-	
+
 	
 	if_rp_filter_all_old = get_rp_filter( "all" );
 	if_rp_filter_default_old = get_rp_filter( "default" );
@@ -1692,12 +1696,11 @@ int8_t batman() {
 			addr_to_string( neigh, neigh_str, sizeof(neigh_str) );
 			addr_to_string( if_incoming->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
 
-			is_my_addr = is_my_orig = is_broadcast = is_my_path = is_duplicate = is_bidirectional = is_accepted = is_direct_neigh = is_bntog = forward_duplicate_packet = 0;
+			is_my_addr = is_my_orig = is_broadcast = is_my_path = is_duplicate = is_bidirectional = is_accepted = is_direct_neigh = is_bntog = forward_duplicate_packet = update_ranking = 0;
 
 			has_unidirectional_flag = ogm->flags & UNIDIRECTIONAL_FLAG ? 1 : 0;
 			has_directlink_flag     = ogm->flags & DIRECTLINK_FLAG ? 1 : 0;
 			has_duplicated_flag     = ogm->flags & CLONED_FLAG ? 1 : 0;
-//			has_version             = ogm->version;
 
 			is_direct_neigh = (ogm->orig == neigh) ? 1 : 0;
 
@@ -1716,9 +1719,6 @@ int8_t batman() {
 				if ( neigh == batman_if->broad.sin_addr.s_addr )
 					is_broadcast = 1;
 
-				//TODO: remove this !!
-				//if ( ogm->prev_hop == batman_if->addr.sin_addr.s_addr )
-				//	is_my_path = 1;
 
 			}
 
@@ -1809,13 +1809,6 @@ int8_t batman() {
 					debug_output( 4, "Drop packet: OGM vi unknown NB or via two-hop loop !!!! \n" );
 					drop_it = YES;
 
-				//TODO: remove this !!
-				/*
-				} else if ( is_my_path ) {
-
-					debug_output( 0, "Drop packet: received packet which already passed along here (two-hops ago) \n" );
-					restore_and_exit(0);
-				*/
 					
 				} else if ( ogm->ttl == 0 ) {
 
@@ -1896,8 +1889,6 @@ int8_t batman() {
 				
 				if ( ! drop_it ) {
 					
-//					is_alreadyConsidered = alreadyConsidered( orig_node, ogm->seqno, neigh, if_incoming );
-					
 					is_duplicate = isDuplicate( orig_node, ogm->seqno );
 
 					is_bidirectional = isBidirectionalNeigh( orig_neigh_node, if_incoming );
@@ -1930,27 +1921,47 @@ int8_t batman() {
 					
 					uint16_t rand_num_hundret = rand_num( 100 );
 					
-					/* update ranking */
-					if ( is_accepted && 
-						( !is_duplicate || 
-						  ( ( dup_ttl_limit > 0 ) && 
-						    orig_node->last_seqno == ogm->seqno &&
-						    orig_node->last_seqno_largest_ttl < ogm->ttl + dup_ttl_limit &&
-						    rand_num_hundret < dup_rate && /* using the same rand_num_hundret is important */
-						    rand_num_hundret < (100 - (dup_degrad * (orig_node->last_seqno_largest_ttl - ogm->ttl) ))
-						  )
-						) ) {
-						
-						update_orig( orig_node, orig_neigh_node );
+					update_ranking= ( is_accepted && 
+							( !is_duplicate || 
+							( ( dup_ttl_limit > 0 ) && 
+							orig_node->last_seqno == ogm->seqno &&
+							orig_node->last_seqno_largest_ttl < ogm->ttl + dup_ttl_limit &&
+							rand_num_hundret < dup_rate && /* using the same rand_num_hundret is important */
+							rand_num_hundret < (100 - (dup_degrad * (orig_node->last_seqno_largest_ttl - ogm->ttl) ))
+							) ) );
 					
-					}
+					if ( update_ranking )
+						update_orig( orig_node, orig_neigh_node );
 								 
-					set_dbg_rcvd_all_bits( orig_node, ogm->seqno, if_incoming, (is_bidirectional && ( !is_duplicate || 
+					if ( DEBUG_RCVD_ALL_BITS )
+						set_dbg_rcvd_all_bits( orig_node, ogm->seqno, if_incoming, (is_bidirectional && ( !is_duplicate || 
 							( dup_ttl_limit && 
 							( orig_node->last_seqno == ogm->seqno && 
 							orig_node->last_seqno_largest_ttl < ogm->ttl + dup_ttl_limit) ) ) ) );
 
 					is_bntog = isBntog( neigh, orig_node );
+					
+					if ( is_accepted && is_bntog && !update_ranking ) {
+						
+						list_for_each( list_pos, &orig_node->neigh_list ) {
+
+							neigh_node = list_entry( list_pos, struct neigh_node, list );
+
+							if ( ( neigh_node->addr == neigh ) && ( neigh_node->if_incoming == if_incoming ) ) {
+
+								/* dont forget tu update last_aware time if not done by update_orig() and 
+								if arrived and going to be rebroadcasted because of best neighbor. Otherwise
+								 we might purge this neighbor before our neighbors do*/
+										
+								orig_node->last_aware = orig_neigh_node->last_aware = neigh_node->last_aware = curr_time;
+									
+								if ( orig_node->primary_orig_node )
+									orig_node->primary_orig_node->last_aware = curr_time;
+									
+								break;
+							}
+						}
+					}
 					
 					debug_output( 4, "  received via bidirectional link: %s, accepted OGM: %s, BNTOG: %s, iam a mobile device: %s, nlq_rate: %d, rand_num: %d, acceptance_rate: %d !\n", 
 							( is_bidirectional ? "YES" : "NO" ), 
@@ -1976,12 +1987,6 @@ int8_t batman() {
 							schedule_forward_packet( 0, 1, has_duplicated_flag, neigh_id4him );
 
 							debug_output( 4, "Forward packet: rebroadcast neighbour packet with direct link flag \n" );
-/*
-							if ( is_duplicate ) {
-								// this is for remembering the actual re-broadcasted non-unidirectional OGMs 
-								bit_mark( orig_node->send_old_seq_bits, -( ogm->seqno - orig_node->last_seqno ) );
-							}
-*/							
 							
 						/* if an unidirectional neighbour sends us a packet:
 							 - retransmit it with unidirectional flag to tell him that we get his packets */
@@ -2000,61 +2005,11 @@ int8_t batman() {
 
 						if ( is_accepted && is_bntog && !mobile_device ) {
 	
-							//TODO: remove this, I think we should forward anyting left at this point
-							if ( !is_duplicate ) {
 
-								schedule_forward_packet( 0, 0, has_duplicated_flag, neigh_id4him );
+							schedule_forward_packet( 0, 0, has_duplicated_flag, neigh_id4him );
 
-								debug_output( 4, "Forward packet: rebroadcast originator packet \n" );
+							debug_output( 4, "Forward packet: rebroadcast originator packet \n" );
 
-							} else { /* is_bntog anyway */
-
-								list_for_each( list_pos, &orig_node->neigh_list ) {
-
-									neigh_node = list_entry( list_pos, struct neigh_node, list );
-
-									if ( ( neigh_node->addr == neigh ) && ( neigh_node->if_incoming == if_incoming ) ) {
-
-										if ( no_forw_dupl_ttl_check || neigh_node->last_ttl == ogm->ttl ) {
-
-											forward_duplicate_packet = 1;
-
-											/* also update only last_valid time if arrived 
-											(and rebroadcasted because of best neighbor) */
-											//orig_node->last_valid  = curr_time;
-											//neigh_node->last_valid = curr_time;
-											
-											orig_node->last_aware = orig_neigh_node->last_aware = neigh_node->last_valid = curr_time;
-										
-											if ( orig_node->primary_orig_node )
-												orig_node->primary_orig_node->last_aware = curr_time;
-										
-										}
-
-										break;
-
-									}
-
-								}
-								
-								/* we are forwarding duplicate o-packets if they come via our best neighbour and ttl is valid */
-								if ( forward_duplicate_packet ) {
-
-									schedule_forward_packet( 0, 0, has_duplicated_flag, neigh_id4him );
-
-									debug_output( 4, "Forward packet: duplicate packet received via best neighbour with best ttl \n" );
-/*
-									// this is for remembering the actual re-broadcasted non-unidirectional OGMs
-									bit_mark( orig_node->send_old_seq_bits,
-										-( ogm->seqno - orig_node->last_seqno ) );
-*/
-								} else {
-
-									debug_output( 3, "Drop packet: duplicate packet received via best neighbour but not best ttl \n" );
-
-								}
-
-							}
 
 						} else {
 

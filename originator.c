@@ -198,7 +198,7 @@ void update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node
 */
 	
 	
-	orig_node->last_valid = orig_node->last_aware =  orig_neigh_node->last_aware = neigh_node->last_valid = *received_batman_time;
+	orig_node->last_valid = orig_node->last_aware = orig_neigh_node->last_aware = neigh_node->last_aware = *received_batman_time;
 	
 	if ( orig_node->primary_orig_node != NULL )
 		orig_node->primary_orig_node->last_aware = *received_batman_time;
@@ -208,72 +208,12 @@ void update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node
 		debug_output( 4, "updating last_seqno: old %d, new %d \n", orig_node->last_seqno, in->seqno  );
 
 		orig_node->last_seqno = in->seqno;
-		neigh_node->last_ttl = in->ttl;
 		orig_node->last_seqno_largest_ttl = in->ttl;
 
 	}
 
 	if ( orig_node->last_seqno == in->seqno && in->ttl > orig_node->last_seqno_largest_ttl )
 		orig_node->last_seqno_largest_ttl = in->ttl;
-	
-	/*
-	if( penalty_min > 0 ) {
-		
-		uint16_t max_penalty_count, challenger_penalty_count, penalty_round;
-		struct neigh_node *max_penalty_neigh;
-		
-		for( penalty_round = 0; penalty_round < sequence_range; penalty_round++ ) {
-		
-			max_penalty_count = challenger_penalty_count = 0;
-			max_penalty_neigh = NULL;
-			
-			list_for_each( neigh_pos, &orig_node->neigh_list ) {
-		
-				tmp_neigh_node = list_entry( neigh_pos, struct neigh_node, list );
-		
-				if ( penalty_round == 0 )
-					tmp_neigh_node->penalty_count = 0;
-				
-//				if ( tmp_neigh_node->penalty_count < tmp_neigh_node->packet_count ) {
-					
-					if ( get_bit_status( tmp_neigh_node->seq_bits, orig_node->last_seqno, (orig_node->last_seqno - penalty_round) ) )
-						tmp_neigh_node->penalty_count++;
-						
-					if ( tmp_neigh_node->penalty_count > max_penalty_count ) {
-						
-						challenger_penalty_count = max_penalty_count;
-							
-						max_penalty_count = tmp_neigh_node->penalty_count;
-						max_penalty_neigh = tmp_neigh_node;
-					
-					} else if ( tmp_neigh_node->penalty_count > challenger_penalty_count ) {
-				
-						challenger_penalty_count = tmp_neigh_node->penalty_count;
-						
-					}
-//				}
-			}
-			
-			if ( orig_node->router == NULL ) {
-				
-				best_neigh_node = max_penalty_neigh;
-				break;
-			
-			} else if ( ( max_penalty_neigh == orig_node->router && max_penalty_count > challenger_penalty_count) || orig_node->router->penalty_count >= penalty_min ) {
-				
-				best_neigh_node = orig_node->router;
-				break;
-				
-			} else if ( max_penalty_count >= penalty_min && max_penalty_count >= orig_node->router->penalty_count + penalty_exceed ) {
-				
-				best_neigh_node = max_penalty_neigh;
-				break;
-				
-			}
-		}
-	}
-	*/
-	
 	
 	
 	
@@ -441,24 +381,6 @@ void free_link_node( struct orig_node *orig_node ) {
 	
 	debugFree( orig_node->link_node->bidirect_link, 1402 );
 	
-	/*
-	prev_list_head = (struct list_head *)&link_list;
-
-	list_for_each_safe( link_pos, link_pos_tmp, &link_list ) {
-
-		ln = list_entry(link_pos, struct link_node, list);
-
-		if ( ln == orig_node->link_node ) {
-			
-			list_del( prev_list_head, link_pos, &link_list );
-
-		} else {
-
-			prev_list_head = &ln->list;
-
-		}
-	}
-	*/
 
 	
 	debugFree( orig_node->link_node, 1428 );
@@ -485,7 +407,7 @@ void init_link_node( struct orig_node *orig_node ) {
 	//INIT_LIST_HEAD( &ln->list );
 	
 	ln->orig_node = orig_node;
-	ln->addr = orig_node->orig;
+	//ln->addr = orig_node->orig;
 	
 	ln->lq_bits = debugMalloc( found_ifs * MAX_NUM_WORDS * sizeof( TYPE_OF_WORD ), 408 );
 	memset( ln->lq_bits, 0, found_ifs * MAX_NUM_WORDS * sizeof( TYPE_OF_WORD ) );
@@ -511,36 +433,6 @@ void init_link_node( struct orig_node *orig_node ) {
 		ln->bidirect_link[i] = ((uint16_t) (0 - OUT_SEQNO_OFFSET - MAX_BIDIRECT_TIMEOUT) ); 
 	}
 	
-	/*
-	ln->id = 1;
-	
-	prev_list_head = (struct list_head *)&link_list;
-
-	list_for_each( list_pos, &link_list ) {
-
-		ln_tmp = list_entry( list_pos, struct link_node, list );
-
-		if ( ln_tmp->id > ln->id ) {
-
-			list_add_before( prev_list_head, list_pos, &ln->list );
-			break;
-
-		}
-		
-		if ( ln->id == MAX_LINK_ID ) {
-			debug_output( 0, "Error - init_link_node(): Max numbers of link_nodes reached !!\n");
-			restore_and_exit(0);
-		}
-		
-		(ln->id)++;
-		
-		prev_list_head = &ln_tmp->list;
-
-	}
-
-	if ( ( ln_tmp == NULL ) || ( ln_tmp->id <= ln->id ) )
-		list_add_tail( &ln->list, &link_list );
-	*/
 	
 }
 
@@ -701,11 +593,11 @@ void purge_orig( uint32_t curr_time ) {
 
 				neigh_node = list_entry( neigh_pos, struct neigh_node, list );
 
-				if ( (int)( ( neigh_node->last_valid + PURGE_TIMEOUT ) < curr_time ) ) {
+				if ( (int)( ( neigh_node->last_aware + PURGE_TIMEOUT ) < curr_time ) ) {
 
 					addr_to_string( orig_node->orig, orig_str, ADDR_STR_LEN );
 					addr_to_string( neigh_node->addr, neigh_str, ADDR_STR_LEN );
-					debug_output( 4, "Neighbour timeout: originator %s, neighbour: %s, last_valid %u \n", orig_str, neigh_str, neigh_node->last_valid );
+					debug_output( 4, "Neighbour timeout: originator %s, neighbour: %s, last_aware %u \n", orig_str, neigh_str, neigh_node->last_aware );
 
 					if ( orig_node->router == neigh_node ) {
 
@@ -973,19 +865,6 @@ int update_bi_link_bits ( struct orig_node *orig_neigh_node, struct batman_if * 
 	if( write && orig_neigh_node->link_node == NULL )
 		return -1;
 	
-	/*
-	if( write ) { 
-		if ( orig_neigh_node->bi_link_bits == NULL ) {
-			orig_neigh_node->bi_link_bits = debugMalloc( found_ifs * MAX_NUM_WORDS * sizeof( TYPE_OF_WORD ), 406 );
-			memset( orig_neigh_node->bi_link_bits, 0, found_ifs * MAX_NUM_WORDS * sizeof( TYPE_OF_WORD ) );
-		}
-		
-		if ( orig_neigh_node->last_bi_link_seqno == NULL ) {
-			orig_neigh_node->last_bi_link_seqno = debugMalloc( found_ifs * sizeof(uint16_t), 407 );
-			memset( orig_neigh_node->last_bi_link_seqno, 0, found_ifs * sizeof(uint16_t) );
-		}
-	}
-	*/
 	
 	if ( orig_neigh_node->link_node != NULL ) {
 	
@@ -1064,8 +943,6 @@ void debug_orig() {
 	static char dbg_ogm_str[MAX_DBG_STR_SIZE + 1], dbg_ogm_str2[MAX_DBG_STR_SIZE + 1]; // TBD: must be checked for overflow when using with sprintf
 	uint8_t debug_neighbor = NO, blocked;
 	uint16_t hna_count = 0, srv_count = 0;
-//	uint32_t hna, netmask;
-//	uint8_t atype;
 	struct hna_key key;
 	struct hna_hash_node *hash_node;
 
@@ -1168,7 +1045,7 @@ void debug_orig() {
 			dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s %10s %15s (%3i %3i %3id%2ih%2im %5i %4i) %3d %3d",
 					str, orig_node->router->if_incoming->dev, str2,
 					orig_node->router->packet_count /* accepted */,
-					get_dbg_rcvd_all_bits( orig_node, orig_node->router->if_incoming, sequence_range ), /* all */
+					DEBUG_RCVD_ALL_BITS ? get_dbg_rcvd_all_bits( orig_node, orig_node->router->if_incoming, sequence_range ) : -1, /* all */
 					 ((uptime_sec-(orig_node->first_valid_sec))/86400), 
 					(((uptime_sec-(orig_node->first_valid_sec))%86400)/3600),
 					(((uptime_sec-(orig_node->first_valid_sec))%3600)/60),
@@ -1222,7 +1099,7 @@ void debug_orig() {
 				dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s %10s %15s (%3i %3i %3id%2ih%2im %5i %4i)", 
 						str, orig_node->router->if_incoming->dev, str2,
 						orig_node->router->packet_count /* accepted */,
-						get_dbg_rcvd_all_bits( orig_node, orig_node->router->if_incoming, sequence_range ), /* all */
+						DEBUG_RCVD_ALL_BITS ? get_dbg_rcvd_all_bits( orig_node, orig_node->router->if_incoming, sequence_range ) : -1, /* all */
 						((uptime_sec-(orig_node->first_valid_sec))/86400), 
 						(((uptime_sec-(orig_node->first_valid_sec))%86400)/3600),
 						(((uptime_sec-(orig_node->first_valid_sec))%3600)/60),
@@ -1230,7 +1107,7 @@ void debug_orig() {
 						( uptime_sec - (orig_node->last_valid/1000) ) ); 
 					
 				avg_packet_count+=  orig_node->router->packet_count; /* accepted */
-				avg_rcvd_all_bits+= get_dbg_rcvd_all_bits( orig_node, orig_node->router->if_incoming, sequence_range ); /* all */ 
+				avg_rcvd_all_bits+= DEBUG_RCVD_ALL_BITS ? get_dbg_rcvd_all_bits( orig_node, orig_node->router->if_incoming, sequence_range ) : -1; /* all */ 
 				avg_lvld+= ( uptime_sec - (orig_node->last_valid/1000) );
 
 				list_for_each( neigh_pos, &orig_node->neigh_list ) {

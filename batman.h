@@ -55,6 +55,7 @@ extern char unix_path[];
 #define YES 1
 #define NO 0
 
+#define DEBUG_RCVD_ALL_BITS NO
 
 /***
  *
@@ -559,9 +560,6 @@ struct orig_node                 /* structure for orig_list maintaining nodes of
 	uint16_t last_seqno;              /* last and best known squence number */
 	uint8_t last_seqno_largest_ttl;	  /* largest (best) TTL received with last sequence number */
 	
-	//uint8_t  gwflags;                 /* flags related to gateway functions: gateway class */
-	//uint8_t  gwtypes;                 /* flags related to offered gateway tunnel types */
-
 	struct ext_packet *gw_msg;
 	
 	struct ext_packet *hna_array;
@@ -595,7 +593,7 @@ struct pifnb_node
 struct link_node
 {
 //	struct list_head list;
-	uint32_t addr;
+//	uint32_t addr;
 	struct orig_node *orig_node;
 	
 	uint16_t *bidirect_link;    /* if node is a bidrectional neighbour, when my OGM was broadcasted (replied) by this node and received by me */
@@ -611,11 +609,11 @@ struct neigh_node
 {
 	struct list_head list;
 	uint32_t addr;
+	uint32_t last_aware;            /* when last packet via this neighbour was received */
 	uint16_t last_considered_seqno;
 	uint8_t packet_count;
-	uint8_t penalty_count;
-	uint8_t  last_ttl;         /* ttl of last received packet */
-	uint32_t last_valid;            /* when last packet via this neighbour was received */
+	//uint8_t penalty_count;
+	//uint8_t  last_ttl;         /* ttl of last received packet */
 	TYPE_OF_WORD seq_bits[ MAX_NUM_WORDS ];
 	struct batman_if *if_incoming;
 };
