@@ -60,12 +60,21 @@ void prof_stop( int32_t index ) {
 void prof_print() {
 
 	int32_t index;
-
+	float total_cpu_time=1;
+	
 	debug_output( 5, " \nProfile data:\n" );
 
 	for ( index = 0; index < PROF_COUNT; index++ ) {
 
-		debug_output( 5, "   %''30s: cpu time = %10.3f, calls = %''10i, avg time per call = %4.10f \n", prof_container[index].name, (float)prof_container[index].total_time/CLOCKS_PER_SEC, prof_container[index].calls, ( (float)prof_container[index].calls == 0 ? 0.0 : ( ( (float)prof_container[index].total_time/CLOCKS_PER_SEC ) / (float)prof_container[index].calls ) ) );
+		if( index == 0 )
+			total_cpu_time = (float)prof_container[index].total_time/CLOCKS_PER_SEC;
+			
+		debug_output( 5, "   %''30s:  %5.1f, cpu time = %10.3f, calls = %''10i, avg time per call = %4.10f \n", 
+			prof_container[index].name,
+			100 * ( ((float)prof_container[index].total_time/CLOCKS_PER_SEC) / total_cpu_time ),
+			(float)prof_container[index].total_time/CLOCKS_PER_SEC, 
+			prof_container[index].calls, 
+   			( (float)prof_container[index].calls == 0 ? 0.0 : ( ( (float)prof_container[index].total_time/CLOCKS_PER_SEC ) / (float)prof_container[index].calls ) ) );
 
 	}
 

@@ -126,6 +126,7 @@ struct orig_node *get_orig_node( uint32_t addr ) {
 void update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node ) {
 
 	prof_start( PROF_update_originator );
+	
 	struct list_head *neigh_pos;
 	struct neigh_node *neigh_node = NULL, *tmp_neigh_node = NULL, *best_neigh_node = NULL;
 	uint8_t max_packet_count = 0, is_new_seqno = 0; // TBD: check max_packet_count for overflows if MAX_SEQ_RANGE > 256
@@ -677,6 +678,8 @@ void purge_orig( uint32_t curr_time ) {
 
 void set_dbg_rcvd_all_bits( struct orig_node *orig_node, uint16_t in_seqno, struct batman_if *this_if, uint8_t bidirect_ogm ) {
 	
+	prof_start( PROF_set_dbg_rcvd_all_bits );
+	
 	uint8_t is_new_considered_seqno = 0;
 	int i;
 	static char orig_str[ADDR_STR_LEN];
@@ -702,6 +705,7 @@ void set_dbg_rcvd_all_bits( struct orig_node *orig_node, uint16_t in_seqno, stru
 			
 	}
 	
+	prof_stop( PROF_set_dbg_rcvd_all_bits );
 	return;
 
 }
@@ -1018,7 +1022,7 @@ void debug_orig() {
 
 		}
 		
-		debug_output( DBGL_DETAILS, "Neighbor        outgoingIF     bestNextHop (brc rcvd knownSince lseq lvld) ris sid [     viaIF RTQ  RQ  TQ]..\n");
+		debug_output( DBGL_DETAILS, "Neighbor        outgoingIF     bestNextHop (brc rcvd knownSince lseq lvld) rid sid [     viaIF RTQ  RQ  TQ]..\n");
 
 		
 		while ( NULL != ( hashit = hash_iterate( orig_hash, hashit ) ) ) {

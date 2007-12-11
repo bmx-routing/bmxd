@@ -20,7 +20,6 @@
 
 
 enum {
-
 	PROF_choose_gw,
 	PROF_update_routes,
 	PROF_update_gw_list,
@@ -30,8 +29,9 @@ enum {
 	PROF_purge_originator,
 	PROF_schedule_forward_packet,
 	PROF_send_outstanding_packets,
+	PROF_receive_packet,
+	PROF_set_dbg_rcvd_all_bits,
 	PROF_COUNT
-
 };
 
 

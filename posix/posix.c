@@ -251,8 +251,9 @@ int8_t add_default_route() {
 
 
 int8_t receive_packet( uint32_t timeout ) {
-
 	
+	prof_start( PROF_receive_packet );
+
 	static unsigned char packet_in[2001];
 	static unsigned char *pos = NULL;
 	static int32_t len = 0;
@@ -264,9 +265,10 @@ int8_t receive_packet( uint32_t timeout ) {
 	
 	struct sockaddr_in addr;
 	uint32_t addr_len;
+	uint32_t return_time = *received_batman_time + timeout;
 	struct timeval tv;
 	struct list_head *if_pos;
-	struct batman_if *batman_if;
+	struct batman_if *batman_if = NULL;
 	int8_t res;
 //	int16_t hna_pos = 0, gw_pos = 0;
 	int16_t left_pos, ext_type, done_pos, ext_pos;
@@ -280,34 +282,44 @@ int8_t receive_packet( uint32_t timeout ) {
 		addr_to_string( rcvd_neighbor, str, sizeof(str) );
 		debug_output(0, "Drop packet: processing strange packet buffer size. %i from: %s !!!!!!!!!!!!!!\n", len, str );
 		len = 0;
+		
+		prof_stop( PROF_receive_packet );
 		return -1;
 	}
 
 
-	if ( len < sizeof( struct bat_packet_common ) ) {
-		
+	while ( len < sizeof( struct bat_packet_common ) ) {
 		
 		pos = packet_in;
 
 		addr_len = sizeof(struct sockaddr_in);
 		memcpy( &tmp_wait_set, &receive_wait_set, sizeof(fd_set) );
 		
-		tv.tv_sec = timeout / 1000;
-		tv.tv_usec = ( timeout % 1000 ) * 1000;
+		tv.tv_sec  =   (return_time - *received_batman_time) / 1000;
+		tv.tv_usec = ( (return_time - *received_batman_time) % 1000 ) * 1000;
 		
 		res = select( receive_max_sock + 1, &tmp_wait_set, NULL, NULL, &tv );
-		
+
 		*received_batman_time = rcvd_time = get_time();
 		
 		if ( res < 0 && errno != EINTR ) {
 		
 			debug_output( 0, "Error - can't select: %s\n", strerror(errno) );
+			prof_stop( PROF_receive_packet );
 			return -1;
 		}
 			
-		if ( res <= 0 )
+		if ( res <= 0 ) {
+			
+			if ( return_time > *received_batman_time ) {
+				
+				debug_output( 3, "Select returned %d without reason!! return_time %d, curr_time %d\n", res, return_time, *received_batman_time );
+				continue;
+			}
+			
+			prof_stop( PROF_receive_packet );
 			return 0;
-		
+		}
 		
 		list_for_each( if_pos, &if_list ) {
 		
@@ -316,13 +328,15 @@ int8_t receive_packet( uint32_t timeout ) {
 			if ( FD_ISSET( batman_if->udp_recv_sock, &tmp_wait_set ) ) {
 		
 				len = recvfrom( batman_if->udp_recv_sock, pos, sizeof(packet_in) - 1, 0, (struct sockaddr *)&addr, &addr_len );
-				
+
 				if ( len < 0 ) {
 		
 					debug_output( 0, "Error - can't receive packet: %s\n", strerror(errno) );
+					
+					prof_stop( PROF_receive_packet );
 					return -1;
 				}
-		
+				
 				(*received_if_incoming) = batman_if;
 				
 				rcvd_neighbor = addr.sin_addr.s_addr;
@@ -331,9 +345,33 @@ int8_t receive_packet( uint32_t timeout ) {
 			}
 		}
 		
-		if ( len < sizeof(struct bat_header) + sizeof(struct bat_packet_common) ) {
+		if ( len > 0 && rcvd_neighbor == batman_if->addr.sin_addr.s_addr ) {
+			
 			len = 0;
-			return 0;
+			
+			addr_to_string( rcvd_neighbor, str, sizeof(str) );
+			debug_output( 4, "Drop packet: received my own broadcast (sender: %s) \n", str );
+
+			if ( return_time > *received_batman_time ) {
+				continue;
+			} else {
+				prof_stop( PROF_receive_packet );
+				return 0;
+			}
+				
+		}
+		
+		if ( len < sizeof(struct bat_header) + sizeof(struct bat_packet_common) ) {
+			
+			len = 0;
+			
+			if ( return_time > *received_batman_time ) {
+				continue;
+			} else {
+				prof_stop( PROF_receive_packet );
+				return 0;
+			}
+		
 		}
 	
 		// we acceppt longer packets than specified by pos->size to allow padding for equal packet sizes
@@ -342,16 +380,35 @@ int8_t receive_packet( uint32_t timeout ) {
 			addr_to_string( rcvd_neighbor, str, sizeof(str) );
 		
 			debug_output( 3, "Drop packet: rcvd incompatible batman version %i, flags? %X, size? %i, via NB %s. My version is %d \n", ((struct bat_header *)pos)->version, ((struct bat_packet_common *)(pos+sizeof(struct bat_header)))->reserved1, len, str, COMPAT_VERSION );
+			
 			len = 0;
-			return 0;
+			
+			if ( return_time > *received_batman_time ) {
+				continue;
+			} else {
+				prof_stop( PROF_receive_packet );
+				return 0;
+			}
+		
 		}
 	
-		len = ((((struct bat_header *)pos)->size)<<2) - sizeof(struct bat_header);
+		len = ((((struct bat_header *)pos)->size)<<2) - sizeof( struct bat_header );
 		
 		pos = pos + sizeof(struct bat_header);
 		
+		break;
+		
 	}
-
+	
+	if ( len < sizeof( struct bat_packet_common ) ) {
+		
+		debug_output(0, "recvfrom loop returned with invalid packet length %d !!!! \n", len );
+		
+		prof_stop( PROF_receive_packet );
+		return -1;
+		
+	}
+				
 	*received_batman_time = rcvd_time;
 		
 	if ( 	((struct bat_packet_common *)pos)->ext_msg != 0 ||
@@ -363,12 +420,14 @@ int8_t receive_packet( uint32_t timeout ) {
 		
 		debug_output(0, "Drop remaining super packet: rcvd incompatible batman order: ext_msg %d, reserved %X, size %d len %i, via NB %s. \n",  ((struct bat_packet_common *)pos)->ext_msg, ((struct bat_packet_common *)pos)->reserved1, ((struct bat_packet_common *)pos)->size, len, str );
 		len = 0;
+		
+		prof_stop( PROF_receive_packet );
 		return 0;
 	}
 	
+	
 	if ( ((struct bat_packet_common *)pos)->bat_type == BAT_TYPE_OGM  ) {
 		
-
 		((struct bat_packet *)pos)->seqno = ntohs( ((struct bat_packet *)pos)->seqno ); /* network to host order for our 16bit seqno. */
 
 		*received_neigh = rcvd_neighbor;
@@ -420,6 +479,8 @@ int8_t receive_packet( uint32_t timeout ) {
 					debug_output( 3, "Drop packet: rcvd incompatible extension message order: size? %i, ext_type %d, via NB %s, originator? %s. \n",  
 							len, ((ext_array)[ext_pos]).EXT_FIELD_TYPE, str, str2 );
 					len = 0;
+					
+					prof_stop( PROF_receive_packet );
 					return 0;
 				}
 				
@@ -463,7 +524,7 @@ int8_t receive_packet( uint32_t timeout ) {
 			ext_type++;
 	
 		}
-	
+		
 	
 		/* prepare for next ogm and attached extension messages */
 	
@@ -473,7 +534,7 @@ int8_t receive_packet( uint32_t timeout ) {
 		len = len - ( sizeof(struct bat_packet) + (done_pos * sizeof(struct ext_packet)) );
 		pos = pos + ( sizeof(struct bat_packet) + (done_pos * sizeof(struct ext_packet)) );
 		
-
+		prof_stop( PROF_receive_packet );
 		return 1;
 
 		
@@ -488,10 +549,13 @@ int8_t receive_packet( uint32_t timeout ) {
 		len = len - ((((struct bat_packet_common *)pos)->size)<<2) ;
 		pos = pos + ((((struct bat_packet_common *)pos)->size)<<2) ;
 	
+		prof_stop( PROF_receive_packet );
 		return 0;
 	}
 
 	len = 0;
+	
+	prof_stop( PROF_receive_packet );
 	return 0;	
 
 }

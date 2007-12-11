@@ -1296,30 +1296,36 @@ int isDuplicate( struct orig_node *orig_node, uint16_t seqno ) {
 }
 
 
-
+/*
 int isBntog( uint32_t neigh, struct orig_node *orig_tog_node ) {
 
-	if ( ( orig_tog_node->router != NULL ) && ( orig_tog_node->router->addr == neigh ) )
+	if ( ( orig_tog_node->router != NULL ) && ( orig_tog_node->router->addr == neigh ) ) {
+		
 		return 1;
+		
+	}
 
 	return 0;
 
 }
+*/
 
-
-
+/*
 int isBidirectionalNeigh( struct orig_node *orig_neigh_node, struct batman_if *if_incoming ) {
 
-	if ( orig_neigh_node->link_node == NULL )
+	if ( orig_neigh_node->link_node == NULL ) {
+		
 		return 0;
 	
-	if ( ((uint16_t)( (if_incoming->out.seqno - OUT_SEQNO_OFFSET) - orig_neigh_node->link_node->bidirect_link[if_incoming->if_num] )) < bidirect_link_to )
+	} else if ( ((uint16_t)( (if_incoming->out.seqno - OUT_SEQNO_OFFSET) - orig_neigh_node->link_node->bidirect_link[if_incoming->if_num] )) < bidirect_link_to ) {
+		
 		return 1;
-
+	}
+	
 	return 0;
 
 }
-
+*/
 
 
 void generate_vis_packet() {
@@ -1577,7 +1583,9 @@ int8_t batman() {
 	prof_init( PROF_purge_originator, "purge_orig" );
 	prof_init( PROF_schedule_forward_packet, "schedule_forward_packet" );
 	prof_init( PROF_send_outstanding_packets, "send_outstanding_packets" );
-
+	prof_init( PROF_receive_packet, "receive_packet" );
+	prof_init( PROF_set_dbg_rcvd_all_bits, "set_dbg_rcvd_all_bits" );
+	
 	add_del_own_srv( NO /*do not purge*/ );	
 	
 	add_del_own_hna( NO /*do not purge*/ );	
@@ -1662,14 +1670,16 @@ int8_t batman() {
 
 	
 	while ( !is_aborted() ) {
+		
 
 		debug_output( 4, " \n \n" );
 
 		/* harden select_timeout against sudden time change (e.g. ntpdate) */
 		//curr_time = get_time();
 		
-		if ( aggregations_po == NO  &&  curr_time < ((struct forw_node *)forw_list.next)->send_time) {
 		
+		if ( aggregations_po == NO  &&  curr_time < ((struct forw_node *)forw_list.next)->send_time) {
+			
 			select_timeout = ((struct forw_node *)forw_list.next)->send_time - curr_time ;
 			
 			res = receive_packet( select_timeout );
@@ -1679,19 +1689,18 @@ int8_t batman() {
 			select_timeout = aggregation_time - curr_time ;
 			
 			res = receive_packet( select_timeout );
-		
+			
 		} else {
 			
 			res = 0;
 			debug_output( 4, "skipping select \n" );
 		
 		}
-
 		
 		if ( res > 0 ) {
 
 			//curr_time = get_time();
-
+			
 			addr_to_string( ogm->orig, orig_str, sizeof(orig_str) );
 			addr_to_string( neigh, neigh_str, sizeof(neigh_str) );
 			addr_to_string( if_incoming->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
@@ -1704,6 +1713,7 @@ int8_t batman() {
 
 			is_direct_neigh = (ogm->orig == neigh) ? 1 : 0;
 
+			
 			debug_output( 4, "Received BATMAN packet via NB: %s , IF: %s %s (from OG: %s, seqno %d, TTL %d, V %d, UDF %d, IDF %d, DPF %d, direct_neigh %d) \n", neigh_str, if_incoming->dev, ifaddr_str, orig_str, ogm->seqno, ogm->ttl, COMPAT_VERSION, has_unidirectional_flag, has_directlink_flag, has_duplicated_flag, is_direct_neigh );
 
 			list_for_each( list_pos, &if_list ) {
@@ -1719,13 +1729,11 @@ int8_t batman() {
 				if ( neigh == batman_if->broad.sin_addr.s_addr )
 					is_broadcast = 1;
 
-
 			}
-
 
 			if ( gw_array_len > 0 && gw_array != NULL && gw_array->EXT_GW_FIELD_GWFLAGS != 0 && gw_array->EXT_GW_FIELD_GWTYPES != 0 )
 				debug_output( 4, "Is an internet gateway (class %i, types %i) \n", gw_array->EXT_GW_FIELD_GWFLAGS, gw_array->EXT_GW_FIELD_GWTYPES );
-
+			
 
 			if ( is_my_addr ) {
 
@@ -1781,6 +1789,7 @@ int8_t batman() {
 				}
 
 				debug_output( 4, "Drop packet: originator packet from myself (via neighbour) \n" );
+				
 
 			} else if ( ogm->flags & UNIDIRECTIONAL_FLAG ) {
 
@@ -1885,13 +1894,17 @@ int8_t batman() {
 							hna_count++;
 						}
 					}
+
 				}
 				
 				if ( ! drop_it ) {
 					
 					is_duplicate = isDuplicate( orig_node, ogm->seqno );
 
-					is_bidirectional = isBidirectionalNeigh( orig_neigh_node, if_incoming );
+					is_bidirectional = ( orig_neigh_node->link_node != NULL && 
+							( ((uint16_t)( (if_incoming->out.seqno - OUT_SEQNO_OFFSET) -
+							  orig_neigh_node->link_node->bidirect_link[if_incoming->if_num] )) < bidirect_link_to ) );
+					//isBidirectionalNeigh( orig_neigh_node, if_incoming );
 					
 					set_lq_bits( orig_node, ogm->seqno, if_incoming, ( !has_duplicated_flag && is_direct_neigh ) );
 					
@@ -1939,7 +1952,7 @@ int8_t batman() {
 							( orig_node->last_seqno == ogm->seqno && 
 							orig_node->last_seqno_largest_ttl < ogm->ttl + dup_ttl_limit) ) ) ) );
 
-					is_bntog = isBntog( neigh, orig_node );
+					is_bntog = ( ( orig_node->router != NULL ) && ( orig_node->router->addr == neigh ) );
 					
 					if ( is_accepted && is_bntog && !update_ranking ) {
 						
@@ -2019,17 +2032,16 @@ int8_t batman() {
 
 					}
 					
-
 				}
-
+				
 			}
+			
 
 		} else if ( res < 0 ) {
 			
 			return -1;
 			
 		}
-
 
 		if ( aggregations_po  &&  aggregation_time <= curr_time ) {
 				
@@ -2044,12 +2056,13 @@ int8_t batman() {
 			
 		}
 		
-		check_todos();
-
+		
 		if ( debug_timeout + 1000 < curr_time ) {
 
 			debug_timeout = curr_time;
-
+			
+			check_todos();
+		
 			purge_orig( curr_time );
 			
 			purge_empty_hna_nodes( );
@@ -2070,9 +2083,9 @@ int8_t batman() {
 				send_vis_packet();
 
 			}
-
+		
 		}
-
+		
 	}
 
 
