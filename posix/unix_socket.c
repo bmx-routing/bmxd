@@ -78,6 +78,11 @@ void debug_output( int8_t debug_prio_arg, char *format, ... ) {
 	
 		if ( debug_clients.clients_num[DBGL_PROFILE  -1] > 0 ) debug_request[i++] = DBGL_PROFILE;
 	
+	} else if ( debug_prio_arg == DBGL_STATISTICS ) {
+	
+		if ( debug_clients.clients_num[DBGL_STATISTICS -1] > 0 ) debug_request[i++] = DBGL_STATISTICS;
+		if ( debug_clients.clients_num[DBGL_ALL      -1] > 0 ) debug_request[i++] = DBGL_ALL;
+	
 	} else if ( debug_prio_arg == DBGL_DETAILS ) {
 	
 		if ( debug_clients.clients_num[DBGL_DETAILS  -1] > 0 ) debug_request[i++] = DBGL_DETAILS;
@@ -212,8 +217,8 @@ void *unix_listen( void *arg ) {
 
 	while ( !is_aborted() ) {
 
-		tv.tv_sec = 1;
-		tv.tv_usec = 0;
+		tv.tv_sec = 0;
+		tv.tv_usec = (1000*MAX_SELECT_TIMEOUT_MS);
 		memcpy( &tmp_wait_sockets, &wait_sockets, sizeof(fd_set) );
 
 		res = select( max_sock + 1, &tmp_wait_sockets, NULL, NULL, &tv );

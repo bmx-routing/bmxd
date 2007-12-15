@@ -39,7 +39,7 @@
 
 #define SOURCE_VERSION "0.3-alpha" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
 
-#define COMPAT_VERSION 10 /* set me back to 10 */
+#define COMPAT_VERSION 13 /* set me back to 10 */
 
 
 #define ADDR_STR_LEN 16
@@ -86,6 +86,8 @@ extern char unix_path[];
 #define MAX_GW_UNAVAIL_TIMEOUT 30000 /* 10000 */
 #define CHOOSE_GW_DELAY_DIVISOR 10 /* 1 */
 
+#define MAX_SELECT_TIMEOUT_MS 200 /* MUST be smaller than (1000/2) to fit into max tv_usec */
+
 #define PURGE_SAFETY_PERIOD 10000
 #define PURGE_TIMEOUT (((originator_interval*sequence_range*dad_timeout)/50) + PURGE_SAFETY_PERIOD) /*=2*o*nbrf*dad/100=300s previously 400000*/   /* purge originators after time in ms if no valid packet comes in -> TODO: check influence on SEQ_RANGE */
 
@@ -107,7 +109,7 @@ extern int32_t aggregations_po;
 #define MIN_AGGREGATIONS_PO 2
 #define MAX_AGGREGATIONS_PO 20
 #define DEF_AGGREGATIONS_PO NO
-#define ENABLED_AGGREGATIONS_PO "4"
+#define ENABLED_AGGREGATIONS_PO "5"
 
 extern int32_t sequence_range;
 #define FULL_SEQ_RANGE ((uint16_t)-1)
@@ -182,7 +184,7 @@ extern int32_t dup_degrad;
 extern int32_t send_clones; // useful for asymmetric-path and backup-path discovery
 #define DEF_SEND_CLONES 100
 #define MIN_SEND_CLONES 0
-#define MAX_SEND_CLONES 300
+#define MAX_SEND_CLONES 400
 #define SEND_CLONES_SWITCH   "send-clones"
 #define SEND_CLONES_IF_SWITCH 'c'
 
@@ -398,6 +400,7 @@ extern uint8_t debug_level;
 #define DBGL_CHANGES    3
 #define DBGL_ALL        4
 #define DBGL_PROFILE    5
+#define DBGL_STATISTICS 7
 #define DBGL_DETAILS    8
 
 
@@ -476,6 +479,16 @@ extern struct list_head_first pifnb_list;
 extern struct vis_if vis_if;
 extern struct unix_if unix_if;
 extern struct debug_clients debug_clients;
+
+
+extern int s_returned_select;
+extern int s_received_aggregations;
+extern int s_broadcasted_aggregations;
+extern int s_received_ogms;
+extern int s_accepted_ogms;
+extern int s_broadcasted_ogms;
+extern int s_pog_route_changes;
+extern int s_curr_avg_cpu_load;
 
 /* the bat_packet flags: */
 #define UNIDIRECTIONAL_FLAG 0x01 /* set when re-broadcasting a received OGM via a curretnly not bi-directional link and only together with IDF */
@@ -558,7 +571,13 @@ struct orig_node                 /* structure for orig_list maintaining nodes of
 	uint32_t last_aware;              /* when last valid ogm via  this node was received */
 	uint32_t first_valid_sec;
 	uint16_t last_seqno;              /* last and best known squence number */
-	uint8_t last_seqno_largest_ttl;	  /* largest (best) TTL received with last sequence number */
+	uint8_t  last_seqno_largest_ttl;  /* largest (best) TTL received with last sequence number */
+	
+	uint32_t last_new_valid;
+	uint8_t  last_nbrf;
+	uint8_t  last_reserved_someting;
+	uint32_t estimated_ten_ogis;
+	uint32_t rt_changes;
 	
 	struct ext_packet *gw_msg;
 	
@@ -797,6 +816,10 @@ struct forw_node                 /* structure for forw_list maintaining packets 
 {
 	struct list_head list;
 	uint32_t send_time;
+	int16_t  send_bucket;
+	uint8_t  iteration;
+	uint8_t  send;
+	uint8_t  done;
 	uint8_t  own;
 	unsigned char *pack_buff;
 	int32_t  pack_buff_len;

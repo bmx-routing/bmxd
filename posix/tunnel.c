@@ -276,8 +276,8 @@ void *client_to_gw_tun( void *arg ) {
 		}
 
 		
-		tv.tv_sec = 1;
-		tv.tv_usec = 0; //250 question: why so small? to react faster on pthread_join?
+		tv.tv_sec = 0;
+		tv.tv_usec = (1000*MAX_SELECT_TIMEOUT_MS); //250 question: why so small? to react faster on pthread_join?
 
 		FD_ZERO(&wait_sockets);
 		
@@ -716,8 +716,8 @@ void *gw_listen( void *arg ) {
 
 	while ( ( !is_aborted() ) && gateway_class && ( one_way_tunnel || two_way_tunnel ) ) {
 
-		tv.tv_sec = 1;
-		tv.tv_usec = 0;
+		tv.tv_sec = 0;
+		tv.tv_usec = (1000*MAX_SELECT_TIMEOUT_MS);
 		memcpy( &tmp_wait_sockets, &wait_sockets, sizeof(fd_set) );
 
 		res = select( max_sock + 1, &tmp_wait_sockets, NULL, NULL, &tv );

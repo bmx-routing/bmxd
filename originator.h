@@ -25,6 +25,7 @@ struct orig_node *get_orig_node( uint32_t addr );
 void set_dbg_rcvd_all_bits( struct orig_node *orig_node, uint16_t in_seqno, struct batman_if *this_if, uint8_t bidirect_ogm );
 
 void free_link_node( struct orig_node *orig_node );
+void set_primary_orig( struct orig_node *orig_node, uint8_t direct_undupl_neigh_ogm );
 void set_lq_bits( struct orig_node *orig_node, uint16_t in_seqno,  struct batman_if *this_if, uint8_t direct_undupl_neigh_ogm );
 int get_lq_bits( struct orig_node *orig_node, struct batman_if *this_if, uint16_t read_range );
 

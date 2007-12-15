@@ -20,6 +20,7 @@
 
 
 enum {
+	PROF_all,
 	PROF_choose_gw,
 	PROF_update_routes,
 	PROF_update_gw_list,

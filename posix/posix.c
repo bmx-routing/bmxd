@@ -29,6 +29,7 @@
 #include <syslog.h>
 #include <sys/socket.h>
 #include <sys/times.h>
+#include <sys/time.h>
 #include <sys/ioctl.h>
 
 
@@ -41,19 +42,56 @@
 #define BAT_LOGO_END(x,y) printf("\x1B[8;0H");fflush(NULL);bat_wait( x, y );              /* end of current picture */
 #define IOCREMDEV 2
 
+# define timercpy(d, a) (d)->tv_sec = (a)->tv_sec; (d)->tv_usec = (a)->tv_usec; 
+
+
 extern struct vis_if vis_if;
 
 static clock_t start_time;
+static struct timeval start_time_tv;
 static float system_tick;
+static struct timeval ret_tv, new_tv, diff_tv, acceptable_m_tv, acceptable_p_tv, max_tv = {0,(2000*MAX_SELECT_TIMEOUT_MS)};
+static uint32_t my_ms_tick;
 
 static uint32_t last_blocked_send_warning = 0;
 
+/* MUST be called at least every 2*MAX_SELECT_TIMEOUT_MS  */
 uint32_t get_time( void ) {
-	struct tms tp;
+	//struct tms tp;
 	
-	return (uint32_t)( ( (float)( times(&tp) - start_time ) * 1000 ) / system_tick );
-}
+	timeradd( &max_tv, &new_tv, &acceptable_p_tv );
+	timercpy( &acceptable_m_tv, &new_tv );
+	gettimeofday( &new_tv, NULL );
+	
+	if ( timercmp( &new_tv, &acceptable_p_tv, > ) ) {
+		
+		timersub( &new_tv, &acceptable_p_tv, &diff_tv );
+		timeradd( &start_time_tv, &diff_tv, &start_time_tv );
+		
+		debug_output(0, "WARNING: Critical system time drift detected: ++ca %ld s, %ld us! Correcting reference! \n", diff_tv.tv_sec, diff_tv.tv_usec );
+		
+	} else 	if ( timercmp( &new_tv, &acceptable_m_tv, < ) ) {
+		
+		timersub( &acceptable_m_tv, &new_tv, &diff_tv );
+		timersub( &start_time_tv, &diff_tv, &start_time_tv );
+		
+		debug_output(0, "WARNING: Critical system time drift detected: --ca %ld s, %ld us! Correcting reference! \n", diff_tv.tv_sec, diff_tv.tv_usec );
+		
+	}
 
+	
+	timersub( &new_tv, &start_time_tv, &ret_tv );	
+	
+
+	// ms: ( (tv.tv_usec % 10000) / 1000 )
+	
+	//return (uint32_t)( ( (float)( times(&tp) - start_time ) * 1000 ) / system_tick );
+	
+	//return (uint32_t)( ( ( times(&tp) - start_time ) * my_ms_tick )  );
+	
+	return ( (ret_tv.tv_sec * 1000) + (ret_tv.tv_usec / 1000) );
+
+}
 
 
 /* batman animation */
@@ -299,6 +337,8 @@ int8_t receive_packet( uint32_t timeout ) {
 		tv.tv_usec = ( (return_time - *received_batman_time) % 1000 ) * 1000;
 		
 		res = select( receive_max_sock + 1, &tmp_wait_set, NULL, NULL, &tv );
+		
+		s_returned_select++;
 
 		*received_batman_time = rcvd_time = get_time();
 		
@@ -311,7 +351,12 @@ int8_t receive_packet( uint32_t timeout ) {
 			
 		if ( res <= 0 ) {
 			
-			if ( return_time > *received_batman_time ) {
+			if ( return_time < *received_batman_time + 10 /*Often select returns just a few milliseconds before being scheduled */) {
+				
+				//cheating time :-)
+				*received_batman_time = rcvd_time = return_time;
+				
+			} else {
 				
 				debug_output( 3, "Select returned %d without reason!! return_time %d, curr_time %d\n", res, return_time, *received_batman_time );
 				continue;
@@ -392,6 +437,8 @@ int8_t receive_packet( uint32_t timeout ) {
 		
 		}
 	
+		s_received_aggregations++;
+		
 		len = ((((struct bat_header *)pos)->size)<<2) - sizeof( struct bat_header );
 		
 		pos = pos + sizeof(struct bat_header);
@@ -529,8 +576,9 @@ int8_t receive_packet( uint32_t timeout ) {
 		/* prepare for next ogm and attached extension messages */
 	
 		debug_output( 4, "Received packet batman flags. %X, total size. %i, gw_pos %d, hna_pos: %d, srv_pos %d, pip_pos %d, remaining bytes %d \n", ((struct bat_packet *)pos)->flags, len, *received_gw_pos, *received_hna_pos, *received_srv_pos, *received_pip_pos, len - ( sizeof(struct bat_packet) + (done_pos * sizeof(struct ext_packet)) ) );
-
 	
+		s_received_ogms++;
+		
 		len = len - ( sizeof(struct bat_packet) + (done_pos * sizeof(struct ext_packet)) );
 		pos = pos + ( sizeof(struct bat_packet) + (done_pos * sizeof(struct ext_packet)) );
 		
@@ -568,9 +616,9 @@ int8_t send_udp_packet( unsigned char *packet_buff, int32_t packet_buff_len, str
 
 		if ( errno == 1 ) {
 
-			if ( last_blocked_send_warning == 0 || last_blocked_send_warning + WARNING_PERIOD < get_time() ) {
+			if ( last_blocked_send_warning == 0 || last_blocked_send_warning + WARNING_PERIOD < *received_batman_time ) {
 						
-				last_blocked_send_warning = get_time();
+				last_blocked_send_warning = *received_batman_time;
 						
 				debug_output( 0, "Error - can't send udp packet: %s.\nDoes your firewall allow outgoing packets on port %i ?\n", strerror(errno), ntohs( broad->sin_port ) );
 			}
@@ -856,8 +904,22 @@ int main( int argc, char *argv[] ) {
 	pthread_mutex_init( (pthread_mutex_t *)todo_mutex, NULL );
 
 	start_time = times(&tp);
-	system_tick = (float)sysconf(_SC_CLK_TCK);
+	gettimeofday( &start_time_tv, NULL );
+	gettimeofday( &new_tv, NULL );
 
+	system_tick = (float)sysconf(_SC_CLK_TCK);
+	
+	my_ms_tick = (1000/sysconf(_SC_CLK_TCK));
+	
+	if ( my_ms_tick == 0 ) {
+		
+		fprintf( stderr, "Error - System SC_CLK_TCK greater than 1000! Unexpected Systemvalue! Contact a developer to fix this for your system !\n" );
+		exit(EXIT_FAILURE);
+
+	}
+
+	//printf(" some values: sizeof clock_t %d, system_tick %f %ld start_time %ld \n", sizeof(clock_t), system_tick, sysconf(_SC_CLK_TCK), start_time );
+	
 	srand( getpid() );
 	
 	apply_init_args( argc, argv );

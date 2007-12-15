@@ -67,7 +67,7 @@ void prof_print() {
 	for ( index = 0; index < PROF_COUNT; index++ ) {
 
 		if( index == 0 )
-			total_cpu_time = (float)prof_container[index].total_time/CLOCKS_PER_SEC;
+			total_cpu_time = (float)prof_container[0].total_time/CLOCKS_PER_SEC;
 			
 		debug_output( 5, "   %''30s:  %5.1f, cpu time = %10.3f, calls = %''10i, avg time per call = %4.10f \n", 
 			prof_container[index].name,

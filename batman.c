@@ -225,6 +225,14 @@ struct debug_clients debug_clients;
 unsigned char *vis_packet = NULL;
 uint16_t vis_packet_size = 0;
 
+int s_returned_select = 0;
+int s_received_aggregations = 0;
+int s_broadcasted_aggregations = 0;
+int s_received_ogms = 0; 
+int s_accepted_ogms = 0;
+int s_broadcasted_ogms = 0;
+int s_pog_route_changes = 0;
+int s_curr_avg_cpu_load = 0;
 
 void print_advanced_opts ( int verbose ) {
 	
@@ -870,7 +878,7 @@ void choose_gw() {
 	static char orig_str[ADDR_STR_LEN];
 
 
-	if ( ( routing_class == 0 ) || ( ( current_time = get_time() ) < originator_interval * sequence_range / CHOOSE_GW_DELAY_DIVISOR ) ) {
+	if ( ( routing_class == 0 ) || ( ( current_time = *received_batman_time ) < originator_interval * sequence_range / CHOOSE_GW_DELAY_DIVISOR ) ) {
 
 		prof_stop( PROF_choose_gw );
 		return;
@@ -1035,6 +1043,9 @@ void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, 
 				debug_output( 4, "Route changed\n" );
 			}
 
+			s_pog_route_changes++;
+			orig_node->rt_changes++;
+			
 			add_del_route( orig_node->orig, 32, neigh_node->addr, neigh_node->if_incoming->addr.sin_addr.s_addr, neigh_node->if_incoming->if_index, neigh_node->if_incoming->dev, BATMAN_RT_TABLE_HOSTS, 0, 0 );
 
 			orig_node->batman_if = neigh_node->if_incoming;
@@ -1047,6 +1058,8 @@ void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, 
 
 			}
 
+			
+			
 		}
 
 		orig_node->router = neigh_node;
@@ -1111,7 +1124,7 @@ void update_gw_list( struct orig_node *orig_node, int16_t gw_array_len, struct e
 
 			} else {
 
-				gw_node->deleted = get_time();
+				gw_node->deleted = *received_batman_time;
 				
 				if ( gw_node->orig_node->gw_msg != NULL )
 					memset( gw_node->orig_node->gw_msg, 0, sizeof( struct ext_packet ) );
@@ -1158,7 +1171,7 @@ void update_gw_list( struct orig_node *orig_node, int16_t gw_array_len, struct e
 		memcpy( orig_node->gw_msg, gw_array, sizeof( struct ext_packet ) );
 		
 		gw_node->unavail_factor = 0;
-		gw_node->last_failure = get_time();
+		gw_node->last_failure = *received_batman_time;
 	
 		list_add_tail( &gw_node->list, &gw_list );
 	
@@ -1243,6 +1256,8 @@ uint8_t alreadyConsidered( struct orig_node *orig_node, uint16_t seqno, uint32_t
 
 		if ( neigh == neigh_node->addr && if_incoming == neigh_node->if_incoming ) {
 			
+			neigh_node->last_aware = *received_batman_time;
+
 			if ( seqno == neigh_node->last_considered_seqno ) { 
 				
 				return YES;
@@ -1263,6 +1278,19 @@ uint8_t alreadyConsidered( struct orig_node *orig_node, uint16_t seqno, uint32_t
 		}
 
 	}
+
+	debug_output( 4, "Creating new last-hop neighbour of originator\n" );
+
+	neigh_node = debugMalloc( sizeof (struct neigh_node), 403 );
+	memset( neigh_node, 0, sizeof(struct neigh_node) );
+	INIT_LIST_HEAD( &neigh_node->list );
+
+	neigh_node->addr = neigh;
+	neigh_node->if_incoming = if_incoming;
+	neigh_node->last_considered_seqno = seqno;
+	neigh_node->last_aware = *received_batman_time;
+		
+	list_add_tail( &neigh_node->list, &orig_node->neigh_list );
 
 	return NO;
 
@@ -1516,14 +1544,28 @@ int calc_ogm_if_size( int if_num ) {
 		return ( sizeof(struct bat_packet) + sizeof(struct ext_packet) );
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 int8_t batman() {
 
 	struct list_head *list_pos, *forw_pos_tmp;
 	struct orig_node *orig_neigh_node, *orig_node; 
 	struct batman_if *batman_if;
-	struct neigh_node *neigh_node;
+	//struct neigh_node *neigh_node;
 	struct forw_node *forw_node;
-	uint32_t debug_timeout, vis_timeout, select_timeout, aggregation_time = 0;
+	uint32_t debug_timeout, statistic_timeout, todo_timeout, vis_timeout, select_timeout, aggregation_time = 0;
 	uint16_t neigh_id4him;
 	struct hna_key key;
 	uint8_t drop_it;
@@ -1533,9 +1575,18 @@ int8_t batman() {
 	
 	static char orig_str[ADDR_STR_LEN], blocker_str[ADDR_STR_LEN], hna_str[ADDR_STR_LEN], neigh_str[ADDR_STR_LEN], ifaddr_str[ADDR_STR_LEN];
 	uint8_t forward_old, if_rp_filter_all_old, if_rp_filter_default_old, if_send_redirects_all_old, if_send_redirects_default_old;
-	uint8_t is_my_addr, is_my_orig, is_broadcast, is_my_path, is_duplicate, is_bidirectional, is_accepted, is_direct_neigh, is_bntog, forward_duplicate_packet, update_ranking, has_unidirectional_flag, has_directlink_flag, has_duplicated_flag;
-	int nlq_rate_value, rand_num_value, acceptance_rate_value;
+	uint8_t is_my_addr, is_my_orig, is_broadcast, is_my_path, is_duplicate, is_bidirectional, is_accepted, is_direct_neigh, is_bntog, forward_duplicate_packet, has_unidirectional_flag, has_directlink_flag, has_duplicated_flag;
+	int nlq_rate_value, rand_nb_value, acceptance_nb_value;
 	int res, i;
+	
+				
+	uint32_t s_last_cpu_time = 0, s_curr_cpu_time = 0;
+	
+	//uint32_t s_start_ref_cpu_time = 0, s_total_ref_cpu_time = 0;
+	
+	//uint32_t s_a_cpu_time = 0, s_b_cpu_time = 0, s_c_cpu_time = 0, s_d_cpu_time = 0, s_e_cpu_time = 0, s_f_cpu_time = 0, s_g_cpu_time = 0, s_h_cpu_time = 0, s_i_cpu_time = 0, s_j_cpu_time = 0, s_k_cpu_time = 0;
+	 
+	//uint32_t t_a_cpu_time = 0, t_b_cpu_time = 0, t_c_cpu_time = 0, t_d_cpu_time = 0, t_e_cpu_time = 0, t_f_cpu_time = 0, t_g_cpu_time = 0, t_h_cpu_time = 0, t_i_cpu_time = 0, t_j_cpu_time = 0, t_k_cpu_time = 0;
 	
 	
 	struct bat_packet *ogm;
@@ -1561,10 +1612,10 @@ int8_t batman() {
 	received_pip_array = &pip_array;
 	received_pip_pos   = &pip_array_len;
 
-	curr_time = debug_timeout = vis_timeout = get_time();
+	curr_time = debug_timeout = todo_timeout = statistic_timeout = vis_timeout = get_time();
 		
 	if ( aggregations_po )
-		aggregation_time = get_time() + 50 + rand_num( 100 );
+		aggregation_time = curr_time + 50 + rand_num( 100 );
 
 	if ( NULL == ( orig_hash = hash_new( 128, compare_key, choose_key, 4 ) ) )
 		return(-1);
@@ -1574,6 +1625,7 @@ int8_t batman() {
 	
 	
 	/* for profiling the functions */
+	prof_init( PROF_all, "all" );
 	prof_init( PROF_choose_gw, "choose_gw" );
 	prof_init( PROF_update_routes, "update_routes" );
 	prof_init( PROF_update_gw_list, "update_gw_list" );
@@ -1671,22 +1723,28 @@ int8_t batman() {
 	
 	while ( !is_aborted() ) {
 		
+		prof_start( PROF_all );
+		
+		//s_a_cpu_time = (uint32_t)clock();
 
 		debug_output( 4, " \n \n" );
 
-		/* harden select_timeout against sudden time change (e.g. ntpdate) */
-		//curr_time = get_time();
-		
 		
 		if ( aggregations_po == NO  &&  curr_time < ((struct forw_node *)forw_list.next)->send_time) {
 			
 			select_timeout = ((struct forw_node *)forw_list.next)->send_time - curr_time ;
+			
+			if ( select_timeout > MAX_SELECT_TIMEOUT_MS )
+				select_timeout = MAX_SELECT_TIMEOUT_MS;
 			
 			res = receive_packet( select_timeout );
 			
 		} else if ( aggregations_po  &&  curr_time < aggregation_time ) { 
 		
 			select_timeout = aggregation_time - curr_time ;
+			
+			if ( select_timeout > MAX_SELECT_TIMEOUT_MS )
+				select_timeout = MAX_SELECT_TIMEOUT_MS;
 			
 			res = receive_packet( select_timeout );
 			
@@ -1697,15 +1755,18 @@ int8_t batman() {
 		
 		}
 		
+		//t_a_cpu_time+= (uint32_t)clock() - s_a_cpu_time;
+
+		
 		if ( res > 0 ) {
 
-			//curr_time = get_time();
+			//s_b_cpu_time = (uint32_t)clock();
 			
 			addr_to_string( ogm->orig, orig_str, sizeof(orig_str) );
 			addr_to_string( neigh, neigh_str, sizeof(neigh_str) );
 			addr_to_string( if_incoming->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
 
-			is_my_addr = is_my_orig = is_broadcast = is_my_path = is_duplicate = is_bidirectional = is_accepted = is_direct_neigh = is_bntog = forward_duplicate_packet = update_ranking = 0;
+			is_my_addr = is_my_orig = is_broadcast = is_my_path = is_duplicate = is_bidirectional = is_accepted = is_direct_neigh = is_bntog = forward_duplicate_packet = 0;
 
 			has_unidirectional_flag = ogm->flags & UNIDIRECTIONAL_FLAG ? 1 : 0;
 			has_directlink_flag     = ogm->flags & DIRECTLINK_FLAG ? 1 : 0;
@@ -1734,6 +1795,8 @@ int8_t batman() {
 			if ( gw_array_len > 0 && gw_array != NULL && gw_array->EXT_GW_FIELD_GWFLAGS != 0 && gw_array->EXT_GW_FIELD_GWTYPES != 0 )
 				debug_output( 4, "Is an internet gateway (class %i, types %i) \n", gw_array->EXT_GW_FIELD_GWFLAGS, gw_array->EXT_GW_FIELD_GWTYPES );
 			
+			//t_b_cpu_time+= (uint32_t)clock() - s_b_cpu_time;
+
 
 			if ( is_my_addr ) {
 
@@ -1744,6 +1807,8 @@ int8_t batman() {
 				debug_output( 4, "Drop packet: ignoring all packets with broadcast source IP (sender: %s) \n", neigh_str );
 
 			} else if ( is_my_orig ) {
+				
+				//s_c_cpu_time = (uint32_t)clock();
 
 				orig_neigh_node = get_orig_node( neigh );
 
@@ -1751,11 +1816,10 @@ int8_t batman() {
 
 				if ( ( has_directlink_flag ) &&
 				   ( if_incoming->addr.sin_addr.s_addr == ogm->orig ) &&
-				   ( !has_duplicated_flag ) &&
 				   ( ogm->seqno != ( if_incoming->out.seqno - OUT_SEQNO_OFFSET ) )
 				   ) {
 				
-					debug_output( 3, "STRANGE: received own OGM via NB: %s, lastTxIfSeqno: %d, currRxSeqno: %d, prevRxSeqno: %d, currRxSeqno-prevRxSeqno %d \n", neigh_str, ( if_incoming->out.seqno - OUT_SEQNO_OFFSET ), ogm->seqno, 0, 0 /* orig_neigh_node->bidirect_link[if_incoming->if_num], ogm->seqno - orig_neigh_node->bidirect_link[if_incoming->if_num]*/ );
+					debug_output( 3, "WARNING: received own OGM via NB: %s, lastTxIfSeqno: %d, currRxSeqno: %d \n", neigh_str, ( if_incoming->out.seqno - OUT_SEQNO_OFFSET ), ogm->seqno  );
 
 				}							   
 				
@@ -1775,7 +1839,7 @@ int8_t batman() {
 					if ( orig_neigh_node->primary_orig_node->id4me != ogm->prev_hop_id ) {
 					
 						if( orig_neigh_node->primary_orig_node->id4me != 0 ) 
-							debug_output( 0, "STRANGE: received changed prev_hop_id from neighbor %s !!!!!!!\n", neigh_str );
+							debug_output( 0, "WARNING: received changed prev_hop_id from neighbor %s !!!!!!!\n", neigh_str );
 						
 						orig_neigh_node->primary_orig_node->id4me = ogm->prev_hop_id;
 					}
@@ -1790,6 +1854,8 @@ int8_t batman() {
 
 				debug_output( 4, "Drop packet: originator packet from myself (via neighbour) \n" );
 				
+				//t_c_cpu_time+= (uint32_t)clock() - s_c_cpu_time;
+
 
 			} else if ( ogm->flags & UNIDIRECTIONAL_FLAG ) {
 
@@ -1797,12 +1863,17 @@ int8_t batman() {
 
 			} else {
 
+				//s_d_cpu_time = (uint32_t)clock();
+
+				
 				orig_node = get_orig_node( ogm->orig );
 
 				/* if sender is a direct neighbor the sender ip equals originator ip */
 				orig_neigh_node = ( is_direct_neigh ? orig_node : get_orig_node( neigh ) );
 				
-				
+				//t_d_cpu_time+= (uint32_t)clock() - s_d_cpu_time;
+				//s_e_cpu_time = (uint32_t)clock();
+
 				drop_it = NO;
 					
 				/* drop packet if sender is not a direct neighbor and if we have no route towards the rebroadcasting neighbor */
@@ -1815,7 +1886,11 @@ int8_t batman() {
 								orig_neigh_node->primary_orig_node->id4me == 0 ||
 								orig_neigh_node->primary_orig_node->id4me == ogm->prev_hop_id ) ) {
 
-					debug_output( 4, "Drop packet: OGM vi unknown NB or via two-hop loop !!!! \n" );
+					debug_output( 4, "Drop packet: OGM %s via NB %s %s !!!! \n",
+							orig_str, neigh_str, 
+							( ( orig_neigh_node->primary_orig_node == NULL || orig_neigh_node->primary_orig_node->id4me == 0 ) ? 
+									"with unknown primaryOG" :" via two-hop loop " )
+						    );
 					drop_it = YES;
 
 					
@@ -1826,7 +1901,7 @@ int8_t batman() {
 
 				} else if ( ((uint16_t)( ogm->seqno - orig_node->last_seqno )) > ((uint16_t)( FULL_SEQ_RANGE - ((uint16_t)sequence_range ))) ) {
 
-					debug_output( 3, "Drop packet: OGM from %s, via NB %s, with old seqno! rcvd sqno %i, last valid seqno: %i! Maybe OGM-aggregation is to radical!?\n", orig_str, neigh_str, ogm->seqno, orig_node->last_seqno );
+					debug_output( 3, "WARNING: Drop packet: OGM from %s, via NB %s, with old seqno! rcvd sqno %i ttl %d, last valid seqno: %i largest_ttl %d time %d ! Maybe OGM-aggregation is to radical!?\n", orig_str, neigh_str, ogm->seqno, ogm->ttl, orig_node->last_seqno, orig_node->last_seqno_largest_ttl, orig_node->last_valid );
 					drop_it = YES;
 
 				} else if ( /* this originator IP is known and*/ 
@@ -1897,7 +1972,12 @@ int8_t batman() {
 
 				}
 				
+				//t_e_cpu_time+= (uint32_t)clock() - s_e_cpu_time;
+
 				if ( ! drop_it ) {
+					
+					//s_f_cpu_time = (uint32_t)clock();
+
 					
 					is_duplicate = isDuplicate( orig_node, ogm->seqno );
 
@@ -1906,9 +1986,11 @@ int8_t batman() {
 							  orig_neigh_node->link_node->bidirect_link[if_incoming->if_num] )) < bidirect_link_to ) );
 					//isBidirectionalNeigh( orig_neigh_node, if_incoming );
 					
+					set_primary_orig( orig_node, ( !has_duplicated_flag && is_direct_neigh ) );
+					
 					set_lq_bits( orig_node, ogm->seqno, if_incoming, ( !has_duplicated_flag && is_direct_neigh ) );
 					
-					//must be after init_link_node() which is called from set_lq_bits()
+					//must be after init_link_node() which is called from set_primary_orig()
 					if ( orig_neigh_node->primary_orig_node != NULL ) {
 						
 						neigh_id4him = orig_neigh_node->primary_orig_node->id4him;
@@ -1916,121 +1998,167 @@ int8_t batman() {
 					} else { 
 						
 						neigh_id4him = 0;
-						debug_output( 3, "STRANGE: not yet identified orig_neigh_node->primary_orig_node->id4him !!! \n");
+						debug_output( 0, "WARNING: not yet identified orig_neigh_node->primary_orig_node->id4him !!! \n");
 						
 					}
+					
+					//t_f_cpu_time+= (uint32_t)clock() - s_f_cpu_time;
+					//s_g_cpu_time = (uint32_t)clock();
+
+					//t_g_cpu_time+= (uint32_t)clock() - s_g_cpu_time;
+					//s_h_cpu_time = (uint32_t)clock();
 
 					nlq_rate_value = nlq_rate( orig_neigh_node, if_incoming );
 					
-					rand_num_value = rand_num( sequence_range );
+					rand_nb_value = rand_num( sequence_range /*-1*/ ); //cheating to absorb late own OGM replies
 										
-					acceptance_rate_value = acceptance_rate( nlq_rate_value, sequence_range /*sequence_range <-> 100% because lq loss has already been applied by realety*/ );
-					
-					/* do we accept or ignore the OGM according to our current policy ? */
-					is_accepted = ( is_bidirectional &&
-							( ( asymmetric_weight == DEF_ASYMMETRIC_WEIGHT ) ||
-							( rand_num_value < acceptance_rate_value +
-								( ( ((MAX_ASYMMETRIC_WEIGHT - asymmetric_weight) * sequence_range ) / 100 )  ) ) ) );
+					acceptance_nb_value = acceptance_rate( nlq_rate_value, sequence_range /*sequence_range <-> 100% because lq loss has already been applied by realety*/ );
 					
 					uint16_t rand_num_hundret = rand_num( 100 );
 					
-					update_ranking= ( is_accepted && 
-							( !is_duplicate || 
-							( ( dup_ttl_limit > 0 ) && 
-							orig_node->last_seqno == ogm->seqno &&
-							orig_node->last_seqno_largest_ttl < ogm->ttl + dup_ttl_limit &&
-							rand_num_hundret < dup_rate && /* using the same rand_num_hundret is important */
-							rand_num_hundret < (100 - (dup_degrad * (orig_node->last_seqno_largest_ttl - ogm->ttl) ))
-							) ) );
-					
-					if ( update_ranking )
-						update_orig( orig_node, orig_neigh_node );
-								 
 					if ( DEBUG_RCVD_ALL_BITS )
-						set_dbg_rcvd_all_bits( orig_node, ogm->seqno, if_incoming, (is_bidirectional && ( !is_duplicate || 
-							( dup_ttl_limit && 
-							( orig_node->last_seqno == ogm->seqno && 
-							orig_node->last_seqno_largest_ttl < ogm->ttl + dup_ttl_limit) ) ) ) );
-
-					is_bntog = ( ( orig_node->router != NULL ) && ( orig_node->router->addr == neigh ) );
+						set_dbg_rcvd_all_bits( orig_node, ogm->seqno, if_incoming, 
+						      (is_bidirectional && 
+							( !is_duplicate || 
+							  ( dup_ttl_limit > 0 && 
+							    orig_node->last_seqno == ogm->seqno && 
+							    orig_node->last_seqno_largest_ttl < ogm->ttl + dup_ttl_limit 
+							  ) 
+							) 
+						      ) );
 					
-					if ( is_accepted && is_bntog && !update_ranking ) {
+					/* do we accept or ignore the OGM according to our current policy ? */
+					is_accepted = ( is_bidirectional &&
+							( asymmetric_weight == DEF_ASYMMETRIC_WEIGHT ||
+							  ( rand_nb_value < acceptance_nb_value +
+								( ( ((MAX_ASYMMETRIC_WEIGHT - asymmetric_weight) * sequence_range ) / 100 )  ) ) ) &&
+							( !is_duplicate || 
+							  ( dup_ttl_limit > 0  && 
+							    orig_node->last_seqno == ogm->seqno  &&
+							    orig_node->last_seqno_largest_ttl < ogm->ttl + dup_ttl_limit  &&
+							    rand_num_hundret < dup_rate  && /* using the same rand_num_hundret is important */
+							    rand_num_hundret < (100 - (dup_degrad * (orig_node->last_seqno_largest_ttl - ogm->ttl) ))
+							  ) 
+							) 
+						      );
+					
+					/*
+					if (    !is_accepted &&
+					        is_bidirectional &&
+						( asymmetric_weight == DEF_ASYMMETRIC_WEIGHT ||
+						  ( rand_nb_value < acceptance_nb_value +
+						    ( ( ((MAX_ASYMMETRIC_WEIGHT - asymmetric_weight) * sequence_range ) / 100 )  ) ) ) &&
+						is_duplicate ) {
 						
-						list_for_each( list_pos, &orig_node->neigh_list ) {
-
-							neigh_node = list_entry( list_pos, struct neigh_node, list );
-
-							if ( ( neigh_node->addr == neigh ) && ( neigh_node->if_incoming == if_incoming ) ) {
-
-								/* dont forget tu update last_aware time if not done by update_orig() and 
-								if arrived and going to be rebroadcasted because of best neighbor. Otherwise
-								 we might purge this neighbor before our neighbors do*/
-										
-								orig_node->last_aware = orig_neigh_node->last_aware = neigh_node->last_aware = curr_time;
-									
-								if ( orig_node->primary_orig_node )
-									orig_node->primary_orig_node->last_aware = curr_time;
-									
-								break;
-							}
+						debug_output( 3, "Not accepting packet from OG %s via NB %s dup_ttl_limit %d, last_seqno %d, seqno %d, largest_ttl %d, ttl %d,  rand_num_hundret %d, dup_rate %d, dup_degrad %d \n", orig_str, neigh_str,
+								dup_ttl_limit, orig_node->last_seqno, ogm->seqno, orig_node->last_seqno_largest_ttl, ogm->ttl, rand_num_hundret, dup_rate, dup_degrad );
+						
 						}
+					*/
+					
+					if ( is_accepted ) {
+						
+						s_accepted_ogms++;
+						
+						update_orig( orig_node, orig_neigh_node );
+					
 					}
 					
-					debug_output( 4, "  received via bidirectional link: %s, accepted OGM: %s, BNTOG: %s, iam a mobile device: %s, nlq_rate: %d, rand_num: %d, acceptance_rate: %d !\n", 
+					/* MUST be after update_orig to represent the lates statistics */
+					is_bntog = ( ( orig_node->router != NULL ) && ( orig_node->router->addr == neigh ) );
+					
+					
+					debug_output( 4, "  received via bidirectional link: %s, accepted OGM: %s, BNTOG: %s, iam a mobile device: %s, nlq_rate: %d, rand_nb: %d, acceptance_nb: %d !\n", 
 							( is_bidirectional ? "YES" : "NO" ), 
 							( is_accepted ? "YES" : "NO" ), 
 							( is_bntog ? "YES" : "NO" ), 
 							( mobile_device ? "YES" : "NO" ), 
-							nlq_rate_value, rand_num_value, acceptance_rate_value );
+							nlq_rate_value, rand_nb_value, acceptance_nb_value );
 					
-					/* is single hop (direct) neighbour */
-					if ( is_direct_neigh ) {
+					
+					//t_h_cpu_time+= (uint32_t)clock() - s_h_cpu_time;
+					//s_i_cpu_time = (uint32_t)clock();
 
-						/* we are an asocial mobile device and dont want to forward other nodes packet */
-						if( mobile_device ) {
-
-							schedule_forward_packet( 1, 1, has_duplicated_flag, neigh_id4him );
-
-							debug_output( 4, "Forward packet: with mobile device policy: rebroadcast neighbour packet with direct link and unidirectional flag \n" );
-
-						/* it is our best route towards him */
-						} else if ( is_accepted && is_bntog ) {
-
-							/* mark direct link on incoming interface */
-							schedule_forward_packet( 0, 1, has_duplicated_flag, neigh_id4him );
-
-							debug_output( 4, "Forward packet: rebroadcast neighbour packet with direct link flag \n" );
-							
-						/* if an unidirectional neighbour sends us a packet:
-							 - retransmit it with unidirectional flag to tell him that we get his packets */
-						/* if a bidirectional neighbour sends us a packet who is not our best link to him: 
-							- retransmit it with unidirectional flag in order to prevent routing problems */
-						} else if ( ( is_accepted && !is_bntog ) || ( !is_accepted ) ) {
-
-							schedule_forward_packet( 1, 1, has_duplicated_flag, neigh_id4him );
-
-							debug_output( 4, "Forward packet: rebroadcast neighbour packet with direct link and unidirectional flag \n" );
-
-						}
-
-					/* multihop originator */
-					} else {
-
-						if ( is_accepted && is_bntog && !mobile_device ) {
+					uint8_t not_forwarded = YES;
+					
+					if ( ! mobile_device ) {
+					
+						/* is single hop (direct) neighbour */
+						if ( is_direct_neigh ) {
 	
-
+							/* it is our best route towards him */
+							if ( is_accepted && is_bntog ) {
+	
+								/* mark direct link on incoming interface */
+								schedule_forward_packet( 0, 1, has_duplicated_flag, neigh_id4him );
+								not_forwarded = NO;
+								debug_output( 4, "Schedule packet: rebroadcast neighbour packet with direct link flag \n" );
+								
+							/* if an unidirectional direct neighbour sends us a packet or
+							* if a bidirectional neighbour sends us a packet who is not our best link to him: 
+							*	- retransmit it with unidirectional flag to tell him that we get his packets */
+							} else if ( !has_duplicated_flag /* && (( is_accepted && !is_bntog ) || ( !is_accepted ) )*/ ) {
+	
+								schedule_forward_packet( 1, 1, 0 /*has_duplicated_flag*/, neigh_id4him );
+								not_forwarded = NO;
+	
+								debug_output( 4, "Schedule packet: rebroadcast neighbour packet with direct link and unidirectional flag \n" );
+	
+							} else {
+								
+								debug_output( 4, "Drop packet: no reason to re-broadcast! \n" );
+								
+							}
+	
+						/* multihop originator */
+						} else if ( is_accepted && is_bntog ) {
+	
 							schedule_forward_packet( 0, 0, has_duplicated_flag, neigh_id4him );
-
-							debug_output( 4, "Forward packet: rebroadcast originator packet \n" );
-
-
+							not_forwarded = NO;
+	
+							debug_output( 4, "Schedule packet: rebroadcast originator packet \n" );
+	
 						} else {
-
-							debug_output( 4, "Drop packet !  ");
-
+	
+							debug_output( 4, "Drop multihop originator packet, not accepted or not via best link ! \n");
+	
 						}
-
+						
+					} else {
+						/* we are an asocial mobile device and dont want to forward other nodes packet */
+						if( is_direct_neigh && !has_duplicated_flag ) {
+	
+							schedule_forward_packet( 1, 1, has_duplicated_flag, neigh_id4him );
+							not_forwarded = NO;
+	
+							debug_output( 4, "Schedule packet: with mobile device policy: rebroadcast neighbour packet with direct link and unidirectional flag \n" );
+							
+						} else {
+							debug_output( 4, "Drop packet, mobile devices rebroadcast almost nothing :-( \n" );
+							
+						}
+						
 					}
+/*					
+					if ( not_forwarded ) {
+						
+						debug_output( 3, "\n\nNOT FORWARDED\n\n");
+						debug_output( 3, "Received BATMAN packet via NB: %s , IF: %s %s (from OG: %s, seqno %d, TTL %d, V %d, UDF %d, IDF %d, DPF %d, direct_neigh %d) \n", neigh_str, if_incoming->dev, ifaddr_str, orig_str, ogm->seqno, ogm->ttl, COMPAT_VERSION, has_unidirectional_flag, has_directlink_flag, has_duplicated_flag, is_direct_neigh );
+
+						debug_output( 3, "NOT FORWARDED: packet from OG %s via NB %s dup_ttl_limit %d, last_seqno %d, seqno %d, largest_ttl %d, ttl %d,  rand_num_hundret %d, dup_rate %d, dup_degrad %d \n", orig_str, neigh_str,
+								dup_ttl_limit, orig_node->last_seqno, ogm->seqno, orig_node->last_seqno_largest_ttl, ogm->ttl, rand_num_hundret, dup_rate, dup_degrad );
+						
+						debug_output( 3, "  received via bidirectional link: %s, accepted OGM: %s, BNTOG: %s, iam a mobile device: %s, nlq_rate: %d, rand_nb: %d, acceptance_nb: %d !\n", 
+								( is_bidirectional ? "YES" : "NO" ), 
+										( is_accepted ? "YES" : "NO" ), 
+										( is_bntog ? "YES" : "NO" ), 
+										( mobile_device ? "YES" : "NO" ), 
+										nlq_rate_value, rand_nb_value, acceptance_nb_value );
+						
+						
+					}
+*/
+					//t_i_cpu_time+= (uint32_t)clock() - s_i_cpu_time;
 					
 				}
 				
@@ -2042,6 +2170,8 @@ int8_t batman() {
 			return -1;
 			
 		}
+		
+		//s_j_cpu_time = (uint32_t)clock();
 
 		if ( aggregations_po  &&  aggregation_time <= curr_time ) {
 				
@@ -2056,43 +2186,156 @@ int8_t batman() {
 			
 		}
 		
-		
-		if ( debug_timeout + 1000 < curr_time ) {
+		//t_j_cpu_time+= (uint32_t)clock() - s_j_cpu_time;
+		//s_k_cpu_time = (uint32_t)clock();
 
-			debug_timeout = curr_time;
+		if ( todo_timeout + 200 < curr_time ) {
 			
 			check_todos();
-		
-			purge_orig( curr_time );
 			
-			purge_empty_hna_nodes( );
-
-			debug_orig();
-
-			checkIntegrity();
-
-			if ( debug_clients.clients_num[DBGL_PROFILE-1] > 0 )
-				prof_print();
-
-			if ( ( routing_class != 0 ) && ( curr_gateway == NULL ) )
-				choose_gw();
-
-			if ( ( vis_if.sock ) && ( vis_timeout + 10000 < curr_time ) ) {
-
-				vis_timeout = curr_time;
-				send_vis_packet();
-
-			}
+			
+			
+			if ( debug_timeout + 1000 < curr_time ) {
 		
+				purge_orig( curr_time );
+				
+				purge_empty_hna_nodes( );
+				
+		
+				if (	( debug_clients.clients_num[DBGL_GATEWAYS-1] > 0 ) || 
+					( debug_clients.clients_num[DBGL_ROUTES-1] > 0 ) || 
+					( debug_clients.clients_num[DBGL_DETAILS-1] > 0 ) || 
+					( debug_clients.clients_num[DBGL_ALL-1] > 0 )  ) {
+					
+					debug_orig();
+				
+				}
+				
+				checkIntegrity();
+		
+				if ( debug_clients.clients_num[DBGL_PROFILE-1] > 0 )
+					prof_print();
+		
+				if ( ( routing_class != 0 ) && ( curr_gateway == NULL ) )
+					choose_gw();
+		
+				
+				if ( ( vis_timeout + 10000 < curr_time ) && ( vis_if.sock ) ) {
+		
+					vis_timeout = curr_time;
+					
+					send_vis_packet();
+		
+				}
+				
+				
+				if ( statistic_timeout + 5000 < curr_time ) {
+				
+					/* generating some reference statistics... */
+					/*
+					s_start_ref_cpu_time = (uint32_t)clock();
+				
+					unsigned long k, trasha, trashb = 3, trash = 123456789;
+					for( k = 1; k<100000; k++ ) {
+						trasha = trash / k;
+						trashb = trasha / trashb;
+						if ( trashb == 0 ) 
+							i=j=trashb=1;
+					}
+				
+					s_total_ref_cpu_time+= (uint32_t)clock() - s_start_ref_cpu_time;
+					*/
+		
+			
+					/* generating cpu load statistics... */
+					s_curr_cpu_time = (uint32_t)clock();
+					
+					//uint32_t passed_time = (( curr_time - statistic_timeout )/10);
+					
+					/*					
+					debug_output( 7, "stats: load %2d %2d ref %3d [ %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d ] %4d sched. %3d, Agg. rcvd %3d, brc %3d, OGMs rcvd %3d, accept %3d, brc %3d \n",
+						( (s_curr_cpu_time) / curr_time ),
+						( (s_curr_cpu_time - s_last_cpu_time) / ( curr_time - statistic_timeout ) ),
+						( s_total_ref_cpu_time / ( curr_time - statistic_timeout ) ),
+						t_a_cpu_time / passed_time,
+						t_b_cpu_time / passed_time,
+						t_c_cpu_time / passed_time,
+						t_d_cpu_time / passed_time,
+						t_e_cpu_time / passed_time,
+						t_f_cpu_time / passed_time,
+						t_g_cpu_time / passed_time,
+						t_h_cpu_time / passed_time,
+						t_i_cpu_time / passed_time,
+						t_j_cpu_time / passed_time,
+						t_k_cpu_time / passed_time,		
+						
+						(( t_a_cpu_time  +
+						t_b_cpu_time  +
+						t_c_cpu_time  +
+						t_d_cpu_time  +
+						t_e_cpu_time  +
+						t_f_cpu_time  +
+						t_g_cpu_time  +
+						t_h_cpu_time  +
+						t_i_cpu_time  +
+						t_j_cpu_time  +
+						t_k_cpu_time ) / passed_time ),	
+					
+						s_returned_select,
+						s_received_aggregations,
+						s_broadcasted_aggregations,
+						s_received_ogms,
+						s_accepted_ogms,
+						s_broadcasted_ogms );
+					*/
+					
+						debug_output( 7, "stats: load %2d %2d  sched. %3d, Agg. rcvd %3d, brc %3d, OGMs rcvd %3d, accept %3d, brc %3d, rt %3d \n",
+						( (s_curr_cpu_time) / curr_time ),
+						( s_curr_avg_cpu_load = ( (s_curr_cpu_time - s_last_cpu_time) / ( curr_time - statistic_timeout ) ) ),
+     s_returned_select,
+     s_received_aggregations,
+     s_broadcasted_aggregations,
+     s_received_ogms,
+     s_accepted_ogms,
+     s_broadcasted_ogms,
+     s_pog_route_changes );
+
+					
+					if ( s_curr_avg_cpu_load < 255 )
+						(list_entry( (&if_list)->next, struct batman_if, list ))->out.reserved_someting = s_curr_avg_cpu_load;
+					else 
+						(list_entry( (&if_list)->next, struct batman_if, list ))->out.reserved_someting = 255;
+					
+					s_returned_select = s_received_aggregations = s_broadcasted_aggregations = s_received_ogms = s_accepted_ogms = s_broadcasted_ogms = s_pog_route_changes = 0; 
+					
+					//s_total_ref_cpu_time = 0;
+					
+					//t_a_cpu_time = t_b_cpu_time = t_c_cpu_time = t_d_cpu_time = t_e_cpu_time = t_f_cpu_time = t_g_cpu_time = t_h_cpu_time = t_i_cpu_time = t_j_cpu_time = t_k_cpu_time = 0;
+					
+					s_last_cpu_time = s_curr_cpu_time;
+				
+					statistic_timeout = curr_time;
+				}
+				
+				/* preparing the next debug_timeout */
+				debug_timeout = curr_time;
+				
+			}
+			
+			todo_timeout = curr_time;
+			
 		}
 		
+		//t_k_cpu_time+= (uint32_t)clock() - s_k_cpu_time;
+		
+	prof_stop( PROF_all );
 	}
 
 
 	if ( debug_level > 0 )
 		printf( "Deleting all BATMAN routes\n" );
 
-	purge_orig( get_time() + ( 5 * PURGE_TIMEOUT ) + originator_interval );
+	purge_orig( curr_time + ( 5 * PURGE_TIMEOUT ) + originator_interval );
 	
 	add_del_own_srv( YES /*purge*/ );
 	
