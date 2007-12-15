@@ -39,7 +39,7 @@
 
 #define SOURCE_VERSION "0.3-alpha" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
 
-#define COMPAT_VERSION 10 /* set me back to 10 */
+#define COMPAT_VERSION 10 /* set me back to 10 !!!!!!!!!!!!!!!!!!!!!!!*/
 
 
 #define ADDR_STR_LEN 16
@@ -572,6 +572,7 @@ struct orig_node                 /* structure for orig_list maintaining nodes of
 	uint32_t first_valid_sec;
 	uint16_t last_seqno;              /* last and best known squence number */
 	uint8_t  last_seqno_largest_ttl;  /* largest (best) TTL received with last sequence number */
+	uint8_t  last_path_ttl;
 	
 	uint32_t last_new_valid;
 	uint8_t  last_nbrf;

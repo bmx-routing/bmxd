@@ -232,6 +232,7 @@ void update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node
 	
 	
 	orig_node->last_valid = *received_batman_time;
+	orig_node->last_path_ttl = in->ttl;
 	
 	
 	/* update routing table and check for changed hna announcements */
@@ -1115,9 +1116,9 @@ void debug_orig() {
 		}
 		
 		debug_output( DBGL_DETAILS, "\n");
-		debug_output( DBGL_DETAILS, "Originator      outgoingIF     bestNextHop brc (rcvd  knownSince  lseq lvld  ws  ogi cpu changes ) alternativeNextHops brc ...\n");
+		debug_output( DBGL_DETAILS, "Originator      outgoingIF     bestNextHop brc (rcvd  knownSince  lseq lvld  ws  ogi cpu hop change ) alternativeNextHops brc ...\n");
 		
-		int nodes_count = 0, sum_packet_count = 0, sum_rcvd_all_bits = 0, sum_lvld = 0, sum_last_nbrf = 0, sum_esitmated_ten_ogis = 0, sum_reserved_something = 0, sum_route_changes = 0;
+		int nodes_count = 0, sum_packet_count = 0, sum_rcvd_all_bits = 0, sum_lvld = 0, sum_last_nbrf = 0, sum_esitmated_ten_ogis = 0, sum_reserved_something = 0, sum_route_changes = 0, sum_hops = 0;
 		
 		
 		while ( NULL != ( hashit = hash_iterate( orig_hash, hashit ) ) ) {
@@ -1138,7 +1139,7 @@ void debug_orig() {
 			
 			if ( ( debug_clients.clients_num[DBGL_DETAILS-1] > 0 ) || ( debug_clients.clients_num[DBGL_ALL-1] > 0 ) ) {
 				
-				dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s %-10s %15s %3i ( %3i %2i:%i%i:%i%i:%i%i %5i %4i %3i %4i %3i %7i )", 
+				dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s %-10s %15s %3i ( %3i %2i:%i%i:%i%i:%i%i %5i %4i %3i %4i %3i %3i %6i )", 
 					str, orig_node->router->if_incoming->dev, str2,
 					orig_node->router->packet_count /* accepted */,
 					DEBUG_RCVD_ALL_BITS ? get_dbg_rcvd_all_bits( orig_node, orig_node->router->if_incoming, sequence_range ) : -1, /* all */
@@ -1154,6 +1155,7 @@ void debug_orig() {
 					orig_node->last_nbrf,
 					(orig_node->estimated_ten_ogis / 10),
 					 orig_node->last_reserved_someting,
+					(DEFAULT_TTL+1 - orig_node->last_path_ttl),
 					orig_node->rt_changes
 						      ); 
 					
@@ -1164,6 +1166,7 @@ void debug_orig() {
 				sum_esitmated_ten_ogis+= orig_node->estimated_ten_ogis;
 				sum_reserved_something+= orig_node->last_reserved_someting;
 				sum_route_changes+= orig_node->rt_changes;
+				sum_hops+= (DEFAULT_TTL+1 - orig_node->last_path_ttl);
 
 				list_for_each( neigh_pos, &orig_node->neigh_list ) {
 					neigh_node = list_entry( neigh_pos, struct neigh_node, list );
@@ -1206,7 +1209,7 @@ void debug_orig() {
 			
 		}
 		
-		dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%4d %-37s %3i ( %3i                   %4i %3i %4i %3i %7d )", 
+		dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%4d %-37s %3i ( %3i                   %4i %3i %4i %3i %3i %6d )", 
 					nodes_count, "known Originator(s), averages: ", 
 					(nodes_count > 0 ? sum_packet_count/nodes_count : -1), 
 					(nodes_count > 0 ? sum_rcvd_all_bits/nodes_count : -1), 
@@ -1214,6 +1217,7 @@ void debug_orig() {
 					(nodes_count > 0 ? sum_last_nbrf /nodes_count : -1), 
 					(nodes_count > 0 ? (sum_esitmated_ten_ogis / 10) / nodes_count : -1), 
 					(nodes_count > 0 ? sum_reserved_something /nodes_count : -1),
+					(nodes_count > 0 ? sum_hops/nodes_count : -1),
 					(nodes_count > 0 ? sum_route_changes/nodes_count : -1)
 				      ); 
 		
