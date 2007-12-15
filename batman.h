@@ -39,7 +39,7 @@
 
 #define SOURCE_VERSION "0.3-alpha" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
 
-#define COMPAT_VERSION 13 /* set me back to 10 */
+#define COMPAT_VERSION 10 /* set me back to 10 */
 
 
 #define ADDR_STR_LEN 16
