@@ -417,9 +417,12 @@ void *unix_listen( void *arg ) {
 
 											debug_output( 3, "Unix socket: changing to -r %d \n", tmp_unix_value );
 										
-											if ( routing_class == 0 )
+											if ( routing_class == 0 && tmp_unix_value > 0 )
 												add_del_interface_rules( NO/*del*/, YES/*tunnel*/, NO/*networks*/ );
 											
+											if ( routing_class > 0 && tmp_unix_value == 0 )
+												add_del_interface_rules( YES/*del*/, YES/*tunnel*/, NO/*networks*/ );
+										
 											routing_class = tmp_unix_value;
 										
 											if ( curr_gateway != NULL )

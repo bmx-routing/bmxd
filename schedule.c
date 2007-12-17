@@ -89,6 +89,8 @@ void schedule_own_packet( struct batman_if *batman_if, uint32_t current_time ) {
 	
 	/* change sequence number to network order */
 	((struct bat_packet *)forw_node_new->pack_buff)->seqno = htons( ((struct bat_packet *)forw_node_new->pack_buff)->seqno );
+	
+	((struct bat_packet *)forw_node_new->pack_buff)->size = (calc_ogm_if_size( batman_if->if_num ))/4;
 
 	
 	prev_list_head = (struct list_head *)&forw_list;
