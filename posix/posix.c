@@ -293,8 +293,8 @@ int8_t receive_packet( uint32_t timeout ) {
 	prof_start( PROF_receive_packet );
 
 	static unsigned char packet_in[2001];
-	static unsigned char *pos = NULL;
-	static int32_t len = 0;
+	static unsigned char *pos = NULL, *check_pos;
+	static int32_t len = 0, check_len, check_done;
 	static uint32_t rcvd_neighbor = 0, rcvd_time = 0;
 
 	
@@ -306,12 +306,14 @@ int8_t receive_packet( uint32_t timeout ) {
 	uint32_t return_time = *received_batman_time + timeout;
 	struct timeval tv;
 	struct list_head *if_pos;
-	struct batman_if *batman_if = NULL;
+	static struct batman_if *batman_if = NULL;
 	int8_t res;
 //	int16_t hna_pos = 0, gw_pos = 0;
 	int16_t left_pos, ext_type, done_pos, ext_pos;
 	struct ext_packet *ext_array;
 	fd_set tmp_wait_set;
+	
+	
 	
 	debug_output(4, "receive_packet() remaining len %d, timeout %d \n", len, timeout );
 	
@@ -356,14 +358,14 @@ int8_t receive_packet( uint32_t timeout ) {
 				//cheating time :-)
 				*received_batman_time = rcvd_time = return_time;
 				
+				prof_stop( PROF_receive_packet );
+				return 0;
+				
 			} else {
 				
 				debug_output( 3, "Select returned %d without reason!! return_time %d, curr_time %d\n", res, return_time, *received_batman_time );
 				continue;
 			}
-			
-			prof_stop( PROF_receive_packet );
-			return 0;
 		}
 		
 		list_for_each( if_pos, &if_list ) {
@@ -392,11 +394,11 @@ int8_t receive_packet( uint32_t timeout ) {
 		
 		if ( len > 0 && rcvd_neighbor == batman_if->addr.sin_addr.s_addr ) {
 			
-			len = 0;
-			
 			addr_to_string( rcvd_neighbor, str, sizeof(str) );
 			debug_output( 4, "Drop packet: received my own broadcast (sender: %s) \n", str );
 
+			len = 0;
+			
 			if ( return_time > *received_batman_time ) {
 				continue;
 			} else {
@@ -420,17 +422,26 @@ int8_t receive_packet( uint32_t timeout ) {
 		}
 	
 		// we acceppt longer packets than specified by pos->size to allow padding for equal packet sizes
-		if ( ((struct bat_header *)pos)->version != COMPAT_VERSION  ||  (((struct bat_header *)pos)->size)<<2 > len ) {
+		if ( 	len < (sizeof(struct bat_header) + sizeof(struct bat_packet_common))  ||
+			(((struct bat_header *)pos)->version) != COMPAT_VERSION  ||
+			((((struct bat_header *)pos)->size)<<2) > len )   {
 		
 			addr_to_string( rcvd_neighbor, str, sizeof(str) );
 		
-			debug_output( 3, "Drop packet: rcvd incompatible batman version %i, flags? %X, size? %i, via NB %s. My version is %d \n", ((struct bat_header *)pos)->version, ((struct bat_packet_common *)(pos+sizeof(struct bat_header)))->reserved1, len, str, COMPAT_VERSION );
+			if ( len >= (sizeof(struct bat_header) + sizeof(struct bat_packet_common)) )
+				debug_output( 0, "WARNING - Drop packet: rcvd incompatible batman version or size %i, flags? %X, size? %i, via NB %s. My version is %d \n", ((struct bat_header *)pos)->version, ((struct bat_packet_common *)(pos+sizeof(struct bat_header)))->reserved1, len, str, COMPAT_VERSION );
+				
+			else
+				debug_output( 0, "Error - Rcvd to small packet size %i, via NB %s.\n", len, str );
 			
 			len = 0;
 			
 			if ( return_time > *received_batman_time ) {
+				
 				continue;
+				
 			} else {
+			
 				prof_stop( PROF_receive_packet );
 				return 0;
 			}
@@ -439,38 +450,68 @@ int8_t receive_packet( uint32_t timeout ) {
 	
 		s_received_aggregations++;
 		
-		len = ((((struct bat_header *)pos)->size)<<2) - sizeof( struct bat_header );
 		
-		pos = pos + sizeof(struct bat_header);
+		check_len = len = ((((struct bat_header *)pos)->size)<<2) - sizeof( struct bat_header );
+		check_pos = pos = pos + sizeof(struct bat_header);
+		
+		
+		/* fast plausibility check */
+		check_done = 0;
+		
+		while ( check_done < check_len ) {
+			
+			if ( check_len < sizeof( struct bat_packet_common ) ) {
+		
+				debug_output(0, "Error - Recvfrom returned with absolutely to small packet length %d !!!! \n", check_len );
+				prof_stop( PROF_receive_packet );
+				return -1;
+			}
+			
+			if ( 	(((struct bat_packet_common *)check_pos)->ext_msg) != 0 ||
+				(((struct bat_packet_common *)check_pos)->size)    == 0 ||
+				((((struct bat_packet_common *)check_pos)->size)<<2) > check_len  ) {
+
+				addr_to_string( rcvd_neighbor, str, sizeof(str) );
+		
+				if (	(((struct bat_packet_common *)check_pos)->ext_msg) == 0 &&
+					((((struct bat_packet_common *)check_pos)->size)<<2) >= sizeof( struct bat_packet ) &&
+					check_len >= sizeof( struct bat_packet )  )
+					addr_to_string( ((struct bat_packet *)check_pos)->orig, str2, sizeof(str2) );
+			
+				else
+					addr_to_string( 0, str2, sizeof(str2) );
+		
+				debug_output(0, "Error - Drop jumbo packet: rcvd incorrect size or order: ext_msg %d, reserved %X, OGM size field %d aggregated OGM size %i, via IF: %s, NB %s, Originator? %s. \n",  ((struct bat_packet_common *)check_pos)->ext_msg, ((struct bat_packet_common *)check_pos)->reserved1, ((((struct bat_packet_common *)check_pos)->size)), check_len, batman_if->dev, str, str2);
+		
+				len = 0;
+		
+				prof_stop( PROF_receive_packet );
+				return 0;
+			}
+			
+			check_done = check_done + ((((struct bat_packet_common *)check_pos)->size)<<2) ;
+			check_pos  = check_pos  + ((((struct bat_packet_common *)check_pos)->size)<<2) ;
+			
+		}
+		
+		if ( check_len != check_done ) {
+			
+			debug_output(0, "Error - Drop jumbo packet: End of packet does not match indicated size \n");
+			
+			len = 0;
+		
+			prof_stop( PROF_receive_packet );
+			return 0;
+			
+		}
 		
 		break;
 		
 	}
 	
-	if ( len < sizeof( struct bat_packet_common ) ) {
-		
-		debug_output(0, "recvfrom loop returned with invalid packet length %d !!!! \n", len );
-		
-		prof_stop( PROF_receive_packet );
-		return -1;
-		
-	}
 				
 	*received_batman_time = rcvd_time;
 		
-	if ( 	((struct bat_packet_common *)pos)->ext_msg != 0 ||
-		(((struct bat_packet_common *)pos)->size)  == 0 ||
-		(((struct bat_packet_common *)pos)->size)<<2 > len
-	   ) {
-
-		addr_to_string( rcvd_neighbor, str, sizeof(str) );
-		
-		debug_output(0, "Drop remaining super packet: rcvd incompatible batman order: ext_msg %d, reserved %X, size %d len %i, via NB %s. \n",  ((struct bat_packet_common *)pos)->ext_msg, ((struct bat_packet_common *)pos)->reserved1, ((struct bat_packet_common *)pos)->size, len, str );
-		len = 0;
-		
-		prof_stop( PROF_receive_packet );
-		return 0;
-	}
 	
 	
 	if ( ((struct bat_packet_common *)pos)->bat_type == BAT_TYPE_OGM  ) {
@@ -509,7 +550,10 @@ int8_t receive_packet( uint32_t timeout ) {
 		ext_array = (struct ext_packet *) (pos + sizeof(struct bat_packet) + (done_pos * sizeof(struct ext_packet)) );
 		ext_pos = 0;
 	
-		while ( done_pos < left_pos && ((ext_array)[0]).EXT_FIELD_MSG == YES && ext_type <= EXT_TYPE_MAX ) {
+		while ( done_pos < left_pos && 
+			(done_pos * sizeof(struct ext_packet))  <  ((((struct bat_packet_common *)pos)->size)<<2) &&
+			((ext_array)[0]).EXT_FIELD_MSG == YES && 
+			ext_type <= EXT_TYPE_MAX ) {
 		
 			while( (ext_pos + done_pos) < left_pos && ((ext_array)[ext_pos]).EXT_FIELD_MSG == YES ) {
 			
@@ -523,7 +567,7 @@ int8_t receive_packet( uint32_t timeout ) {
 				
 				} else {
 				
-					debug_output( 3, "Drop packet: rcvd incompatible extension message order: size? %i, ext_type %d, via NB %s, originator? %s. \n",  
+					debug_output( 0, "Drop packet: rcvd incompatible extension message order: size? %i, ext_type %d, via NB %s, originator? %s. \n",  
 							len, ((ext_array)[ext_pos]).EXT_FIELD_TYPE, str, str2 );
 					len = 0;
 					
@@ -572,19 +616,31 @@ int8_t receive_packet( uint32_t timeout ) {
 	
 		}
 		
+		s_received_ogms++;
+		
+		
+		if ( (sizeof(struct bat_packet) + (done_pos * sizeof(struct ext_packet)))  !=  ((((struct bat_packet_common *)pos)->size)<<2) ) {
+			
+			len = len - ((((struct bat_packet_common *)pos)->size)<<2);
+			pos = pos + ((((struct bat_packet_common *)pos)->size)<<2);
+		
+			debug_output( 0, "WARNING - Drop packet! Received corrupted packet size: processed bytes: %d , indicated bytes %d, batman flags. %X,  gw_pos %d, hna_pos: %d, srv_pos %d, pip_pos %d, remaining bytes %d \n", (sizeof(struct bat_packet) + (done_pos * sizeof(struct ext_packet))), ((((struct bat_packet_common *)pos)->size)<<2), ((struct bat_packet *)pos)->flags, *received_gw_pos, *received_hna_pos, *received_srv_pos, *received_pip_pos, len );
+			
+			prof_stop( PROF_receive_packet );
+			return 0;
+			
+		}
+
 	
 		/* prepare for next ogm and attached extension messages */
 	
-		debug_output( 4, "Received packet batman flags. %X, total size. %i, gw_pos %d, hna_pos: %d, srv_pos %d, pip_pos %d, remaining bytes %d \n", ((struct bat_packet *)pos)->flags, len, *received_gw_pos, *received_hna_pos, *received_srv_pos, *received_pip_pos, len - ( sizeof(struct bat_packet) + (done_pos * sizeof(struct ext_packet)) ) );
-	
-		s_received_ogms++;
+		len = len - ((((struct bat_packet_common *)pos)->size)<<2);
+		pos = pos + ((((struct bat_packet_common *)pos)->size)<<2);
 		
-		len = len - ( sizeof(struct bat_packet) + (done_pos * sizeof(struct ext_packet)) );
-		pos = pos + ( sizeof(struct bat_packet) + (done_pos * sizeof(struct ext_packet)) );
+		debug_output( 4, "Received packet batman flags. %X,  gw_pos %d, hna_pos: %d, srv_pos %d, pip_pos %d, remaining bytes %d \n", ((struct bat_packet *)pos)->flags, *received_gw_pos, *received_hna_pos, *received_srv_pos, *received_pip_pos, len );
 		
 		prof_stop( PROF_receive_packet );
 		return 1;
-
 		
 	} else {
 		
@@ -592,7 +648,7 @@ int8_t receive_packet( uint32_t timeout ) {
 		addr_to_string( rcvd_neighbor, str, sizeof(str) );
 		addr_to_string( ((struct bat_packet *)pos)->orig, str2, sizeof(str2) );
 		
-		debug_output( 1, "Drop single unkown bat_type bat_type %X, size? %i, via NB %s, originator? %s. \n",  ((struct bat_packet_common *)pos)->bat_type, len, str, str2 );
+		debug_output( 0, "WARNING - Drop single unkown bat_type bat_type %X, size? %i, via NB %s, originator? %s. \n",  ((struct bat_packet_common *)pos)->bat_type, len, str, str2 );
 		
 		len = len - ((((struct bat_packet_common *)pos)->size)<<2) ;
 		pos = pos + ((((struct bat_packet_common *)pos)->size)<<2) ;
