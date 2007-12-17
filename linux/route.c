@@ -469,13 +469,6 @@ int add_del_interface_rules( int8_t del, uint8_t setup_tunnel, uint8_t setup_net
 		if( !no_throw_rules && setup_tunnel )
 			add_del_route( netaddr, netmask, 0, 0, 0, ifr->ifr_name, BATMAN_RT_TABLE_TUNNEL,   1, del );
 
-		if ( is_batman_if( ifr->ifr_name, &batman_if ) )
-			continue;
-
-		
-		if( !no_throw_rules && setup_networks)
-			add_del_route( netaddr, netmask, 0, 0, 0, ifr->ifr_name, BATMAN_RT_TABLE_NETWORKS, 1, del );
-
 		
 		if( !no_prio_rules && setup_tunnel ) {
 			
@@ -484,9 +477,18 @@ int add_del_interface_rules( int8_t del, uint8_t setup_tunnel, uint8_t setup_net
 			if ( strncmp( ifr->ifr_name, "lo", IFNAMSIZ - 1 ) == 0 )
 				add_del_rule( 0, 0, BATMAN_RT_TABLE_TUNNEL, BATMAN_RT_PRIO_TUNNEL, "lo\0 ", 2, del );
 
+			if_count++;
+
 		}
-				
-		if_count++;
+		
+		if ( is_batman_if( ifr->ifr_name, &batman_if ) )
+			continue;
+		
+		
+		if( !no_throw_rules && setup_networks)
+			add_del_route( netaddr, netmask, 0, 0, 0, ifr->ifr_name, BATMAN_RT_TABLE_NETWORKS, 1, del );
+
+		
 
 	}
 
