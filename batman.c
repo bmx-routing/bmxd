@@ -1106,21 +1106,25 @@ void update_gw_list( struct orig_node *orig_node, int16_t gw_array_len, struct e
 			debug_output( 3, "Gateway class of originator %s changed from %i to %i, port %d, addr %s, new supported tunnel types %s, %s\n", orig_str,
 			    gw_node->orig_node->gw_msg ? gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWFLAGS : 0 ,
 			    gw_array ?   gw_array->EXT_GW_FIELD_GWFLAGS : 0 , 
-			    gw_array ?   gw_array->EXT_GW_FIELD_GWPORT  : 0 , gw_str,
+			    gw_array ?   ntohs( gw_array->EXT_GW_FIELD_GWPORT ) : 0 , 
+       			    gw_str,
 			    gw_array ? ((gw_array->EXT_GW_FIELD_GWTYPES & TWO_WAY_TUNNEL_FLAG)?"TWT":"-") : "-",
 			    gw_array ? ((gw_array->EXT_GW_FIELD_GWTYPES & ONE_WAY_TUNNEL_FLAG)?"OWT":"-") : "-" );
 
-			if ( gw_array_len > 0 && gw_array != NULL && 
+			if ( gw_array_len > 0 && gw_array != NULL /* && 
 				( gw_array->EXT_GW_FIELD_GWFLAGS ) &&
 				( gw_array->EXT_GW_FIELD_GWTYPES & ( (two_way_tunnel?TWO_WAY_TUNNEL_FLAG:0) | (one_way_tunnel?ONE_WAY_TUNNEL_FLAG:0) ) ) &&
 				( gw_array->EXT_GW_FIELD_GWPORT  ) &&
-				( gw_array->EXT_GW_FIELD_GWADDR  )  )  {
+				( gw_array->EXT_GW_FIELD_GWADDR  ) */ )  {
 
 				gw_node->deleted = 0;
 				if ( gw_node->orig_node->gw_msg == NULL )
 					gw_node->orig_node->gw_msg = debugMalloc( sizeof( struct ext_packet ), 123 );
 				
 				memcpy( gw_node->orig_node->gw_msg, gw_array, sizeof( struct ext_packet ) );
+
+				if( gw_node == curr_gateway )
+					choose_gw();
 
 			} else {
 
@@ -1674,7 +1678,7 @@ int8_t batman() {
 		batman_if->out.ext_msg = NO;
 		batman_if->out.bat_type = BAT_TYPE_OGM;
 		batman_if->out.flags = 0x00;
-		batman_if->out.size = (calc_ogm_if_size( batman_if->if_num ))/4;
+		batman_if->out.size = 0x00;
 		
 		batman_if->out.nbrf     = sequence_range;
 		

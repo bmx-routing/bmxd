@@ -194,10 +194,12 @@ void *client_to_gw_tun( void *arg ) {
 	memset( &my_addr, 0, sizeof(struct sockaddr_in) );
 
 	gw_addr.sin_family = AF_INET;
+	/* the cached gw_msg stores the network byte order, so no need to transform */
 	gw_addr.sin_port = curr_gw_data->gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWPORT;
 	gw_addr.sin_addr.s_addr = curr_gw_data->gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWADDR;
 
 	my_addr.sin_family = AF_INET;
+	/* the cached gw_msg stores the network byte order, so no need to transform */
 	my_addr.sin_port = curr_gw_data->gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWPORT;
 	my_addr.sin_addr.s_addr = curr_gw_data->batman_if->addr.sin_addr.s_addr;
 

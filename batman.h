@@ -365,7 +365,7 @@ extern uint8_t  gw_tunnel_netmask;
 extern int32_t tunnel_ip_lease_time;
 #define MIN_TUNNEL_IP_LEASE_TIME 60 /*seconds*/
 #define MAX_TUNNEL_IP_LEASE_TIME 60000
-#define DEF_TUNNEL_IP_LEASE_TIME 60
+#define DEF_TUNNEL_IP_LEASE_TIME 600
 #define TUNNEL_IP_LEASE_TIME_SWITCH "tunnel-lease-time"
 
 #define PARALLEL_BAT_NETA_SWITCH "neta"

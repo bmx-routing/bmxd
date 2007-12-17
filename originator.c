@@ -257,17 +257,20 @@ void update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node
 	
 	
 	
-	if (orig_node->gw_msg  &&  orig_node->gw_msg->EXT_GW_FIELD_GWFLAGS  &&  *received_gw_pos == 0) {
+	if ( orig_node->gw_msg  &&  orig_node->gw_msg->EXT_GW_FIELD_GWFLAGS  &&  *received_gw_pos == 0) {
 		
+		// remove cached gw_msg
 		update_gw_list( orig_node, 0, NULL );
 		
 	} else if ( orig_node->gw_msg == NULL  &&  *received_gw_pos > 0  &&  *received_gw_array != NULL ) {
 		
-		update_gw_list( orig_node, *received_gw_pos, *received_gw_array /*, gw_array[0].EXT_GW_FIELD_GWFLAGS, gw_array[0].EXT_GW_FIELD_GWTYPES */ );
+		// memorize new gw_msg
+		update_gw_list( orig_node, *received_gw_pos, *received_gw_array  );
 		 
 	} else if ( orig_node->gw_msg != NULL  &&  *received_gw_pos > 0  &&  *received_gw_array != NULL  &&  memcmp( orig_node->gw_msg, *received_gw_array, sizeof(struct ext_packet) ) ) {
 		
-			update_gw_list( orig_node, *received_gw_pos, *received_gw_array  );
+		// update existing gw_msg
+		update_gw_list( orig_node, *received_gw_pos, *received_gw_array  );
 	}
 	
 	/* restart gateway selection if we have more packets and routing class 3 */
