@@ -293,7 +293,56 @@ void prepare_add_del_own_hna ( char *optarg_str, int8_t del, uint8_t atype, uint
 	
 }
 
+void prepare_add_no_tunnel (  char *optarg_str ) {
+	struct notun_node *notun_node;
+	struct in_addr tmp_ip_holder;
+	char *delimiter1_ptr;
+	uint32_t netmask;
+	
+	if ( ( delimiter1_ptr = strchr( optarg_str, '/' ) ) == NULL ) {
 
+		printf( "Invalid %s argument (netmask is missing): %s\n", NO_TUNNEL_RULE_SWITCH, optarg_str );
+		exit(EXIT_FAILURE);
+
+	}
+
+	*delimiter1_ptr = '\0';
+
+	if ( inet_pton( AF_INET, optarg_str, &tmp_ip_holder ) < 1 ) {
+
+		*delimiter1_ptr = '/';
+		printf( "Invalid %s argument (IP is invalid): %s\n", NO_TUNNEL_RULE_SWITCH, optarg_str );
+		exit(EXIT_FAILURE);
+
+	}
+
+	*delimiter1_ptr = '/';
+	
+	errno = 0;
+	netmask = strtol( delimiter1_ptr + 1, NULL, 10 );
+	
+	if ( ( errno == ERANGE ) || netmask > 32 ) {
+	
+		printf( "Invalid %s argument (netmask is invalid): %s\n", NO_TUNNEL_RULE_SWITCH, optarg_str );
+		perror("strtol");
+		exit(EXIT_FAILURE);
+	
+	}
+
+
+	notun_node = debugMalloc( sizeof(struct notun_node), 224 );
+	memset( notun_node, 0, sizeof(struct notun_node) );
+	INIT_LIST_HEAD( &notun_node->list );
+
+	notun_node->addr = tmp_ip_holder.s_addr;
+	notun_node->netmask = netmask;
+
+	list_add_tail( &notun_node->list, &notun_list );
+	
+}
+
+	
+	
 void prepare_add_del_own_srv ( char *optarg_str, int8_t del, int8_t startup ) {
 	
 	struct srv_node *srv_node;
@@ -460,6 +509,7 @@ void apply_init_args( int argc, char *argv[] ) {
 	struct list_head *hna_list_pos, *srv_list_pos;
 	struct hna_node *hna_node;
 	struct srv_node *srv_node;
+	char fake_arg[ADDR_STR_LEN + 4], ifaddr_str[ADDR_STR_LEN];
 
 
 	int32_t optchar, recv_buff_len, bytes_written, download_speed = 0, upload_speed = 0;
@@ -509,6 +559,7 @@ void apply_init_args( int argc, char *argv[] ) {
    {RT_PRIO_OFFSET_SWITCH,      1, 0, 0},
    {MORE_RULES_SWITCH,          0, 0, 0},
    {NO_PRIO_RULES_SWITCH,       0, 0, 0},
+   {NO_TUNNEL_RULE_SWITCH,      1, 0, 0},
    {NO_THROW_RULES_SWITCH,      0, 0, 0},
    {NO_UNRESP_CHECK_SWITCH,     0, 0, 0},
    {RESIST_BLOCKED_SEND_SWITCH, 0, 0, 0},
@@ -563,8 +614,6 @@ void apply_init_args( int argc, char *argv[] ) {
 				exit(EXIT_FAILURE);
 			}
 			
-	
-	
 			originator_interval = 1500;
 			//printf ("-o %d \\ \n", originator_interval );
 	
@@ -842,6 +891,13 @@ void apply_init_args( int argc, char *argv[] ) {
 					found_args += 2;
 					break;
 					
+				} else if ( strcmp( NO_TUNNEL_RULE_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					prepare_add_no_tunnel( optarg );
+					
+					found_args += 2;
+					break;
+				
 				/*	this is just a template:
 				} else if ( strcmp( _SWITCH, long_options[option_index].name ) == 0 ) {
 
@@ -1474,7 +1530,6 @@ void apply_init_args( int argc, char *argv[] ) {
 					
 					if ( batman_if->if_num > 0 ) {
 					
-						char fake_arg[ADDR_STR_LEN + 4], ifaddr_str[ADDR_STR_LEN];
 						errno = 0;
 						
 						addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
@@ -1498,7 +1553,6 @@ void apply_init_args( int argc, char *argv[] ) {
 
 					//printf ("Interface %s specific option: /%c  \n", batman_if->dev, ((argv[found_args])[1]) );
 					
-					char fake_arg[ADDR_STR_LEN + 4], ifaddr_str[ADDR_STR_LEN];
 					errno = 0;
 					
 					addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
@@ -1595,6 +1649,22 @@ void apply_init_args( int argc, char *argv[] ) {
 			exit(EXIT_FAILURE);
 
 		}
+
+		if ( routing_class > 0 ) {
+			
+			struct list_head *notun_pos;
+			struct notun_node *notun_node;
+			
+			list_for_each(notun_pos, &notun_list) {
+	
+				notun_node = list_entry(notun_pos, struct notun_node, list);
+		
+				if ( notun_node->match_found == NO ) {
+					addr_to_string( notun_node->addr, ifaddr_str, sizeof(ifaddr_str) );
+					debug_output(0, "WARNING: NO interface found matching %s %s/%d \n", NO_TUNNEL_RULE_SWITCH, ifaddr_str, notun_node->netmask );
+				}
+			}
+		}		
 
 		
 		memset( &vis_if, 0, sizeof(vis_if) );

@@ -471,13 +471,28 @@ int add_del_interface_rules( int8_t del, uint8_t setup_tunnel, uint8_t setup_net
 
 		
 		if( !no_prio_rules && setup_tunnel ) {
+			struct list_head *notun_pos;
+			struct notun_node *notun_node;
+			uint8_t add_this_rule = YES;
 			
-			add_del_rule( netaddr, netmask, BATMAN_RT_TABLE_TUNNEL, ( del ? 0 : BATMAN_RT_PRIO_TUNNEL + if_count ), 0, 0, del );
+			list_for_each(notun_pos, &notun_list) {
 
+				notun_node = list_entry(notun_pos, struct notun_node, list);
+	
+				if ( notun_node->addr == netaddr && notun_node->netmask == netmask ) {
+					add_this_rule = NO;
+					notun_node->match_found = YES;
+				}
+			}
+			
+			if ( add_this_rule ) {
+				add_del_rule( netaddr, netmask, BATMAN_RT_TABLE_TUNNEL, ( del ? 0 : BATMAN_RT_PRIO_TUNNEL + if_count ), 0, 0, del );
+				if_count++;
+			}
+			
 			if ( strncmp( ifr->ifr_name, "lo", IFNAMSIZ - 1 ) == 0 )
 				add_del_rule( 0, 0, BATMAN_RT_TABLE_TUNNEL, BATMAN_RT_PRIO_TUNNEL, "lo\0 ", 2, del );
 
-			if_count++;
 
 		}
 		

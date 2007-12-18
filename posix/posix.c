@@ -948,6 +948,7 @@ int main( int argc, char *argv[] ) {
 
 	INIT_LIST_HEAD_FIRST( forw_list );
 	INIT_LIST_HEAD_FIRST( gw_list );
+	INIT_LIST_HEAD_FIRST( notun_list );
 	INIT_LIST_HEAD_FIRST( if_list );
 	INIT_LIST_HEAD_FIRST( my_hna_list );
 	INIT_LIST_HEAD_FIRST( my_srv_list );

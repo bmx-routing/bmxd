@@ -210,6 +210,7 @@ struct hashtable_t *hna_hash;
 struct list_head_first forw_list;
 struct list_head_first if_list;
 struct list_head_first gw_list;
+struct list_head_first notun_list;
 struct list_head_first my_hna_list;
 struct list_head_first my_srv_list;
 //struct list_head_first link_list;
@@ -228,11 +229,13 @@ uint16_t vis_packet_size = 0;
 int s_returned_select = 0;
 int s_received_aggregations = 0;
 int s_broadcasted_aggregations = 0;
+int s_broadcasted_cp_aggregations = 0;
 int s_received_ogms = 0; 
 int s_accepted_ogms = 0;
 int s_broadcasted_ogms = 0;
 int s_pog_route_changes = 0;
 int s_curr_avg_cpu_load = 0;
+int curr_statistic_period_ms;
 
 void print_advanced_opts ( int verbose ) {
 	
@@ -275,25 +278,6 @@ void print_advanced_opts ( int verbose ) {
 	
 	fprintf( stderr, "\n\n Gateway and tunneling options:\n" );
 	
-	fprintf( stderr, "\n       --%s <ip-address/netmask> : set tunnel IP-address range leased out by GW nodes.\n", GW_TUNNEL_NETW_SWITCH );
-	fprintf( stderr, "         Only relevant for GW-nodes in %s mode\n", TWO_WAY_TUNNEL_SWITCH );
-	if ( verbose )
-		fprintf( stderr, "          default: %s/%d, allowed netmask values: %d <= value <= %d \n", DEF_GW_TUNNEL_PREFIX_STR, DEF_GW_TUNNEL_NETMASK, MIN_GW_TUNNEL_NETMASK, MAX_GW_TUNNEL_NETMASK );
-	
-	fprintf( stderr, "\n       --%s <value> : set lease time in seconds of virtual two-way tunnel IPs.\n", TUNNEL_IP_LEASE_TIME_SWITCH );
-	fprintf( stderr, "         Only relevant for GW-nodes in %s mode\n", TWO_WAY_TUNNEL_SWITCH );
-	if ( verbose )
-		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_TUNNEL_IP_LEASE_TIME, MIN_TUNNEL_IP_LEASE_TIME, MAX_TUNNEL_IP_LEASE_TIME  );
-	
-	fprintf( stderr, "\n       --%s : disables the unresponsive-GW check.\n", NO_UNRESP_CHECK_SWITCH );
-	fprintf( stderr, "         Only relevant for GW-client nodes in %s mode\n", TWO_WAY_TUNNEL_SWITCH );
-	
-	fprintf( stderr, "\n       --%s <vlue>: Use hysteresis for fast-switch gw connections (-r 3).\n", GW_CHANGE_HYSTERESIS_SWITCH );
-	fprintf( stderr, "          <value> for number additional rcvd OGMs before changing to more stable GW.\n");
-	fprintf( stderr, "         Only relevant for GW-client nodes in %s mode\n", TWO_WAY_TUNNEL_SWITCH );
-	if ( verbose )
-		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_GW_CHANGE_HYSTERESIS, MIN_GW_CHANGE_HYSTERESIS, MAX_GW_CHANGE_HYSTERESIS  );
-		
 	fprintf( stderr, "\n       --%s <value> : set preference for %s mode.\n", ONE_WAY_TUNNEL_SWITCH, ONE_WAY_TUNNEL_SWITCH );
 	fprintf( stderr, "         For GW-nodes:  0 disables this tunnel mode, a larger value enables this tunnel mode.\n" );
 	fprintf( stderr, "         For GW-cliets: 0 disables this tunnel mode, a larger value sets the preference for this mode.\n" );
@@ -305,6 +289,33 @@ void print_advanced_opts ( int verbose ) {
 	fprintf( stderr, "         For GW-cliets: 0 disables this tunnel mode, a larger value sets the preference for this mode.\n" );
 	if ( verbose )
 		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_TWO_WAY_TUNNEL, MIN_TWO_WAY_TUNNEL, MAX_TWO_WAY_TUNNEL  );
+	
+	
+	fprintf( stderr, "\n       --%s <ip-address/netmask> : set tunnel IP-address range leased out by GW nodes.\n", GW_TUNNEL_NETW_SWITCH );
+	fprintf( stderr, "         Only relevant for GW-nodes in %s mode\n", TWO_WAY_TUNNEL_SWITCH );
+	if ( verbose )
+		fprintf( stderr, "          default: %s/%d, allowed netmask values: %d <= value <= %d \n", DEF_GW_TUNNEL_PREFIX_STR, DEF_GW_TUNNEL_NETMASK, MIN_GW_TUNNEL_NETMASK, MAX_GW_TUNNEL_NETMASK );
+	
+	
+	fprintf( stderr, "\n       --%s <value> : set lease time in seconds of virtual two-way tunnel IPs.\n", TUNNEL_IP_LEASE_TIME_SWITCH );
+	fprintf( stderr, "         Only relevant for GW-nodes in %s mode\n", TWO_WAY_TUNNEL_SWITCH );
+	if ( verbose )
+		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_TUNNEL_IP_LEASE_TIME, MIN_TUNNEL_IP_LEASE_TIME, MAX_TUNNEL_IP_LEASE_TIME  );
+	
+	
+	fprintf( stderr, "\n       --%s <ip-address/netmask> : do NOT route packets from ip-address range into batman tunnel.\n", NO_TUNNEL_RULE_SWITCH );
+	fprintf( stderr, "         Only relevant for GW-client nodes\n" );
+	
+	
+	fprintf( stderr, "\n       --%s : disables the unresponsive-GW check.\n", NO_UNRESP_CHECK_SWITCH );
+	fprintf( stderr, "         Only relevant for GW-client nodes in %s mode\n", TWO_WAY_TUNNEL_SWITCH );
+	
+	fprintf( stderr, "\n       --%s <vlue>: Use hysteresis for fast-switch gw connections (-r 3).\n", GW_CHANGE_HYSTERESIS_SWITCH );
+	fprintf( stderr, "          <value> for number additional rcvd OGMs before changing to more stable GW.\n");
+	fprintf( stderr, "         Only relevant for GW-client nodes in %s mode\n", TWO_WAY_TUNNEL_SWITCH );
+	if ( verbose )
+		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_GW_CHANGE_HYSTERESIS, MIN_GW_CHANGE_HYSTERESIS, MAX_GW_CHANGE_HYSTERESIS  );
+		
 	
 	
 	
@@ -1556,6 +1567,24 @@ int calc_ogm_if_size( int if_num ) {
 
 
 
+char* get_init_string( int begin ){
+	
+#define INIT_STRING_SIZE 500
+	
+	char *dbg_init_str = debugMalloc( INIT_STRING_SIZE, 127 );
+	int i, dbg_init_out = 0;
+	
+	for (i=0; i < g_argc; i++) {
+		
+		if ( i >= begin && INIT_STRING_SIZE > dbg_init_out) {
+			dbg_init_out = dbg_init_out + snprintf( (dbg_init_str + dbg_init_out), (INIT_STRING_SIZE - dbg_init_out), "%s ", g_argv[i] );
+		}
+		
+	}
+	
+	return dbg_init_str;
+
+}
 
 
 
@@ -1581,7 +1610,7 @@ int8_t batman() {
 	uint8_t forward_old, if_rp_filter_all_old, if_rp_filter_default_old, if_send_redirects_all_old, if_send_redirects_default_old;
 	uint8_t is_my_addr, is_my_orig, is_broadcast, is_my_path, is_duplicate, is_bidirectional, is_accepted, is_direct_neigh, is_bntog, forward_duplicate_packet, has_unidirectional_flag, has_directlink_flag, has_duplicated_flag;
 	int nlq_rate_value, rand_nb_value, acceptance_nb_value;
-	int res, i;
+	int res;
 	
 				
 	uint32_t s_last_cpu_time = 0, s_curr_cpu_time = 0;
@@ -1719,10 +1748,11 @@ int8_t batman() {
 
 	curr_time = get_time();
 
-	for (i=0; i < g_argc; i++)
-		debug_output(0, "%s ",g_argv[i]);
+	char *init_string = get_init_string( 0 );
 	
-	debug_output(0, "\n");
+	debug_output(0, "Startup parameters: %s\n", init_string);
+	
+	debugFree( init_string, 1127 );
 
 	
 	while ( !is_aborted() ) {
@@ -2179,7 +2209,7 @@ int8_t batman() {
 
 		if ( aggregations_po  &&  aggregation_time <= curr_time ) {
 				
-			aggr_interval = originator_interval/aggregations_po;
+			aggr_interval = (originator_interval/aggregations_po > MAX_AGGREGATION_INTERVAL_MS) ? MAX_AGGREGATION_INTERVAL_MS :  (originator_interval/aggregations_po);
 
 			send_outstanding_packets();
 			aggregation_time = (curr_time + aggr_interval + rand_num( aggr_interval/2 )) - (aggr_interval/4);
@@ -2293,16 +2323,19 @@ int8_t batman() {
 						s_broadcasted_ogms );
 					*/
 					
-						debug_output( 7, "stats: load %2d %2d  sched. %3d, Agg. rcvd %3d, brc %3d, OGMs rcvd %3d, accept %3d, brc %3d, rt %3d \n",
-						( (s_curr_cpu_time) / curr_time ),
-						( s_curr_avg_cpu_load = ( (s_curr_cpu_time - s_last_cpu_time) / ( curr_time - statistic_timeout ) ) ),
-     s_returned_select,
-     s_received_aggregations,
-     s_broadcasted_aggregations,
-     s_received_ogms,
-     s_accepted_ogms,
-     s_broadcasted_ogms,
-     s_pog_route_changes );
+					curr_statistic_period_ms = ( curr_time - statistic_timeout );
+					
+					debug_output( 7, "stats: load %2d, %2d  sched. %3d, Agg. rcvd %3d, brc %3d (cp %3d), OGMs rcvd %3d, accept %3d, brc %3d, rt %3d \n",
+					( s_curr_cpu_time / curr_time ),
+					( s_curr_avg_cpu_load = ( (s_curr_cpu_time - s_last_cpu_time) / curr_statistic_period_ms ) ),
+					  s_returned_select * 1000 / curr_statistic_period_ms,
+       s_received_aggregations * 1000 / curr_statistic_period_ms,
+       s_broadcasted_aggregations * 1000 / curr_statistic_period_ms,
+       s_broadcasted_cp_aggregations * 1000 / curr_statistic_period_ms,
+       s_received_ogms * 1000 / curr_statistic_period_ms,
+       s_accepted_ogms * 1000 / curr_statistic_period_ms,
+       s_broadcasted_ogms * 1000 / curr_statistic_period_ms,
+       s_pog_route_changes * 1000 / curr_statistic_period_ms );
 
 					
 					if ( s_curr_avg_cpu_load < 255 )
@@ -2310,7 +2343,7 @@ int8_t batman() {
 					else 
 						(list_entry( (&if_list)->next, struct batman_if, list ))->out.reserved_someting = 255;
 					
-					s_returned_select = s_received_aggregations = s_broadcasted_aggregations = s_received_ogms = s_accepted_ogms = s_broadcasted_ogms = s_pog_route_changes = 0; 
+					s_returned_select = s_received_aggregations = s_broadcasted_aggregations = s_broadcasted_cp_aggregations = s_received_ogms = s_accepted_ogms = s_broadcasted_ogms = s_pog_route_changes = 0; 
 					
 					//s_total_ref_cpu_time = 0;
 					

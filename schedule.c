@@ -230,9 +230,11 @@ void schedule_forward_packet( /*struct bat_packet *in,*/ uint8_t unidirectional,
 }
 
 
-void send_aggregated_packets() {
+void send_aggregated_packets( int *cycle ) {
 	struct list_head *if_pos;
 	struct batman_if *batman_if;
+	
+	(*cycle)++;
 	
 	/* send all the aggregated packets (which fit into max packet size) */
 	list_for_each(if_pos, &if_list) {
@@ -256,6 +258,9 @@ void send_aggregated_packets() {
 			
 			s_broadcasted_aggregations++;
 			
+			if ( *cycle > 1 )
+				s_broadcasted_cp_aggregations++;
+			
 			batman_if->packet_out_len = sizeof( struct bat_header );
 			
 		}
@@ -274,11 +279,9 @@ void send_outstanding_packets() {
 	struct batman_if *batman_if;
 	static char orig_str[ADDR_STR_LEN];
 	uint8_t directlink, unidirectional, cloned, ttl, send_ogm_only_via_owning_if;
-	int16_t /*aggregated_packets,*/ aggregated_size, /*iteration,*/ jumbo_packet = 0;
-	//int32_t send_bucket;
-	//uint8_t done;
+	int16_t aggregated_size;
 	
-	int dbg_if_out = 0;
+	int dbg_if_out = 0, cycle = 0;
 #define	MAX_DBG_IF_SIZE 200
 	static char dbg_if_str[ MAX_DBG_IF_SIZE ];
 	
@@ -292,15 +295,6 @@ void send_outstanding_packets() {
 		
 	}
 	
-	jumbo_packet++;
-		
-	//iteration = 0;
-	//send_bucket = ((int32_t)(rand_num( 100 )));
-	//done = NO;
-	//done = YES;
-	//iteration++;
-
-	//aggregated_packets = 0;
 	
 	aggregated_size = sizeof( struct bat_header );
 	
@@ -310,9 +304,10 @@ void send_outstanding_packets() {
 		
 		if ( aggregated_size > sizeof( struct bat_header ) && ( (aggregated_size + forw_node->pack_buff_len) > MAX_PACKET_OUT_SIZE ) ) {
 
-			debug_output( 4, "jumbo packet: %d, max aggregated size: %d \n\n", jumbo_packet,  aggregated_size );
+			send_aggregated_packets( &cycle );
 			
-			send_aggregated_packets();
+			debug_output( 4, "send_outstanding_packets(): cycle %d, max aggregated size %d \n\n", cycle,  aggregated_size );
+			
 			aggregated_size = sizeof( struct bat_header );
 			
 		}
@@ -365,8 +360,6 @@ void send_outstanding_packets() {
 				
 				forw_node->if_outgoing->packet_out_len+= forw_node->pack_buff_len;
 			
-				//aggregated_packets++;
-				
 
 			/* (re-) broadcast to propagate existence of path to OG*/
 			} else if ( !unidirectional && ttl > 0 ) {
@@ -438,9 +431,10 @@ void send_outstanding_packets() {
 	
 	if ( aggregated_size > sizeof( struct bat_header )  &&  aggregated_size <= MAX_PACKET_OUT_SIZE  ) {
 
-		debug_output( 4, "jumbo packet: %d, max aggregated size: %d \n\n", jumbo_packet,  aggregated_size );
+		send_aggregated_packets( &cycle );
+		
+		debug_output( 4, "send_outstanding_packets(): cycle %d, max aggregated size %d \n\n", cycle,  aggregated_size );
 	
-		send_aggregated_packets();
 		aggregated_size = sizeof( struct bat_header );
 		
 	}

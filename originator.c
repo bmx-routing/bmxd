@@ -492,7 +492,7 @@ void purge_orig( uint32_t curr_time ) {
 		if ( (int)( ( orig_node->last_aware + PURGE_TIMEOUT ) < curr_time ) ) {
 
 			addr_to_string( orig_node->orig, orig_str, ADDR_STR_LEN );
-			debug_output( 3, "Originator timeout: originator %s, last_valid %u, last_aware %u  \n", orig_str, orig_node->last_valid, orig_node->last_aware );
+			debug_output( 4, "Originator timeout: originator %s, last_valid %u, last_aware %u  \n", orig_str, orig_node->last_valid, orig_node->last_aware );
 
 			hash_remove_bucket( orig_hash, hashit );
 

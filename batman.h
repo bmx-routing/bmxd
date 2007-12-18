@@ -96,10 +96,11 @@ extern char unix_path[];
 #define BATMAN_TUN_PREFIX "bat"
 #define MAX_BATMAN_TUN_INDEX 20 
 
-#define TEST_SWITCH              "test"
+#define TEST_SWITCH            "test"
 
 #define MAX_PACKET_OUT_SIZE 300
-	
+#define MAX_AGGREGATION_INTERVAL_MS 250
+
 extern int32_t aggregations_po;
 
 
@@ -344,7 +345,7 @@ extern int32_t two_way_tunnel;
 
 extern int32_t one_way_tunnel;
 #define ONE_WAY_TUNNEL_SWITCH "one-way-tunnel"
-#define DEF_ONE_WAY_TUNNEL 0
+#define DEF_ONE_WAY_TUNNEL 1
 #define MIN_ONE_WAY_TUNNEL 0
 #define MAX_ONE_WAY_TUNNEL 4
 
@@ -361,6 +362,9 @@ extern uint8_t  gw_tunnel_netmask;
 #define MAX_GW_TUNNEL_NETMASK 30
 #define DEF_GW_TUNNEL_NETMASK 22
 #define GW_TUNNEL_NETW_SWITCH "gw-tunnel-network"
+
+#define NO_TUNNEL_RULE_SWITCH "no-tunnel-rule"
+
 
 extern int32_t tunnel_ip_lease_time;
 #define MIN_TUNNEL_IP_LEASE_TIME 60 /*seconds*/
@@ -473,6 +477,7 @@ extern struct list_head_first todo_list;
 extern struct list_head_first my_hna_list;
 extern struct list_head_first my_srv_list;
 extern struct list_head_first gw_list;
+extern struct list_head_first notun_list;
 //extern struct list_head_first link_list;
 extern struct list_head_first pifnb_list;
 
@@ -484,6 +489,7 @@ extern struct debug_clients debug_clients;
 extern int s_returned_select;
 extern int s_received_aggregations;
 extern int s_broadcasted_aggregations;
+extern int s_broadcasted_cp_aggregations;
 extern int s_received_ogms;
 extern int s_accepted_ogms;
 extern int s_broadcasted_ogms;
@@ -600,6 +606,13 @@ struct orig_node                 /* structure for orig_list maintaining nodes of
 	
 };
 
+struct notun_node
+{
+	struct list_head list;
+	uint32_t addr;
+	uint8_t  netmask;
+	uint8_t  match_found;
+};
 
 struct pifnb_node
 {
