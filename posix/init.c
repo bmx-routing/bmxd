@@ -614,7 +614,7 @@ void apply_init_args( int argc, char *argv[] ) {
 				exit(EXIT_FAILURE);
 			}
 			
-			originator_interval = 1500;
+			//originator_interval = 1500;
 			//printf ("-o %d \\ \n", originator_interval );
 	
 			set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "20", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
