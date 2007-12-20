@@ -103,20 +103,18 @@ extern char unix_path[];
 
 extern int32_t aggregations_po;
 
-
 #define AGGREGATIONS_SWITCH    "ogm-aggregation"
 #define NO_AGGREGATIONS_SWITCH "no-ogm-aggregation"
 #define AGGREGATIONS_PO_SWITCH "aggregations-per-interval"
 #define MIN_AGGREGATIONS_PO 2
 #define MAX_AGGREGATIONS_PO 20
-#define DEF_AGGREGATIONS_PO NO
-#define ENABLED_AGGREGATIONS_PO "5"
+#define DEF_AGGREGATIONS_PO 5
 
 extern int32_t sequence_range;
 #define FULL_SEQ_RANGE ((uint16_t)-1)
 #define MAX_SEQ_RANGE 250      /* TBD: should not be larger until ogm->nbrf and neigh_node.packet_count (and related variables) is only 8 bit */
 #define MIN_SEQ_RANGE 1
-#define DEFAULT_SEQ_RANGE 128  /* NBRF: NeighBor Ranking sequence Frame) sliding packet range of received orginator messages in squence numbers (should be a multiple of our word size) */
+#define DEF_SEQ_RANGE 100  /* NBRF: NeighBor Ranking sequence Frame) sliding packet range of received orginator messages in squence numbers (should be a multiple of our word size) */
 #define NBRFSIZE_SWITCH          "window-size"
 
 #define MAX_NUM_WORDS (( MAX_SEQ_RANGE / WORD_BIT_SIZE ) + ( ( MAX_SEQ_RANGE % WORD_BIT_SIZE > 0)? 1 : 0 )) 
@@ -151,7 +149,7 @@ extern uint8_t no_tun_persist;
 #define NO_TUNPERSIST_SWITCH  "no-tunpersist"
 
 extern int32_t bidirect_link_to;
-#define DEFAULT_BIDIRECT_TIMEOUT 2  
+#define DEF_BIDIRECT_TIMEOUT 20 
 #define MAX_BIDIRECT_TIMEOUT 100
 #define MIN_BIDIRECT_TIMEOUT 1
 #define BIDIRECT_TIMEOUT_SWITCH         "bi-link-timeout"
@@ -165,45 +163,46 @@ extern int32_t ttl;
 #define TTL_IF_SWITCH		 't'
 
 extern int32_t dup_ttl_limit;
-#define DEF_DUP_TTL_LIMIT 0
+#define DEF_DUP_TTL_LIMIT 5
 #define MIN_DUP_TTL_LIMIT 0
 #define MAX_DUP_TTL_LIMIT 10
 #define DUP_TTL_LIMIT_SWITCH	 "dups-ttl"
 
 extern int32_t dup_rate;
-#define DEF_DUP_RATE 0
+#define DEF_DUP_RATE 99
 #define MIN_DUP_RATE 0
 #define MAX_DUP_RATE 100
 #define DUP_RATE_SWITCH	         "dups-rate"
 
 extern int32_t dup_degrad;
-#define DEF_DUP_DEGRAD 0
+#define DEF_DUP_DEGRAD 2 /* FIXME: set me back to 2 ?? !!!!!!!!! */
 #define MIN_DUP_DEGRAD 0
 #define MAX_DUP_DEGRAD 100
 #define DUP_DEGRAD_SWITCH	  "dups-ttl-degradation"
 
-extern int32_t send_clones; // useful for asymmetric-path and backup-path discovery
-#define DEF_SEND_CLONES 100
-#define MIN_SEND_CLONES 0
-#define MAX_SEND_CLONES 400
-#define SEND_CLONES_SWITCH   "send-clones"
-#define SEND_CLONES_IF_SWITCH 'c'
+extern int32_t wl_clones;
+#define DEF_WL_CLONES 200
+#define MIN_WL_CLONES 0
+#define MAX_WL_CLONES 400
+#define WL_CLONES_SWITCH   "send-clones"
+
+#define CLONES_IF_SWITCH 'c'
 
 #define WLAN_IF_SWITCH 'w'
-#define DEF_WLAN_IF_CLONES 200
+//#define DEF_WLAN_IF_CLONES send_clones
 
 #define LAN_IF_SWITCH 'l'
-#define DEF_LAN_IF_CLONES 100
+#define DEF_LAN_CLONES 100
 
 
 extern int32_t asymmetric_weight;
-#define DEF_ASYMMETRIC_WEIGHT 0
+#define DEF_ASYMMETRIC_WEIGHT 100
 #define MIN_ASYMMETRIC_WEIGHT 0
 #define MAX_ASYMMETRIC_WEIGHT 100
 #define ASYMMETRIC_WEIGHT_SWITCH "asymmetric-weight"
 
 extern int32_t asymmetric_exp;
-#define DEF_ASYMMETRIC_EXP 0
+#define DEF_ASYMMETRIC_EXP 1
 #define MIN_ASYMMETRIC_EXP 0
 #define MAX_ASYMMETRIC_EXP 3
 #define ASYMMETRIC_EXP_SWITCH    "asymmetric-exp"
@@ -214,17 +213,6 @@ extern int32_t rebrc_delay;
 #define MAX_REBRC_DELAY 100
 #define REBRC_DELAY_SWITCH     "re-brc-delay"
 
-extern int32_t penalty_min;
-#define DEF_PENALTY_MIN 0
-#define MIN_PENALTY_MIN 1
-#define MAX_PENALTY_MIN (MAX_SEQ_RANGE/2) /* TBD: this must adapt to the configured value */
-#define PENALTY_MIN_SWITCH       "penalty-min"
-
-extern int32_t penalty_exceed;
-#define DEF_PENALTY_EXCEED 2
-#define MIN_PENALTY_EXCEED 1
-#define MAX_PENALTY_EXCEED 10
-#define PENALTY_EXCEED_SWITCH    "penalty-exceed"
 
 //extern int8_t advanced_opts;
 #define ADVANCED_SWITCH          "dangerous"
@@ -351,7 +339,7 @@ extern int32_t one_way_tunnel;
 
 extern int32_t gw_change_hysteresis;
 #define GW_CHANGE_HYSTERESIS_SWITCH "gw-change-hysteresis"
-#define DEF_GW_CHANGE_HYSTERESIS 1
+#define DEF_GW_CHANGE_HYSTERESIS 2
 #define MIN_GW_CHANGE_HYSTERESIS 1
 #define MAX_GW_CHANGE_HYSTERESIS ((sequence_range / 2) + 1) /*TBD: what if sequence range is decreased after setting this? */
 
@@ -869,6 +857,7 @@ struct batman_if
 	uint8_t if_ttl;
 	uint8_t if_bidirect_link_to;
 	uint8_t send_ogm_only_via_owning_if;
+	uint8_t is_wlan;
 	int16_t if_send_clones;
 	int16_t packet_out_len;
 	unsigned char packet_out[MAX_PACKET_OUT_SIZE + 1];

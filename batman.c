@@ -88,11 +88,11 @@ int8_t resist_blocked_send = DEF_RESIST_BLOCKED_SEND;
 
 /* bidirectional link timeout in number+1 of maximum acceptable missed (not received by this node)
 of last send own OGMs rebroadcasted from neighbors */
-int32_t bidirect_link_to = DEFAULT_BIDIRECT_TIMEOUT;
+int32_t bidirect_link_to = DEF_BIDIRECT_TIMEOUT;
 
 int32_t aggregations_po = DEF_AGGREGATIONS_PO;
 
-int32_t sequence_range = DEFAULT_SEQ_RANGE;
+int32_t sequence_range = DEF_SEQ_RANGE;
 
 int32_t initial_seqno = DEF_INITIAL_SEQNO;
 
@@ -106,7 +106,7 @@ int32_t dup_ttl_limit = DEF_DUP_TTL_LIMIT;
 int32_t dup_rate =  DEF_DUP_RATE;
 int32_t dup_degrad = DEF_DUP_DEGRAD;
 
-int32_t send_clones = DEF_SEND_CLONES;
+int32_t wl_clones = DEF_WL_CLONES;
 
 int32_t asymmetric_weight = DEF_ASYMMETRIC_WEIGHT;
 
@@ -117,11 +117,7 @@ int32_t rebrc_delay = DEF_REBRC_DELAY;
 int32_t default_para_set =  DEF_BMX_PARA_SET;
 
 
-int32_t penalty_min = DEF_PENALTY_MIN;
-int32_t penalty_exceed = DEF_PENALTY_EXCEED;
-
-
-int16_t num_words = ( DEFAULT_SEQ_RANGE / WORD_BIT_SIZE ) + ( ( DEFAULT_SEQ_RANGE % WORD_BIT_SIZE > 0)? 1 : 0 );
+int16_t num_words = ( DEF_SEQ_RANGE / WORD_BIT_SIZE ) + ( ( DEF_SEQ_RANGE % WORD_BIT_SIZE > 0)? 1 : 0 );
 
 int32_t ogm_port = DEF_BASE_PORT;
 int32_t my_gw_port = DEF_GW_PORT;
@@ -334,11 +330,11 @@ void print_advanced_opts ( int verbose ) {
 	
 	fprintf( stderr, "\n       --%s : Disable OGM aggregation \n", NO_AGGREGATIONS_SWITCH);
 	
-	fprintf( stderr, "\n       --%s : Send aggregated OGMs every 1/%sth of the originator inteval. \n", AGGREGATIONS_SWITCH, ENABLED_AGGREGATIONS_PO);
+	fprintf( stderr, "\n       --%s : Send aggregated OGMs every 1/%dth of the originator inteval. \n", AGGREGATIONS_SWITCH, DEF_AGGREGATIONS_PO);
 
 	fprintf( stderr, "\n       --%s <value>: Set number of aggregations per originator interval manually.\n", AGGREGATIONS_PO_SWITCH );
 	if ( verbose )
-		fprintf( stderr, "          default: %s, allowed values: %d <= value <= %d \n", ENABLED_AGGREGATIONS_PO, MIN_AGGREGATIONS_PO, MAX_AGGREGATIONS_PO  );
+		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_AGGREGATIONS_PO, MIN_AGGREGATIONS_PO, MAX_AGGREGATIONS_PO  );
 
 	fprintf( stderr, "\n       --%s <value> : change default TTL of originator packets.\n", TTL_SWITCH );
 	fprintf( stderr, "        /%c <value> : attached after an interface name\n", TTL_IF_SWITCH );
@@ -362,11 +358,11 @@ void print_advanced_opts ( int verbose ) {
 	fprintf( stderr, "        /%c <value> : attached after an interface name\n", BIDIRECT_TIMEOUT_IF_SWITCH );
 	fprintf( stderr, "          to set individual bidirectionl-timeout value this interface.\n");
 	if ( verbose )
-		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEFAULT_BIDIRECT_TIMEOUT, MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT  );
+		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_BIDIRECT_TIMEOUT, MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT  );
 	
 	fprintf( stderr, "\n       --%s <value> : set neighbor ranking frame size\n", NBRFSIZE_SWITCH );
 	if ( verbose )
-		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d\n", DEFAULT_SEQ_RANGE, MIN_SEQ_RANGE, MAX_SEQ_RANGE  );
+		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d\n", DEF_SEQ_RANGE, MIN_SEQ_RANGE, MAX_SEQ_RANGE  );
 	
 	fprintf( stderr, "\n       --%s <value> : set initial seqno for this nodes OGMs\n", INITIAL_SEQNO_SWITCH );
 	if ( verbose )
@@ -377,11 +373,11 @@ void print_advanced_opts ( int verbose ) {
 	if ( verbose )
 		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d\n", DEF_REBRC_DELAY, MIN_REBRC_DELAY, MAX_REBRC_DELAY  );
 	
-	fprintf( stderr, "\n       --%s <value> : (re-)broadcast OGMs with given probability\n", SEND_CLONES_SWITCH );
-	fprintf( stderr, "        /%c <value> : attached after an interface name\n", SEND_CLONES_IF_SWITCH );
+	fprintf( stderr, "\n       --%s <value> : (re-)broadcast OGMs via wlan IFs with given probability\n", WL_CLONES_SWITCH );
+	fprintf( stderr, "        /%c <value> : attached after an interface name\n", CLONES_IF_SWITCH );
 	fprintf( stderr, "          to specify an individual re-broadcast probability for this interface.\n");
 	if ( verbose )
-		fprintf( stderr, "          default: %d, allowed probability values in percent: %d <= value <= %d\n", DEF_SEND_CLONES, MIN_SEND_CLONES, MAX_SEND_CLONES  );
+		fprintf( stderr, "          default: %d, allowed probability values in percent: %d <= value <= %d\n", DEF_WL_CLONES, MIN_WL_CLONES, MAX_WL_CLONES  );
 	
 	fprintf( stderr, "\n       --%s <value> : ignore rcvd OGMs to respect asymmetric-links.\n", ASYMMETRIC_EXP_SWITCH );
 	fprintf( stderr, "          Ignore with probability TQ^<value>.\n");	
@@ -1020,9 +1016,9 @@ void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, 
 	debug_output( 4, "update_routes() \n" );
 
 
-	if ( ( orig_node != NULL ) && ( orig_node->router != neigh_node ) ) {
+	if (  orig_node->router != neigh_node  ) {
 
-		if ( ( orig_node != NULL ) && ( neigh_node != NULL ) ) {
+		if (  neigh_node != NULL  ) {
 			addr_to_string( orig_node->orig, orig_str, ADDR_STR_LEN );
 			addr_to_string( neigh_node->addr, next_str, ADDR_STR_LEN );
 			debug_output( 4, "Route to %s via %s\n", orig_str, next_str );
@@ -1075,19 +1071,16 @@ void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, 
 
 		orig_node->router = neigh_node;
 
-	} else if ( orig_node != NULL ) {
+		
+	/* may be just HNA changed */
+	} else if ( ( hna_array_len != orig_node->hna_array_len ) || ( ( hna_array_len > 0 ) && ( orig_node->hna_array_len > 0 )  && 
+			( memcmp( orig_node->hna_array, hna_array, hna_array_len * sizeof(struct ext_packet) ) != 0 ) ) ) {
 
-		/* may be just HNA changed */
-		if ( ( hna_array_len != orig_node->hna_array_len ) || ( ( hna_array_len > 0 ) && ( orig_node->hna_array_len > 0 ) && 
-				     ( memcmp( orig_node->hna_array, hna_array, hna_array_len * sizeof(struct ext_packet) ) != 0 ) ) ) {
+		if ( orig_node->hna_array_len > 0 )
+			add_del_other_hna( orig_node, NULL, 0 );
 
-			if ( orig_node->hna_array_len > 0 )
-				add_del_other_hna( orig_node, NULL, 0 );
-
-			if ( ( hna_array_len > 0 ) && ( hna_array != NULL ) )
-				add_del_other_hna( orig_node, hna_array, hna_array_len );
-
-		}
+		if ( ( hna_array_len > 0 ) && ( hna_array != NULL ) )
+			add_del_other_hna( orig_node, hna_array, hna_array_len );
 
 	}
 
@@ -1311,7 +1304,7 @@ uint8_t alreadyConsidered( struct orig_node *orig_node, uint16_t seqno, uint32_t
 
 }
 
-
+/*
 int isDuplicate( struct orig_node *orig_node, uint16_t seqno ) {
 
 	prof_start( PROF_is_duplicate );
@@ -1322,7 +1315,7 @@ int isDuplicate( struct orig_node *orig_node, uint16_t seqno ) {
 
 		neigh_node = list_entry( neigh_pos, struct neigh_node, list );
 
-		if ( /* ( neigh == 0 || (neigh == neigh_node->addr && if_incoming == neigh_node->if_incoming) ) && */
+		if ( // ( neigh == 0 || (neigh == neigh_node->addr && if_incoming == neigh_node->if_incoming) ) &&
 		     get_bit_status( neigh_node->seq_bits, orig_node->last_seqno, seqno ) ) {
 
 			prof_stop( PROF_is_duplicate );
@@ -1337,7 +1330,7 @@ int isDuplicate( struct orig_node *orig_node, uint16_t seqno ) {
 	return 0;
 
 }
-
+*/
 
 /*
 int isBntog( uint32_t neigh, struct orig_node *orig_tog_node ) {
@@ -1609,7 +1602,7 @@ int8_t batman() {
 	static char orig_str[ADDR_STR_LEN], blocker_str[ADDR_STR_LEN], hna_str[ADDR_STR_LEN], neigh_str[ADDR_STR_LEN], ifaddr_str[ADDR_STR_LEN];
 	uint8_t forward_old, if_rp_filter_all_old, if_rp_filter_default_old, if_send_redirects_all_old, if_send_redirects_default_old;
 	uint8_t is_my_addr, is_my_orig, is_broadcast, is_my_path, is_duplicate, is_bidirectional, is_accepted, is_direct_neigh, is_bntog, forward_duplicate_packet, has_unidirectional_flag, has_directlink_flag, has_duplicated_flag;
-	int nlq_rate_value, rand_nb_value, acceptance_nb_value;
+	int tq_rate_value, rand_nb_value, acceptance_nb_value;
 	int res;
 	
 				
@@ -2013,12 +2006,11 @@ int8_t batman() {
 					//s_f_cpu_time = (uint32_t)clock();
 
 					
-					is_duplicate = isDuplicate( orig_node, ogm->seqno );
+					is_duplicate = ( orig_node->last_seqno == ogm->seqno ); /* isDuplicate( orig_node, ogm->seqno );*/
 
 					is_bidirectional = ( orig_neigh_node->link_node != NULL && 
 							( ((uint16_t)( (if_incoming->out.seqno - OUT_SEQNO_OFFSET) -
 							  orig_neigh_node->link_node->bidirect_link[if_incoming->if_num] )) < bidirect_link_to ) );
-					//isBidirectionalNeigh( orig_neigh_node, if_incoming );
 					
 					set_primary_orig( orig_node, ( !has_duplicated_flag && is_direct_neigh ) );
 					
@@ -2042,17 +2034,17 @@ int8_t batman() {
 					//t_g_cpu_time+= (uint32_t)clock() - s_g_cpu_time;
 					//s_h_cpu_time = (uint32_t)clock();
 
-					nlq_rate_value = nlq_rate( orig_neigh_node, if_incoming );
+					tq_rate_value = tq_rate( orig_neigh_node, if_incoming );
 					
-					rand_nb_value = rand_num( sequence_range /*-1*/ ); //cheating to absorb late own OGM replies
+					rand_nb_value = rand_num( sequence_range -1 ); //cheating to absorb late own OGM replies
 										
-					acceptance_nb_value = acceptance_rate( nlq_rate_value, sequence_range /*sequence_range <-> 100% because lq loss has already been applied by realety*/ );
+					acceptance_nb_value = acceptance_rate( tq_rate_value, sequence_range /*sequence_range <-> 100% because lq loss has already been applied by realety*/ );
 					
 					uint16_t rand_num_hundret = rand_num( 100 );
 					
 					if ( DEBUG_RCVD_ALL_BITS )
 						set_dbg_rcvd_all_bits( orig_node, ogm->seqno, if_incoming, 
-						      (is_bidirectional && 
+						      ( is_bidirectional && 
 							( !is_duplicate || 
 							  ( dup_ttl_limit > 0 && 
 							    orig_node->last_seqno == ogm->seqno && 
@@ -2063,10 +2055,9 @@ int8_t batman() {
 					
 					/* do we accept or ignore the OGM according to our current policy ? */
 					is_accepted = ( is_bidirectional &&
-							( asymmetric_weight == DEF_ASYMMETRIC_WEIGHT ||
-							  ( rand_nb_value < acceptance_nb_value +
-								( ( ((MAX_ASYMMETRIC_WEIGHT - asymmetric_weight) * sequence_range ) / 100 )  ) ) ) &&
-							( !is_duplicate || 
+							( rand_nb_value < acceptance_nb_value +
+								( ( ((MAX_ASYMMETRIC_WEIGHT - asymmetric_weight) * sequence_range ) / 100 )  ) )  &&
+							( !is_duplicate || /* FIXME: Do we really need this, we dont acceppt old seqno... */
 							  ( dup_ttl_limit > 0  && 
 							    orig_node->last_seqno == ogm->seqno  &&
 							    orig_node->last_seqno_largest_ttl < ogm->ttl + dup_ttl_limit  &&
@@ -2075,20 +2066,6 @@ int8_t batman() {
 							  ) 
 							) 
 						      );
-					
-					/*
-					if (    !is_accepted &&
-					        is_bidirectional &&
-						( asymmetric_weight == DEF_ASYMMETRIC_WEIGHT ||
-						  ( rand_nb_value < acceptance_nb_value +
-						    ( ( ((MAX_ASYMMETRIC_WEIGHT - asymmetric_weight) * sequence_range ) / 100 )  ) ) ) &&
-						is_duplicate ) {
-						
-						debug_output( 3, "Not accepting packet from OG %s via NB %s dup_ttl_limit %d, last_seqno %d, seqno %d, largest_ttl %d, ttl %d,  rand_num_hundret %d, dup_rate %d, dup_degrad %d \n", orig_str, neigh_str,
-								dup_ttl_limit, orig_node->last_seqno, ogm->seqno, orig_node->last_seqno_largest_ttl, ogm->ttl, rand_num_hundret, dup_rate, dup_degrad );
-						
-						}
-					*/
 					
 					if ( is_accepted ) {
 						
@@ -2101,13 +2078,14 @@ int8_t batman() {
 					/* MUST be after update_orig to represent the lates statistics */
 					is_bntog = ( ( orig_node->router != NULL ) && ( orig_node->router->addr == neigh ) );
 					
-					
-					debug_output( 4, "  received via bidirectional link: %s, accepted OGM: %s, BNTOG: %s, iam a mobile device: %s, nlq_rate: %d, rand_nb: %d, acceptance_nb: %d !\n", 
-							( is_bidirectional ? "YES" : "NO" ), 
-							( is_accepted ? "YES" : "NO" ), 
-							( is_bntog ? "YES" : "NO" ), 
-							( mobile_device ? "YES" : "NO" ), 
-							nlq_rate_value, rand_nb_value, acceptance_nb_value );
+					//if ( is_accepted  &&  ogm->ttl != 50  /*&&  tq_rate_value < 50*/ )
+					debug_output( 4, "  accepted OGM: %s  bidirectLink: %s  duplicate: %s  BNTOG: %s  mobile: %s  rand_nb: %d  acceptance_nb: %d (tq: %d), asymmetric_w: %d  lSqno: %d  cSeqno: %d  lTtl: %d  cTtl: %d  ttl_limit: %d  rand100: %d   dup_rate: %d  dup_degrad: %d  !\n", 
+							( is_accepted ? "Y" : "N" ), 
+							( is_bidirectional ? "Y" : "N" ), 
+							( is_duplicate ? "Y" : "N" ), 
+							( is_bntog ? "Y" : "N" ), 
+							( mobile_device ? "Y" : "N" ), 
+									rand_nb_value, acceptance_nb_value,  tq_rate_value, asymmetric_weight, orig_node->last_seqno, ogm->seqno ,orig_node->last_seqno_largest_ttl, ogm->ttl, dup_ttl_limit, rand_num_hundret, dup_rate, dup_degrad );
 					
 					
 					//t_h_cpu_time+= (uint32_t)clock() - s_h_cpu_time;
@@ -2182,12 +2160,12 @@ int8_t batman() {
 						debug_output( 3, "NOT FORWARDED: packet from OG %s via NB %s dup_ttl_limit %d, last_seqno %d, seqno %d, largest_ttl %d, ttl %d,  rand_num_hundret %d, dup_rate %d, dup_degrad %d \n", orig_str, neigh_str,
 								dup_ttl_limit, orig_node->last_seqno, ogm->seqno, orig_node->last_seqno_largest_ttl, ogm->ttl, rand_num_hundret, dup_rate, dup_degrad );
 						
-						debug_output( 3, "  received via bidirectional link: %s, accepted OGM: %s, BNTOG: %s, iam a mobile device: %s, nlq_rate: %d, rand_nb: %d, acceptance_nb: %d !\n", 
+						debug_output( 3, "  received via bidirectional link: %s, accepted OGM: %s, BNTOG: %s, iam a mobile device: %s, tq_rate: %d, rand_nb: %d, acceptance_nb: %d !\n", 
 								( is_bidirectional ? "YES" : "NO" ), 
 										( is_accepted ? "YES" : "NO" ), 
 										( is_bntog ? "YES" : "NO" ), 
 										( mobile_device ? "YES" : "NO" ), 
-										nlq_rate_value, rand_nb_value, acceptance_nb_value );
+										tq_rate_value, rand_nb_value, acceptance_nb_value );
 						
 						
 					}

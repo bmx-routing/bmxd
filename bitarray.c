@@ -37,20 +37,22 @@ void bit_init( TYPE_OF_WORD *seq_bits ) {
 };
 
 /* returns true if corresponding bit in given seq_bits indicates so and curr_seqno is within range of last_seqno */
+/*
 uint8_t get_bit_status( TYPE_OF_WORD *seq_bits, uint16_t last_seqno, uint16_t curr_seqno ) {
 
 	int16_t diff, word_offset, word_num;
 
 	diff= last_seqno - curr_seqno;
+	
 	if ( diff < 0 || diff >= sequence_range ) {
 		return 0;
 
 	} else {
 
-		word_offset= ( last_seqno - curr_seqno ) % WORD_BIT_SIZE;	/* which position in the selected word */
-		word_num   = ( last_seqno - curr_seqno ) / WORD_BIT_SIZE;	/* which word */
+		word_offset= ( diff ) % WORD_BIT_SIZE;	// which position in the selected word
+		word_num   = ( diff ) / WORD_BIT_SIZE;	// which word
 
-		if ( seq_bits[word_num] & 1<<word_offset )   /* get position status */
+		if ( seq_bits[word_num] & 1<<word_offset )   // get position status
 			return 1;
 		else
 			return 0;
@@ -58,6 +60,7 @@ uint8_t get_bit_status( TYPE_OF_WORD *seq_bits, uint16_t last_seqno, uint16_t cu
 	}
 
 }
+*/
 
 /* print the packet array, for debugging purposes */
 static char bit_string[MAX_SEQ_RANGE+2];
@@ -155,11 +158,12 @@ void bit_shift( TYPE_OF_WORD *seq_bits, int32_t n ) {
 
 
 /* receive and process one packet, returns 1 if received seq_num is considered new, 0 if old  */
-char bit_get_packet( TYPE_OF_WORD *seq_bits, int16_t seq_num_diff, int8_t set_mark ) {
+char purge_old_bits( TYPE_OF_WORD *seq_bits, int16_t seq_num_diff, int8_t set_mark ) {
 
 	int i;
 
-	if ( ( seq_num_diff < 0 ) && ( seq_num_diff >= -sequence_range ) ) {  /* we already got a sequence number higher than this one, so we just mark it. this should wrap around the integer just fine */
+	/* old, but in-range seqno */
+	if ( ( seq_num_diff < 0 ) && ( seq_num_diff >= -sequence_range ) ) {  
 
 		
 		debug_output( 0, "Error - We do not acceppt old seqno anymore !!!, check this out \n");
@@ -170,7 +174,9 @@ char bit_get_packet( TYPE_OF_WORD *seq_bits, int16_t seq_num_diff, int8_t set_ma
 
 	}
 	
-	if ( ( seq_num_diff > sequence_range ) || ( seq_num_diff < -sequence_range ) ) {        /* it seems we missed a lot of packets or the other host restarted */
+	
+	/* it seems we missed a lot of packets or the other host restarted */
+	if ( ( seq_num_diff > sequence_range ) || ( seq_num_diff < -sequence_range ) ) {        
 
 		if ( seq_num_diff > sequence_range )
 			debug_output( 4, "It seems we missed a lot of packets (%i) !\n",  seq_num_diff-1 );
@@ -186,6 +192,8 @@ char bit_get_packet( TYPE_OF_WORD *seq_bits, int16_t seq_num_diff, int8_t set_ma
 		if ( set_mark )
 			seq_bits[0] = 1;  /* we only have the latest packet */
 
+		
+	/* new, or next-expected seqno: seq_num_diff >= 0 && seq_num_dicc <= sequence_range */
 	} else {
 
 		bit_shift(seq_bits, seq_num_diff);

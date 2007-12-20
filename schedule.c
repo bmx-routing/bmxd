@@ -124,7 +124,8 @@ void schedule_forward_packet( /*struct bat_packet *in,*/ uint8_t unidirectional,
 	prof_start( PROF_schedule_forward_packet );
 	struct forw_node *forw_node_new, *forw_packet_tmp = NULL;
 	struct list_head *list_pos, *prev_list_head;
-
+	int ext_msg_size;
+	
 	debug_output( 4, "schedule_forward_packet():  \n" );
 
 	if ( !( ( (*received_ogm)->ttl == 1 && directlink) || (*received_ogm)->ttl > 1 ) ){
@@ -139,40 +140,53 @@ void schedule_forward_packet( /*struct bat_packet *in,*/ uint8_t unidirectional,
 		INIT_LIST_HEAD( &forw_node_new->list );
 
 
-		forw_node_new->pack_buff_len = sizeof(struct bat_packet) + 
-					(((*received_gw_pos) + (*received_hna_pos) + (*received_srv_pos) + (*received_vis_pos) + (*received_pip_pos) ) * sizeof( struct ext_packet));
+		/* primary-interface-extension messages do not need to be rebroadcastes */
+		/* other extension messages only if not unidirectional and ttl > 1 */
+		
+		ext_msg_size = ( !unidirectional  &&  (*received_ogm)->ttl > 1 ) ? 
+				(((*received_gw_pos) + (*received_hna_pos) + (*received_srv_pos) + (*received_vis_pos) ) * sizeof( struct ext_packet)) : 0 ;
+		
+		forw_node_new->pack_buff_len = sizeof(struct bat_packet) + ext_msg_size;
+		
+		
 		
 		forw_node_new->pack_buff = debugMalloc( forw_node_new->pack_buff_len, 505 );
 		
 		memcpy( forw_node_new->pack_buff, (*received_ogm), sizeof(struct bat_packet) );
 		
-		if ( (*received_gw_pos) > 0 )
+		if ( ext_msg_size  &&  (*received_gw_pos) > 0 )
 			memcpy( forw_node_new->pack_buff + sizeof(struct bat_packet), (unsigned char *)(*received_gw_array), ((*received_gw_pos) * sizeof( struct ext_packet)) );
 
-		if ( (*received_hna_pos) > 0 )
+		if ( ext_msg_size  &&  (*received_hna_pos) > 0 )
 			memcpy( forw_node_new->pack_buff + sizeof(struct bat_packet) + 
 					(((*received_gw_pos) ) * sizeof( struct ext_packet)),
 					   (unsigned char *)(*received_hna_array), ((*received_hna_pos) * sizeof( struct ext_packet)) );
 		
-		if ( (*received_srv_pos) > 0 )
+		if ( ext_msg_size  &&  (*received_srv_pos) > 0 )
 			memcpy( forw_node_new->pack_buff + sizeof(struct bat_packet) + 
 					(((*received_gw_pos) + (*received_hna_pos)) * sizeof( struct ext_packet)), 
 					   (unsigned char *)(*received_srv_array), ((*received_srv_pos) * sizeof( struct ext_packet)) );
 
-		if ( (*received_vis_pos) > 0 )
+		if ( ext_msg_size  &&  (*received_vis_pos) > 0 )
 			memcpy( forw_node_new->pack_buff + sizeof(struct bat_packet) + 
 					(((*received_gw_pos) + (*received_hna_pos) + (*received_srv_pos)) * sizeof( struct ext_packet)), 
 					    (unsigned char *)(*received_vis_array), ((*received_vis_pos) * sizeof( struct ext_packet)) );
 		
+		
+		/* primary interface annoucements must not be rebroadcasted */
+		/*
 		if ( (*received_pip_pos) > 0 )
 			memcpy( forw_node_new->pack_buff + sizeof(struct bat_packet) + 
 					(((*received_gw_pos) + (*received_hna_pos) + (*received_srv_pos) + (*received_vis_pos)) * sizeof( struct ext_packet)), 
 					    (unsigned char *)(*received_pip_array), ((*received_pip_pos) * sizeof( struct ext_packet)) );
+		*/
 		
 		((struct bat_packet *)forw_node_new->pack_buff)->ttl--;
 		//((struct bat_packet *)forw_node_new->pack_buff)->prev_hop = (*received_neigh);
 		((struct bat_packet *)forw_node_new->pack_buff)->prev_hop_id = neigh_id;
 		
+		((struct bat_packet *)forw_node_new->pack_buff)->size = (forw_node_new->pack_buff_len)>>2;
+
 		forw_node_new->send_time = (*received_batman_time) + rand_num( rebrc_delay );
 		forw_node_new->own = 0;
 
@@ -233,40 +247,46 @@ void schedule_forward_packet( /*struct bat_packet *in,*/ uint8_t unidirectional,
 void send_aggregated_packets( int *cycle ) {
 	struct list_head *if_pos;
 	struct batman_if *batman_if;
-	
+	uint8_t iftype;
+
 	(*cycle)++;
 	
 	/* send all the aggregated packets (which fit into max packet size) */
-	list_for_each(if_pos, &if_list) {
-
-		batman_if = list_entry(if_pos, struct batman_if, list);
 	
-		if ( batman_if->packet_out_len > sizeof( struct bat_header ) ) {
-			
-			((struct bat_header*)&(batman_if->packet_out))->version = COMPAT_VERSION;
-			((struct bat_header*)&(batman_if->packet_out))->size = (batman_if->packet_out_len)/4;
-			
-			if ( (batman_if->packet_out_len)%4 != 0) {
+	/* broadcast via lan interfaces first */
+	for ( iftype = 0; iftype <= 1; iftype++ ) {
+		
+		list_for_each(if_pos, &if_list) {
+		
+			batman_if = list_entry(if_pos, struct batman_if, list);
+		
+			if ( batman_if->is_wlan == iftype && batman_if->packet_out_len > sizeof( struct bat_header ) ) {
 				
-				debug_output( 0, "Error - trying to send strange packet length %d oktets.\n", batman_if->packet_out_len );
-				restore_and_exit(0);
+				((struct bat_header*)&(batman_if->packet_out))->version = COMPAT_VERSION;
+				((struct bat_header*)&(batman_if->packet_out))->size = (batman_if->packet_out_len)/4;
+				
+				if ( batman_if->packet_out_len > MAX_PACKET_OUT_SIZE  ||  (batman_if->packet_out_len)%4 != 0) {
+					
+					debug_output( 0, "Error - trying to send strange packet length %d oktets.\n", batman_if->packet_out_len );
+					restore_and_exit(0);
+					
+				}
+				
+				if ( send_udp_packet( batman_if->packet_out, batman_if->packet_out_len, &batman_if->broad, batman_if->udp_send_sock ) < 0 )
+					restore_and_exit(0);
+				
+				s_broadcasted_aggregations++;
+				
+				if ( *cycle > 1 )
+					s_broadcasted_cp_aggregations++;
+				
+				batman_if->packet_out_len = sizeof( struct bat_header );
 				
 			}
-			
-			if ( send_udp_packet( batman_if->packet_out, batman_if->packet_out_len, &batman_if->broad, batman_if->udp_send_sock ) < 0 )
-				restore_and_exit(0);
-			
-			s_broadcasted_aggregations++;
-			
-			if ( *cycle > 1 )
-				s_broadcasted_cp_aggregations++;
-			
-			batman_if->packet_out_len = sizeof( struct bat_header );
-			
+		
 		}
-	
-	}
 
+	}
 }
 
 
@@ -302,7 +322,8 @@ void send_outstanding_packets() {
 		
 		forw_node = list_entry( forw_pos, struct forw_node, list );
 		
-		if ( aggregated_size > sizeof( struct bat_header ) && ( (aggregated_size + forw_node->pack_buff_len) > MAX_PACKET_OUT_SIZE ) ) {
+		if ( aggregated_size > sizeof( struct bat_header ) && 
+				   ( aggregations_po == 0  ||  (aggregated_size + forw_node->pack_buff_len) > MAX_PACKET_OUT_SIZE )  ) {
 
 			send_aggregated_packets( &cycle );
 			
@@ -369,10 +390,10 @@ void send_outstanding_packets() {
 
 					batman_if = list_entry(if_pos, struct batman_if, list);
 
-					if ( ( forw_node->send_bucket <= batman_if->if_send_clones ) && 
+					if ( ( forw_node->send_bucket < batman_if->if_send_clones ) && 
 						( !send_ogm_only_via_owning_if || forw_node->if_outgoing == batman_if ) ) { 
 					
-						if ( (forw_node->send_bucket + 100) <= batman_if->if_send_clones )
+						if ( (forw_node->send_bucket + 100) < batman_if->if_send_clones )
 							forw_node->done = NO;
 						
 						
@@ -429,14 +450,12 @@ void send_outstanding_packets() {
 	}
 	
 	
-	if ( aggregated_size > sizeof( struct bat_header )  &&  aggregated_size <= MAX_PACKET_OUT_SIZE  ) {
-
+	if ( aggregated_size > sizeof( struct bat_header ) ) {
+	
 		send_aggregated_packets( &cycle );
 		
 		debug_output( 4, "send_outstanding_packets(): cycle %d, max aggregated size %d \n\n", cycle,  aggregated_size );
 	
-		aggregated_size = sizeof( struct bat_header );
-		
 	}
 
 	

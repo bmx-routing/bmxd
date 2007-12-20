@@ -34,11 +34,15 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 
-
 #include "../os.h"
 #include "../batman.h"
 
 #define IOCSETDEV 1
+
+
+//from  linux/wireless.h
+#define SIOCGIWNAME    0x8B01          /* get name == wireless protocol */
+
 
 int8_t stop;
 
@@ -568,12 +572,10 @@ void apply_init_args( int argc, char *argv[] ) {
    {DUP_TTL_LIMIT_SWITCH,       1, 0, 0},
    {DUP_RATE_SWITCH,	        1, 0, 0},
    {DUP_DEGRAD_SWITCH,	        1, 0, 0},
-   {SEND_CLONES_SWITCH,         1, 0, 0},
+   {WL_CLONES_SWITCH,         1, 0, 0},
    {ASYMMETRIC_WEIGHT_SWITCH,   1, 0, 0},
    {ASYMMETRIC_EXP_SWITCH,      1, 0, 0},
    {REBRC_DELAY_SWITCH,         1, 0, 0},
-   {PENALTY_MIN_SWITCH,         1, 0, 0},
-   {PENALTY_EXCEED_SWITCH,      1, 0, 0},
    {PARALLEL_BAT_NETA_SWITCH,   0, 0, 0},
    {PARALLEL_BAT_NETB_SWITCH,   0, 0, 0},
    {PARALLEL_BAT_NETC_SWITCH,   0, 0, 0},
@@ -615,33 +617,29 @@ void apply_init_args( int argc, char *argv[] ) {
 			}
 			
 			//originator_interval = 1500;
-			//printf ("-o %d \\ \n", originator_interval );
 	
-			set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "20", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
+			//set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "20", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
 	
 			set_init_arg( NBRFSIZE_SWITCH, "100", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &sequence_range );
 			num_words = ( sequence_range / WORD_BIT_SIZE ) + ( ( sequence_range % WORD_BIT_SIZE > 0)? 1 : 0 );
 	
-			set_init_arg( GW_CHANGE_HYSTERESIS_SWITCH, "2", MIN_GW_CHANGE_HYSTERESIS, MAX_GW_CHANGE_HYSTERESIS, &gw_change_hysteresis ); 
+			//set_init_arg( GW_CHANGE_HYSTERESIS_SWITCH, "2", MIN_GW_CHANGE_HYSTERESIS, MAX_GW_CHANGE_HYSTERESIS, &gw_change_hysteresis ); 
 	
-			set_init_arg( DUP_TTL_LIMIT_SWITCH, "5", MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT, &dup_ttl_limit );
+			//set_init_arg( DUP_TTL_LIMIT_SWITCH, "5", MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT, &dup_ttl_limit );
 	
-			set_init_arg( DUP_RATE_SWITCH, "99", MIN_DUP_RATE, MAX_DUP_RATE, &dup_rate );
+			//set_init_arg( DUP_RATE_SWITCH, "99", MIN_DUP_RATE, MAX_DUP_RATE, &dup_rate );
 	
-			set_init_arg( DUP_DEGRAD_SWITCH, "2", MIN_DUP_DEGRAD, MAX_DUP_DEGRAD, &dup_degrad );
+			//set_init_arg( DUP_DEGRAD_SWITCH, "2", MIN_DUP_DEGRAD, MAX_DUP_DEGRAD, &dup_degrad );
 	
-			set_init_arg( SEND_CLONES_SWITCH, "200", MIN_SEND_CLONES, MAX_SEND_CLONES, &send_clones );
-					//compat_version = DEF_COMPAT_VERSION + 1;
+			//set_init_arg( WL_CLONES_SWITCH, "200", MIN_WL_CLONES, MAX_WL_CLONES, &wl_clones );
 	
-			set_init_arg( ASYMMETRIC_WEIGHT_SWITCH, "100", MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT, &asymmetric_weight );
+			//set_init_arg( ASYMMETRIC_WEIGHT_SWITCH, "100", MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT, &asymmetric_weight );
 	
-			set_init_arg( ASYMMETRIC_EXP_SWITCH, "1", MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP, &asymmetric_exp );
+			//set_init_arg( ASYMMETRIC_EXP_SWITCH, "1", MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP, &asymmetric_exp );
 	
-//			set_init_arg( REBRC_DELAY_SWITCH, "35", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
+			//set_init_arg( REBRC_DELAY_SWITCH, "0", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
 	
-			set_init_arg( AGGREGATIONS_PO_SWITCH, ENABLED_AGGREGATIONS_PO, MIN_AGGREGATIONS_PO, MAX_AGGREGATIONS_PO, &aggregations_po );
-			set_init_arg( REBRC_DELAY_SWITCH, "0", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
-
+			//set_init_arg( AGGREGATIONS_PO_SWITCH, "5", MIN_AGGREGATIONS_PO, MAX_AGGREGATIONS_PO, &aggregations_po );
 			
 			
 			if ( strcmp( BMX_DEFAULTS_SWITCH, long_options[option_index].name ) == 0 ) {
@@ -680,7 +678,32 @@ void apply_init_args( int argc, char *argv[] ) {
 						exit(EXIT_FAILURE);
 					}
 
-					printf ("Applying %s ! \nThis parametrization causes the same behavior as implemented in batmand-0.2 !\n", long_options[option_index].name);
+					//printf ("Applying %s ! \nThis parametrization causes the same behavior as implemented in batmand-0.2 !\n", long_options[option_index].name);
+					
+					originator_interval = 1000;
+					
+					set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "2", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
+	
+					set_init_arg( NBRFSIZE_SWITCH, "128", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &sequence_range );
+					num_words = ( sequence_range / WORD_BIT_SIZE ) + ( ( sequence_range % WORD_BIT_SIZE > 0)? 1 : 0 );
+	
+					set_init_arg( GW_CHANGE_HYSTERESIS_SWITCH, "2", MIN_GW_CHANGE_HYSTERESIS, MAX_GW_CHANGE_HYSTERESIS, &gw_change_hysteresis ); 
+	
+					set_init_arg( DUP_TTL_LIMIT_SWITCH, "0", MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT, &dup_ttl_limit );
+	
+					set_init_arg( DUP_RATE_SWITCH, "0", MIN_DUP_RATE, MAX_DUP_RATE, &dup_rate );
+	
+					set_init_arg( DUP_DEGRAD_SWITCH, "100", MIN_DUP_DEGRAD, MAX_DUP_DEGRAD, &dup_degrad );
+	
+					set_init_arg( WL_CLONES_SWITCH, "100", MIN_WL_CLONES, MAX_WL_CLONES, &wl_clones );
+	
+					set_init_arg( ASYMMETRIC_WEIGHT_SWITCH, "0", MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT, &asymmetric_weight );
+	
+					set_init_arg( ASYMMETRIC_EXP_SWITCH, "0", MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP, &asymmetric_exp );
+	
+					set_init_arg( REBRC_DELAY_SWITCH, "0", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
+	
+					set_init_arg( AGGREGATIONS_PO_SWITCH, "0", MIN_AGGREGATIONS_PO, MAX_AGGREGATIONS_PO, &aggregations_po );
 
 					found_args += 1;
 					break;
@@ -698,21 +721,21 @@ void apply_init_args( int argc, char *argv[] ) {
 					
 	
 					originator_interval = 1500;
-					// printf ("-o %d \\ \n", originator_interval );
 	
 					set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "20", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
 	
 					set_init_arg( NBRFSIZE_SWITCH, "100", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &sequence_range );
 					num_words = ( sequence_range / WORD_BIT_SIZE ) + ( ( sequence_range % WORD_BIT_SIZE > 0)? 1 : 0 );
 	
+					set_init_arg( GW_CHANGE_HYSTERESIS_SWITCH, "2", MIN_GW_CHANGE_HYSTERESIS, MAX_GW_CHANGE_HYSTERESIS, &gw_change_hysteresis ); 
+					
 					set_init_arg( DUP_TTL_LIMIT_SWITCH, "2", MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT, &dup_ttl_limit );
 	
 					set_init_arg( DUP_RATE_SWITCH, "99", MIN_DUP_RATE, MAX_DUP_RATE, &dup_rate );
 	
 					set_init_arg( DUP_DEGRAD_SWITCH, "2", MIN_DUP_DEGRAD, MAX_DUP_DEGRAD, &dup_degrad );
 	
-					set_init_arg( SEND_CLONES_SWITCH, "200", MIN_SEND_CLONES, MAX_SEND_CLONES, &send_clones );
-					//compat_version = DEF_COMPAT_VERSION + 1;
+					set_init_arg( WL_CLONES_SWITCH, "200", MIN_WL_CLONES, MAX_WL_CLONES, &wl_clones );
 					
 					set_init_arg( ASYMMETRIC_WEIGHT_SWITCH, "100", MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT, &asymmetric_weight );
 	
@@ -720,6 +743,7 @@ void apply_init_args( int argc, char *argv[] ) {
 	
 					set_init_arg( REBRC_DELAY_SWITCH, "35", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
 	
+					set_init_arg( AGGREGATIONS_PO_SWITCH, "0", MIN_AGGREGATIONS_PO, MAX_AGGREGATIONS_PO, &aggregations_po );
 					
 					found_args += 1;
 					break;
@@ -808,9 +832,9 @@ void apply_init_args( int argc, char *argv[] ) {
 					found_args += 2;
 					break;
 				
-				} else if ( strcmp( SEND_CLONES_SWITCH, long_options[option_index].name ) == 0 ) {
+				} else if ( strcmp( WL_CLONES_SWITCH, long_options[option_index].name ) == 0 ) {
 
-					set_init_arg( SEND_CLONES_SWITCH, optarg, MIN_SEND_CLONES, MAX_SEND_CLONES, &send_clones );
+					set_init_arg( WL_CLONES_SWITCH, optarg, MIN_WL_CLONES, MAX_WL_CLONES, &wl_clones );
 					
 					//if( send_clones > DEF_SEND_CLONES )
 					//compat_version = DEF_COMPAT_VERSION + 1;
@@ -836,18 +860,6 @@ void apply_init_args( int argc, char *argv[] ) {
 					found_args += 2;
 					break;
 							
-				} else if ( strcmp( PENALTY_MIN_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					set_init_arg( PENALTY_MIN_SWITCH, optarg, MIN_PENALTY_MIN, MAX_PENALTY_MIN, &penalty_min );
-					found_args += 2;
-					break;
-
-				} else if ( strcmp( PENALTY_EXCEED_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					set_init_arg( PENALTY_EXCEED_SWITCH, optarg, MIN_PENALTY_EXCEED, MAX_PENALTY_EXCEED, &penalty_exceed );
-					found_args += 2;
-					break;
-
 				} else if ( strcmp( RT_PRIO_OFFSET_SWITCH, long_options[option_index].name ) == 0 ) {
 
 					set_init_arg( RT_PRIO_OFFSET_SWITCH, optarg, MIN_RT_PRIO_OFFSET, MAX_RT_PRIO_OFFSET, &rt_prio_offset );
@@ -908,14 +920,14 @@ void apply_init_args( int argc, char *argv[] ) {
 						
 				} else if ( strcmp( NO_AGGREGATIONS_SWITCH, long_options[option_index].name ) == 0 ) {
 
-					set_init_arg( AGGREGATIONS_PO_SWITCH, "0", 0, 0, &aggregations_po );
+					aggregations_po = 0;
 					set_init_arg( REBRC_DELAY_SWITCH, "35", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
 					found_args += 1;
 					break;
 					
 				} else if ( strcmp( AGGREGATIONS_SWITCH, long_options[option_index].name ) == 0 ) {
 
-					set_init_arg( AGGREGATIONS_PO_SWITCH, ENABLED_AGGREGATIONS_PO, MIN_AGGREGATIONS_PO, MAX_AGGREGATIONS_PO, &aggregations_po );
+					aggregations_po = DEF_AGGREGATIONS_PO;
 					set_init_arg( REBRC_DELAY_SWITCH, "0", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
 					found_args += 1;
 					break;
@@ -1351,7 +1363,7 @@ void apply_init_args( int argc, char *argv[] ) {
 			batman_if->udp_tunnel_sock = 0;
 			batman_if->if_bidirect_link_to = bidirect_link_to;
 			batman_if->if_ttl = ttl;
-			batman_if->if_send_clones = send_clones;
+			batman_if->if_send_clones = wl_clones;
 			batman_if->packet_out_len = sizeof( struct bat_header );
 
 			list_add_tail( &batman_if->list, &if_list );
@@ -1372,9 +1384,7 @@ void apply_init_args( int argc, char *argv[] ) {
 				
 				if ( batman_if->if_num == 0 ) {
 					
-					printf ("Applying %s ! \n", BMX_DEFAULTS_SWITCH); 
-					printf ("ATTENTION!  This parametrization assumes the first given interface argument to be the one and only wireless interface, followed by zero or more lan interfaces ! ");
-					printf ("To change this assumtion mark the interfaces explicitly using /%c to specify the wlan interface(s) and /%c to specify the lan interface(s). Example: batmand eth0 /%c [wlan0 /%c ath1 /%c ...] \n", WLAN_IF_SWITCH, LAN_IF_SWITCH, LAN_IF_SWITCH, WLAN_IF_SWITCH, WLAN_IF_SWITCH);
+					//printf ("Applying %s ! \n", BMX_DEFAULTS_SWITCH); 
 				
 				} else {
 					
@@ -1391,20 +1401,20 @@ void apply_init_args( int argc, char *argv[] ) {
 					batman_if->if_ttl = 1;
 					//printf ("Interface %s specific option: /%c %d \n", batman_if->dev, TTL_IF_SWITCH, batman_if->if_ttl );
 
-					batman_if->if_send_clones = 100;
-					//printf ("Interface %s specific option: /%c %d \n", batman_if->dev, SEND_CLONES_IF_SWITCH, batman_if->if_send_clones );
-
 				}
 					
+				
+				if( !batman_if->is_wlan )
+					batman_if->if_send_clones = DEF_LAN_CLONES;
+					//printf ("Interface %s specific option: /%c %d \n", batman_if->dev, SEND_CLONES_IF_SWITCH, batman_if->if_send_clones );
+
+			
 			} else if( default_para_set == PARA_SET_GRAZ07 ) {
 				
 				if ( batman_if->if_num == 0 ) {
 					
-					printf ("Applying %s ! \n", GRAZ07_DEFAULTS_SWITCH); 
-					printf ("ATTENTION!  This parametrization assumes the first given interface argument to be the one and only wireless interface, followed by zero or more lan interfaces ! ");
-					printf ("To change this assumtion mark the interfaces explicitly using /%c to specify the wlan interface(s) and /%c to specify the lan interface(s). Example: batmand eth0 /%c [wlan0 /%c ath1 /%c ...] \n", WLAN_IF_SWITCH, LAN_IF_SWITCH, LAN_IF_SWITCH, WLAN_IF_SWITCH, WLAN_IF_SWITCH);
-					
-					printf ("Parametrization based on experience gained from the Wireless Community Weekend in Graz 2007!\n");
+					//printf ("Applying %s ! \n", GRAZ07_DEFAULTS_SWITCH); 
+					//printf ("Parametrization based on experience gained from the Wireless Community Weekend in Graz 2007!\n");
 					
 				} else {
 					
@@ -1421,11 +1431,13 @@ void apply_init_args( int argc, char *argv[] ) {
 					batman_if->if_ttl = 1;
 					//printf ("Interface %s specific option: /%c %d \n", batman_if->dev, TTL_IF_SWITCH, batman_if->if_ttl );
 
-					batman_if->if_send_clones = 100;
-					//printf ("Interface %s specific option: /%c %d \n", batman_if->dev, SEND_CLONES_IF_SWITCH, batman_if->if_send_clones );
-
 				}
 					
+				
+				if( !batman_if->is_wlan )
+					batman_if->if_send_clones = DEF_LAN_CLONES;
+					//printf ("Interface %s specific option: /%c %d \n", batman_if->dev, SEND_CLONES_IF_SWITCH, batman_if->if_send_clones );
+				
 			}
 
 			
@@ -1469,16 +1481,16 @@ void apply_init_args( int argc, char *argv[] ) {
 
 					found_args += 2;
 
-				} else if ( (argv[found_args])[1] == SEND_CLONES_IF_SWITCH && argc > (found_args+1) ) {
+				} else if ( (argv[found_args])[1] == CLONES_IF_SWITCH && argc > (found_args+1) ) {
 
 					errno = 0;
 					int16_t tmp = strtol ( argv[ found_args+1 ], NULL , 10 );
 					//printf ("Interface %s specific option: /%c %d \n", batman_if->dev, ((argv[found_args])[1]), tmp );
 
-					if ( tmp < MIN_SEND_CLONES || tmp > MAX_SEND_CLONES ) {
+					if ( tmp < MIN_WL_CLONES || tmp > MAX_WL_CLONES ) {
 
 						printf( "Invalid /%c specified: %i.\n Value must be %i <= value <= %i.\n", 
-								SEND_CLONES_IF_SWITCH, tmp, MIN_SEND_CLONES, MAX_SEND_CLONES );
+								CLONES_IF_SWITCH, tmp, MIN_WL_CLONES, MAX_WL_CLONES );
 
 						exit(EXIT_FAILURE);
 					}
@@ -1508,7 +1520,7 @@ void apply_init_args( int argc, char *argv[] ) {
 					//printf ("Interface %s specific option: /%c  \n", batman_if->dev, ((argv[found_args])[1]) );
 					//printf (" applying %s specific option: /%c %d \n", batman_if->dev, SEND_CLONES_IF_SWITCH, DEF_WLAN_IF_CLONES );
 
-					batman_if->if_send_clones = DEF_WLAN_IF_CLONES;
+					batman_if->if_send_clones = wl_clones;
 
 					found_args += 1;
 
@@ -1519,7 +1531,7 @@ void apply_init_args( int argc, char *argv[] ) {
 					//printf ("Interface %s specific option: /%c  \n", batman_if->dev, ((argv[found_args])[1]) );
 					//printf (" applying %s specific option: /%c %d \n", batman_if->dev, SEND_CLONES_IF_SWITCH, DEF_LAN_IF_CLONES );
 
-					batman_if->if_send_clones = DEF_LAN_IF_CLONES;
+					batman_if->if_send_clones = DEF_LAN_CLONES;
 
 					found_args += 1;
 
@@ -1886,7 +1898,6 @@ void init_interface ( struct batman_if *batman_if ) {
 	struct ifreq int_req;
 	int16_t on = 1;
 
-
 	if ( strlen( batman_if->dev ) > IFNAMSIZ - 1 ) {
 		printf( "Error - interface name too long: %s\n", batman_if->dev );
 		restore_defaults();
@@ -1967,6 +1978,17 @@ void init_interface ( struct batman_if *batman_if ) {
 
 	batman_if->netaddr = ( ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr & batman_if->addr.sin_addr.s_addr );
 	batman_if->netmask = bit_count( ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr );
+	
+	
+	/* check if interface is a wireless interface */
+	
+	
+
+	if (  (batman_if->is_wlan = (ioctl( batman_if->udp_recv_sock, SIOCGIWNAME, &int_req ) < 0 ? NO : YES ))  )
+		printf( "Detected wireless interface %s  (use %s /l to correct this assumption) !\n", batman_if->dev, batman_if->dev);
+	else 
+		printf( "Detected non-wireless interface %s  (use %s /w to correct this assumption) !\n", batman_if->dev, batman_if->dev);
+	
 	
 	if ( more_rules ) {
 
