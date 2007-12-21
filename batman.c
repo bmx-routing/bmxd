@@ -1593,13 +1593,13 @@ int8_t batman() {
 	struct forw_node *forw_node;
 	uint32_t debug_timeout, statistic_timeout, todo_timeout, vis_timeout, select_timeout, aggregation_time = 0;
 	uint16_t neigh_id4him;
-	struct hna_key key;
+	//struct hna_key key;
 	uint8_t drop_it;
-	struct hna_hash_node *hash_node;
+	//struct hna_hash_node *hash_node;
 
 	uint16_t aggr_interval;
 	
-	static char orig_str[ADDR_STR_LEN], blocker_str[ADDR_STR_LEN], hna_str[ADDR_STR_LEN], neigh_str[ADDR_STR_LEN], ifaddr_str[ADDR_STR_LEN];
+	static char orig_str[ADDR_STR_LEN], /*blocker_str[ADDR_STR_LEN],*/ /*hna_str[ADDR_STR_LEN],*/ neigh_str[ADDR_STR_LEN], ifaddr_str[ADDR_STR_LEN];
 	uint8_t forward_old, if_rp_filter_all_old, if_rp_filter_default_old, if_send_redirects_all_old, if_send_redirects_default_old;
 	uint8_t is_my_addr, is_my_orig, is_broadcast, is_my_path, is_duplicate, is_bidirectional, is_accepted, is_direct_neigh, is_bntog, forward_duplicate_packet, has_unidirectional_flag, has_directlink_flag, has_duplicated_flag;
 	int tq_rate_value, rand_nb_value, acceptance_nb_value;
@@ -1617,8 +1617,8 @@ int8_t batman() {
 	
 	struct bat_packet *ogm;
 	struct ext_packet *hna_array, *gw_array, *srv_array, *vis_array, *pip_array;
-	int16_t hna_count, hna_array_len, /*gw_count,*/ gw_array_len, srv_array_len, vis_array_len, pip_array_len;
-
+	int16_t /*hna_count,*/ hna_array_len, /*gw_count,*/ gw_array_len, srv_array_len, vis_array_len, pip_array_len;
+	
 	uint32_t neigh, curr_time;
 	struct batman_if *if_incoming;
 
@@ -1952,50 +1952,6 @@ int8_t batman() {
 
 					debug_output( 4, "Drop packet: First contact with neighbor MUST be without duplicated flag ! \n" );
 					drop_it = YES;
-
-				} else {
-				
-					/* check if received HNA information is already blocked by other node */
-					if ( hna_array_len > 0 ) {
-	
-						debug_output( 4, "HNA information received (%i HNA network%s): \n", hna_array_len, ( hna_array_len > 1 ? "s": "" ) );
-						hna_count = 0;
-	
-						while ( hna_count < hna_array_len ) {
-							
-							key.addr               = (hna_array[hna_count]).EXT_HNA_FIELD_ADDR;
-							key.KEY_FIELD_ANETMASK = (hna_array[hna_count]).EXT_HNA_FIELD_NETMASK;
-							key.KEY_FIELD_ATYPE    = (hna_array[hna_count]).EXT_HNA_FIELD_TYPE;
-			
-							hash_node = get_hna_node( &key );
-			
-							addr_to_string( key.addr, hna_str, ADDR_STR_LEN );
-	
-							if ( hash_node->status == HNA_HASH_NODE_MYONE || 
-								(hash_node->status == HNA_HASH_NODE_OTHER && hash_node->orig != orig_node) ) {
-				
-								drop_it = YES;
-								
-								if ( hash_node->orig != NULL )
-									addr_to_string( hash_node->orig->orig, blocker_str, ADDR_STR_LEN );
-								else 
-									sprintf( blocker_str, "myself");
-									
-								debug_output( 3, "Dropping packet: hna: %s/%d type %d, announced by %s is blocked by %s !\n",
-										hna_str, key.KEY_FIELD_ANETMASK, key.KEY_FIELD_ATYPE, orig_str, blocker_str );
-				
-							} else {
-	
-								if (  key.KEY_FIELD_ANETMASK > 0  &&  key.KEY_FIELD_ANETMASK <= 32  &&  key.KEY_FIELD_ATYPE <= A_TYPE_MAX )
-									debug_output( 4, "  hna: %s/%i, type %d\n", hna_str, key.KEY_FIELD_ANETMASK, key.KEY_FIELD_ATYPE );
-								else
-									debug_output( 4, "  hna: %s/%i, type %d -> ignoring (invalid netmask or type) \n", hna_str, key.KEY_FIELD_ANETMASK, key.KEY_FIELD_ATYPE );
-	
-							}
-							
-							hna_count++;
-						}
-					}
 
 				}
 				

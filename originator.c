@@ -132,7 +132,12 @@ void update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node
 	uint8_t max_packet_count = 0 /*, is_new_seqno = 0*/; // TBD: check max_packet_count for overflows if MAX_SEQ_RANGE > 256
 	static char addr_str[ADDR_STR_LEN], old_gw_str[ADDR_STR_LEN];
 	struct bat_packet *in = *received_ogm;
-
+	
+	int16_t hna_count;
+	struct hna_key key;
+	struct hna_hash_node *hash_node;
+	static char orig_str[ADDR_STR_LEN], blocker_str[ADDR_STR_LEN], hna_str[ADDR_STR_LEN];
+	
 	debug_output( 4, "update_originator(): Searching and updating originator entry of received packet,  \n" );
 
 	/* it seems we missed a lot of packets or the other host restarted */
@@ -185,7 +190,7 @@ void update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node
 
 	}
 
-	/*is_new_seqno =*/ purge_old_bits( neigh_node->seq_bits, in->seqno - orig_node->last_seqno, 1 );
+	purge_old_bits( neigh_node->seq_bits, in->seqno - orig_node->last_seqno, 1 );
 	
 	neigh_node->packet_count = bit_packet_count( neigh_node->seq_bits, sequence_range );
 
@@ -196,9 +201,72 @@ void update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node
 
 	}
 	
+	/* check for duplicate/blocked hna announcements */
+	if ( best_neigh_node == neigh_node  &&  *received_hna_pos > 0 ) {
+
+		debug_output( 4, "HNA information received (%i HNA networks): \n", *received_hna_pos );
+		hna_count = 0;
+
+		while ( hna_count < *received_hna_pos ) {
+					
+			key.addr               = ((*received_hna_array)[hna_count]).EXT_HNA_FIELD_ADDR;
+			key.KEY_FIELD_ANETMASK = ((*received_hna_array)[hna_count]).EXT_HNA_FIELD_NETMASK;
+			key.KEY_FIELD_ATYPE    = ((*received_hna_array)[hna_count]).EXT_HNA_FIELD_TYPE;
 	
+			hash_node = get_hna_node( &key );
 	
-	if ( /* is_new_seqno */ orig_node->last_seqno != in->seqno ) {
+			addr_to_string( key.addr, hna_str, ADDR_STR_LEN );
+
+			if ( hash_node->status == HNA_HASH_NODE_MYONE || 
+				(hash_node->status == HNA_HASH_NODE_OTHER && hash_node->orig != orig_node) ) 
+			{
+		
+				if ( hash_node->orig != NULL )
+					addr_to_string( hash_node->orig->orig, blocker_str, ADDR_STR_LEN );
+				else 
+					sprintf( blocker_str, "myself");
+							
+				
+				debug_output( 3, "Dropping packet, purging packet bits, del route... ! hna: %s/%d type %d, announced by %s is blocked by %s !\n",
+						hna_str, key.KEY_FIELD_ANETMASK, key.KEY_FIELD_ATYPE, orig_str, blocker_str );
+				
+				list_for_each( neigh_pos, &orig_node->neigh_list ) {
+
+					tmp_neigh_node = list_entry( neigh_pos, struct neigh_node, list );
+
+					memset( &tmp_neigh_node->seq_bits, 0, MAX_NUM_WORDS * sizeof(TYPE_OF_WORD) );
+					
+					tmp_neigh_node->packet_count = 0;
+
+				}
+				
+				update_routes( orig_node, NULL, NULL, 0 );
+				
+				/* restart gateway selection if this was our current gw */
+				if (  curr_gateway != NULL  &&  curr_gateway->orig_node == orig_node  ) {
+	
+					addr_to_string( orig_node->orig, addr_str, ADDR_STR_LEN );
+					debug_output( 3, "Restart gateway selection. Current GW %s disqualified...\n", addr_str );
+	
+					curr_gateway = NULL;
+				}
+				
+				return;
+				
+			} else {
+
+				if (  key.KEY_FIELD_ANETMASK > 0  &&  key.KEY_FIELD_ANETMASK <= 32  &&  key.KEY_FIELD_ATYPE <= A_TYPE_MAX )
+					debug_output( 4, "  hna: %s/%i, type %d\n", hna_str, key.KEY_FIELD_ANETMASK, key.KEY_FIELD_ATYPE );
+				else
+					debug_output( 4, "  hna: %s/%i, type %d -> ignoring (invalid netmask or type) \n", hna_str, key.KEY_FIELD_ANETMASK, key.KEY_FIELD_ATYPE );
+
+			}
+
+			hna_count++;
+		}
+	}	
+	
+	if ( orig_node->last_seqno != in->seqno ) {
 
 		/* estimated average originaotr interval of this node */
 		if ( in->seqno > orig_node->last_seqno  &&  orig_node->last_new_valid > 0 ) {
@@ -229,10 +297,9 @@ void update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node
 	orig_node->last_valid = *received_batman_time;
 
 	
-	
-	
-	/* only change recorded attributes and route if arrived via best neighbor */
+	/* only evaluate and change recorded attributes and route if arrived via best neighbor */
 	if ( best_neigh_node == neigh_node ) {
+
 		
 		if ( orig_node->last_nbrf != in->nbrf ) {
 		
@@ -269,7 +336,6 @@ void update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node
 				add_del_other_srv( orig_node, *received_srv_array, *received_srv_pos );
 
 		}
-		
 		
 		
 		/* may be GW announcements changed */
@@ -309,13 +375,6 @@ void update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node
 		
 	}
 	
-	
-
-	
-	
-	
-	
-
 	prof_stop( PROF_update_originator );
 
 }
