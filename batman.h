@@ -466,7 +466,7 @@ extern struct list_head_first my_hna_list;
 extern struct list_head_first my_srv_list;
 extern struct list_head_first gw_list;
 extern struct list_head_first notun_list;
-//extern struct list_head_first link_list;
+extern struct list_head_first link_list;
 extern struct list_head_first pifnb_list;
 
 extern struct vis_if vis_if;
@@ -564,8 +564,9 @@ struct orig_node                 /* structure for orig_list maintaining nodes of
 	uint32_t last_valid;              /* when last valid ogm from this node was received */
 	uint32_t last_aware;              /* when last valid ogm via  this node was received */
 	uint32_t first_valid_sec;
-	uint16_t last_seqno;              /* last and best known squence number */
-	uint8_t  last_seqno_largest_ttl;  /* largest (best) TTL received with last sequence number */
+	uint16_t last_valid_seqno;              /* last and best known squence number */
+	uint16_t last_rcvd_seqno;
+	uint8_t  last_valid_largest_ttl;  /* largest (best) TTL received with last sequence number */
 	uint8_t  last_path_ttl;
 	
 	uint32_t last_new_valid;
@@ -583,17 +584,17 @@ struct orig_node                 /* structure for orig_list maintaining nodes of
 	int16_t  srv_array_len;
 	
 	TYPE_OF_WORD *dbg_rcvd_bits;
-	uint16_t last_dbg_rcvd_seqno;
 	
 	uint32_t last_link; /* when the last time a direct OGM has been received via any of this OGs' interfaces */
-	uint16_t id4him;    /* when last_link expired id4him is reset */
+	uint16_t id4him;    /* a NB ID from this node for the neighboring node, when last_link expired id4him must be reset */
 #define MAX_ID4HIM 255	
-	uint16_t id4me;
+	uint16_t id4me;     /* the ID given by the neighboring node to me */
 	
-	struct link_node *link_node;
+	struct link_node *link_node; /*contains additional information about links to neighboring nodes */
 	
 };
 
+/* list element to store all the disabled tunnel rule netmasks */
 struct notun_node
 {
 	struct list_head list;
@@ -602,25 +603,28 @@ struct notun_node
 	uint8_t  match_found;
 };
 
+/* list element for fast access to all neighboring nodes' primary interface originators */
 struct pifnb_node
 {
 	struct list_head list;
 	struct orig_node *pog;
 };
 
+
 /* MUST be allocated and initiated all or nothing !
  * MUST be initiated with any unidirectional received OGM
  * from a direct link NB */
 struct link_node
 {
-//	struct list_head list;
-//	uint32_t addr;
+	struct list_head list;
+	
 	struct orig_node *orig_node;
 	
 	uint16_t *bidirect_link;    /* if node is a bidrectional neighbour, when my OGM was broadcasted (replied) by this node and received by me */
 	
 	TYPE_OF_WORD *bi_link_bits;       /* for bidirect-link statistics */
 	uint16_t *last_bi_link_seqno;     /* for bidirect-link statistics */
+	uint8_t *rcvd_bi_link_packets;
 	
 	TYPE_OF_WORD *lq_bits;            /* for link-quality (lq) statistics */
 	uint16_t last_lq_seqno;           /* for link-quality (lq) statistics */

@@ -166,7 +166,7 @@ char purge_old_bits( TYPE_OF_WORD *seq_bits, int16_t seq_num_diff, int8_t set_ma
 	if ( ( seq_num_diff < 0 ) && ( seq_num_diff >= -sequence_range ) ) {  
 
 		
-		debug_output( 0, "Error - We do not acceppt old seqno anymore !!!, check this out \n");
+		debug_output( 0, "Error - We do not acceppt old seqno anymore !!!, seq_num_diff %d  \n", seq_num_diff );
 		//if ( set_mark )
 		//	bit_mark( seq_bits, -seq_num_diff );
 

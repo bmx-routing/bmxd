@@ -33,6 +33,9 @@ void schedule_own_packet( struct batman_if *batman_if, uint32_t current_time ) {
 
 	struct forw_node *forw_node_new, *forw_packet_tmp = NULL;
 	struct list_head *list_pos, *prev_list_head;
+	
+	struct link_node *ln;
+	struct list_head *link_pos;
 
 
 	forw_node_new = debugMalloc( sizeof(struct forw_node), 501 );
@@ -115,6 +118,19 @@ void schedule_own_packet( struct batman_if *batman_if, uint32_t current_time ) {
 
 	batman_if->out.seqno++;
 
+	list_for_each( link_pos, &link_list ) {
+
+		ln = list_entry(link_pos, struct link_node, list);
+		
+		purge_old_bits( ( &ln->bi_link_bits[ batman_if->if_num * MAX_NUM_WORDS ] ),
+				   ( ( batman_if->out.seqno - OUT_SEQNO_OFFSET ) - ln->last_bi_link_seqno[batman_if->if_num] ), 0 );
+	
+		ln->last_bi_link_seqno[batman_if->if_num] = ( batman_if->out.seqno - OUT_SEQNO_OFFSET );
+		
+		ln->rcvd_bi_link_packets[batman_if->if_num] = bit_packet_count( ( &ln->bi_link_bits[ batman_if->if_num * MAX_NUM_WORDS ] ), sequence_range );
+		
+	}
+	
 }
 
 

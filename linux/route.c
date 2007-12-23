@@ -68,22 +68,19 @@ void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t so
 
 		if ( dest == 0 ) {
 
-			debug_output( 3, "%s default route via %s %s (table %i)\n", del ? "Deleting" : "Adding", dev, str3, rt_table );
-//			debug_output( 4, "%s default route via %s (table %i)\n", del ? "Deleting" : "Adding", dev, rt_table );
+			debug_output( 4, "%s default route via %s %s (table %i)\n", del ? "Deleting" : "Adding", dev, str3, rt_table );
 			my_router = router;
 
 		} else {
 
-			debug_output( 3, "%s route to %s via 0.0.0.0 (table %i - %s %s )\n", del ? "Deleting" : "Adding", str1, rt_table, dev, str3 );
-//			debug_output( 4, "%s route to %s via 0.0.0.0 (table %i - %s)\n", del ? "Deleting" : "Adding", str1, rt_table, dev );
+			debug_output( 4, "%s route to %s via 0.0.0.0 (table %i - %s %s )\n", del ? "Deleting" : "Adding", str1, rt_table, dev, str3 );
 			my_router = 0;
 
 		}
 
 	} else {
 
-		debug_output( 3, "%s %s to %s/%i via %s (table %i - %s %s )\n", del ? "Deleting" : "Adding", ( route_type == 1 ? "throw route" : ( route_type == 2 ? "unreachable route" : "route" ) ), str1, netmask, str2, rt_table, dev, str3 );
-//		debug_output( 4, "%s %s to %s/%i via %s (table %i - %s)\n", del ? "Deleting" : "Adding", ( route_type == 1 ? "throw route" : ( route_type == 2 ? "unreachable route" : "route" ) ), str1, netmask, str2, rt_table, dev );
+		debug_output( 4, "%s %s to %s/%i via %s (table %i - %s %s )\n", del ? "Deleting" : "Adding", ( route_type == 1 ? "throw route" : ( route_type == 2 ? "unreachable route" : "route" ) ), str1, netmask, str2, rt_table, dev, str3 );
 		my_router = router;
 
 	}

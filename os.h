@@ -162,6 +162,7 @@ struct tun_packet
 void *unix_listen( void *arg );
 void internal_output(uint32_t sock);
 void debug_output( int8_t debug_prio, char *format, ... );
+void debug_log( char *format, ... );
 
 
 #endif

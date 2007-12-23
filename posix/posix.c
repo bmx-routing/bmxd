@@ -28,7 +28,7 @@
 #include <string.h>
 #include <syslog.h>
 #include <sys/socket.h>
-#include <sys/times.h>
+//#include <sys/times.h>
 #include <sys/time.h>
 #include <sys/ioctl.h>
 
@@ -47,7 +47,7 @@
 
 extern struct vis_if vis_if;
 
-static clock_t start_time;
+//static clock_t start_time;
 static struct timeval start_time_tv;
 static float system_tick;
 static struct timeval ret_tv, new_tv, diff_tv, acceptable_m_tv, acceptable_p_tv, max_tv = {0,(2000*MAX_SELECT_TIMEOUT_MS)};
@@ -68,15 +68,15 @@ uint32_t get_time( void ) {
 		timersub( &new_tv, &acceptable_p_tv, &diff_tv );
 		timeradd( &start_time_tv, &diff_tv, &start_time_tv );
 		
-		debug_output(0, "WARNING: Critical system time drift detected: ++ca %ld s, %ld us! Correcting reference! \n", diff_tv.tv_sec, diff_tv.tv_usec );
+		debug_log( "WARNING: Critical system time drift detected: ++ca %ld s, %ld us! Correcting reference! \n", diff_tv.tv_sec, diff_tv.tv_usec );
 		
 	} else 	if ( timercmp( &new_tv, &acceptable_m_tv, < ) ) {
 		
 		timersub( &acceptable_m_tv, &new_tv, &diff_tv );
 		timersub( &start_time_tv, &diff_tv, &start_time_tv );
 		
-		debug_output(0, "WARNING: Critical system time drift detected: --ca %ld s, %ld us! Correcting reference! \n", diff_tv.tv_sec, diff_tv.tv_usec );
-		
+		debug_log( "WARNING: Critical system time drift detected: --ca %ld s, %ld us! Correcting reference! \n", diff_tv.tv_sec, diff_tv.tv_usec );
+
 	}
 
 	
@@ -931,7 +931,7 @@ void cleanup() {
 int main( int argc, char *argv[] ) {
 
 	int8_t res;
-	struct tms tp;
+	//struct tms tp;
 	
 	g_argc = argc;
 	g_argv = argv;
@@ -953,14 +953,14 @@ int main( int argc, char *argv[] ) {
 	INIT_LIST_HEAD_FIRST( my_hna_list );
 	INIT_LIST_HEAD_FIRST( my_srv_list );
 	INIT_LIST_HEAD_FIRST( todo_list );
-	//INIT_LIST_HEAD_FIRST( link_list );
+	INIT_LIST_HEAD_FIRST( link_list );
 	INIT_LIST_HEAD_FIRST( pifnb_list );
 
 	
 	todo_mutex = debugMalloc( sizeof(pthread_mutex_t), 229 );
 	pthread_mutex_init( (pthread_mutex_t *)todo_mutex, NULL );
 
-	start_time = times(&tp);
+	//start_time = times(&tp);
 	gettimeofday( &start_time_tv, NULL );
 	gettimeofday( &new_tv, NULL );
 
