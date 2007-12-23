@@ -37,6 +37,14 @@
 #include "../batman.h"
 
 
+
+void debug_log( char *format, ... ) {
+	va_list args;
+	va_start( args, format  );
+	vsyslog( LOG_ERR, format, args );
+	va_end( args );
+}
+
 void debug_output( int8_t debug_prio_arg, char *format, ... ) {
 
 	struct list_head *debug_pos;
@@ -98,13 +106,13 @@ void debug_output( int8_t debug_prio_arg, char *format, ... ) {
 		
 		if ( debug_prio == DBGL_SYSTEM ) {
 	
-			if ( debug_level == DBGL_SYSTEM ) {
+			//if ( debug_level == DBGL_SYSTEM ) {
 	
 				va_start( args, format );
 				vsyslog( LOG_ERR, format, args );
 				va_end( args );
 	
-			} 
+			//} 
 			continue;		
 		
 		} else {
@@ -144,13 +152,16 @@ void debug_output( int8_t debug_prio_arg, char *format, ... ) {
 	
 				}
 	
+			
 				if ( pthread_mutex_unlock( (pthread_mutex_t *)debug_clients.mutex[debug_prio_intern] ) < 0 )
-					debug_output( 0, "Error - could not unlock mutex (debug_output): %s \n", strerror( errno ) );
-	
+					
+					debug_log( "Error - could not unlock mutex (debug_output): %s \n", strerror( errno ) );
+
+				
 			} else {
 	
-				debug_output( 0, "Warning - could not trylock mutex (debug_output): %s \n", strerror( EBUSY ) );
-	
+				debug_log( "Warning - could not trylock mutex (debug_output): %s \n", strerror( EBUSY ) );
+
 			}
 	
 		}
