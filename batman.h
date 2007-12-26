@@ -88,8 +88,6 @@ extern char unix_path[];
 
 #define MAX_SELECT_TIMEOUT_MS 200 /* MUST be smaller than (1000/2) to fit into max tv_usec */
 
-#define PURGE_SAFETY_PERIOD 10000
-#define PURGE_TIMEOUT (((originator_interval*sequence_range*dad_timeout)/50) + PURGE_SAFETY_PERIOD) /*=2*o*nbrf*dad/100=300s previously 400000*/   /* purge originators after time in ms if no valid packet comes in -> TODO: check influence on SEQ_RANGE */
 
 #define WARNING_PERIOD 20000
 
@@ -110,9 +108,9 @@ extern int32_t aggregations_po;
 #define MAX_AGGREGATIONS_PO 20
 #define DEF_AGGREGATIONS_PO 5
 
-extern int32_t sequence_range;
+extern int32_t my_ws;
 #define FULL_SEQ_RANGE ((uint16_t)-1)
-#define MAX_SEQ_RANGE 250      /* TBD: should not be larger until ogm->nbrf and neigh_node.packet_count (and related variables) is only 8 bit */
+#define MAX_SEQ_RANGE 250      /* TBD: should not be larger until ogm->ws and neigh_node.packet_count (and related variables) is only 8 bit */
 #define MIN_SEQ_RANGE 1
 #define DEF_SEQ_RANGE 100  /* NBRF: NeighBor Ranking sequence Frame) sliding packet range of received orginator messages in squence numbers (should be a multiple of our word size) */
 #define NBRFSIZE_SWITCH          "window-size"
@@ -125,16 +123,19 @@ extern int32_t initial_seqno;
 #define DEF_INITIAL_SEQNO 0 /* causes initial_seqno to be randomized */
 #define INITIAL_SEQNO_SWITCH "initial-seqno"
 
-extern int16_t originator_interval;
-#define DEFAULT_ORIGINATOR_INTERVAL 1000
+extern int16_t my_ogi;
+#define DEFAULT_ORIGINATOR_INTERVAL 1000 //1000
 #define MIN_ORIGINATOR_INTERVAL JITTER
 #define MAX_ORIGINATOR_INTERVAL 10000 
 
 extern int32_t dad_timeout;
-#define DEFAULT_DAD_TIMEOUT 100
+#define DEFAULT_DAD_TIMEOUT 100 //100
 #define MIN_DAD_TIMEOUT 50 /* if this is changed, be careful with PURGE_TIMEOUT */
 #define MAX_DAD_TIMEOUT 400
 #define DAD_TIMEOUT_SWITCH "dad-timeout"
+
+#define PURGE_SAFETY_PERIOD 25000 //25000
+#define MY_PURGE_TIMEOUT (((((DEFAULT_ORIGINATOR_INTERVAL)*(my_ws)*(dad_timeout))/50) + PURGE_SAFETY_PERIOD)/1000)
 
 
 extern uint8_t mobile_device;
@@ -149,11 +150,11 @@ extern uint8_t no_tun_persist;
 #define NO_TUNPERSIST_SWITCH  "no-tunpersist"
 
 extern int32_t bidirect_link_to;
-#define DEF_BIDIRECT_TIMEOUT 20 
-#define MAX_BIDIRECT_TIMEOUT 100
+#define DEF_BIDIRECT_TIMEOUT 30 //100, 30 for 24C3
+#define MAX_BIDIRECT_TIMEOUT 250
 #define MIN_BIDIRECT_TIMEOUT 1
-#define BIDIRECT_TIMEOUT_SWITCH         "bi-link-timeout"
-#define BIDIRECT_TIMEOUT_IF_SWITCH      'b'
+#define BIDIRECT_TIMEOUT_SWITCH         "link-window-size"
+//#define BIDIRECT_TIMEOUT_IF_SWITCH      'b'
 
 extern int32_t ttl;
 #define DEFAULT_TTL 50                /* Time To Live of broadcast messages */
@@ -341,7 +342,7 @@ extern int32_t gw_change_hysteresis;
 #define GW_CHANGE_HYSTERESIS_SWITCH "gw-change-hysteresis"
 #define DEF_GW_CHANGE_HYSTERESIS 2
 #define MIN_GW_CHANGE_HYSTERESIS 1
-#define MAX_GW_CHANGE_HYSTERESIS ((sequence_range / 2) + 1) /*TBD: what if sequence range is decreased after setting this? */
+#define MAX_GW_CHANGE_HYSTERESIS ((my_ws / 2) + 1) /*TBD: what if sequence range is decreased after setting this? */
 
 extern uint32_t gw_tunnel_prefix;
 extern uint8_t  gw_tunnel_netmask;
@@ -384,17 +385,17 @@ extern uint8_t gateway_class;
 
 extern char *prog_name;
 extern uint8_t debug_level;
-//extern uint8_t debug_level_max;
-#define debug_level_max 8
 #define DBGL_SYSTEM     0
 #define DBGL_ROUTES     1
 #define DBGL_GATEWAYS   2
 #define DBGL_CHANGES    3
 #define DBGL_ALL        4
 #define DBGL_PROFILE    5
-#define DBGL_STATISTICS 7
+#define DBGL_STATISTICS 6
+#define DBGL_SERVICES   7
 #define DBGL_DETAILS    8
-
+#define DBGL_HNAS       9
+#define debug_level_max 9
 
 
 extern struct ext_packet *my_hna_ext_array;
@@ -413,7 +414,7 @@ extern uint16_t my_pip_ext_array_len;
 
 
 
-extern int16_t num_words;
+//extern int16_t num_words;
 
 extern uint32_t pref_gateway;
 
@@ -540,7 +541,7 @@ struct bat_packet
 #endif
 	uint8_t size; //in 4 bytes steps
 	
-	uint8_t nbrf; //in 1 bit steps 
+	uint8_t ws; //in 1 bit steps 
 	uint8_t reserved_someting;
 	
 	uint8_t ttl;
@@ -570,9 +571,9 @@ struct orig_node                 /* structure for orig_list maintaining nodes of
 	uint8_t  last_path_ttl;
 	
 	uint32_t last_new_valid;
-	uint8_t  last_nbrf;
+	uint8_t  ws;
 	uint8_t  last_reserved_someting;
-	uint32_t estimated_ten_ogis;
+	uint32_t ca10ogis;
 	uint32_t rt_changes;
 	
 	struct ext_packet *gw_msg;
@@ -859,7 +860,7 @@ struct batman_if
 	uint32_t netaddr;
 	uint8_t netmask;
 	uint8_t if_ttl;
-	uint8_t if_bidirect_link_to;
+	//uint8_t if_bidirect_link_to; // not really used yet..
 	uint8_t send_ogm_only_via_owning_if;
 	uint8_t is_wlan;
 	int16_t if_send_clones;
@@ -929,6 +930,7 @@ void verbose_usage( void );
 void print_advanced_opts ( int verbose );
 
 int calc_ogm_if_size( int if_num );
+uint32_t purge_timeout ( struct orig_node *orig_node );
 int is_batman_if( char *dev, struct batman_if **batman_if );
 void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, struct ext_packet *hna_array, int16_t hna_array_len );
 void update_gw_list( struct orig_node *orig_node, int16_t gw_array_len, struct ext_packet *gw_array );

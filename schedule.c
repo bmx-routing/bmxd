@@ -45,9 +45,9 @@ void schedule_own_packet( struct batman_if *batman_if, uint32_t current_time ) {
 
 	
 	if ( aggregations_po )
-		forw_node_new->send_time = current_time + originator_interval - (originator_interval/(2*aggregations_po));
+		forw_node_new->send_time = current_time + my_ogi - (my_ogi/(2*aggregations_po));
 	else
-		forw_node_new->send_time = current_time + originator_interval + rand_num( 2 * JITTER ) - JITTER;
+		forw_node_new->send_time = current_time + my_ogi + rand_num( 2 * JITTER ) - JITTER;
 	
 	debug_output( 4, "schedule_own_packet(): for %s seqno %d at %d \n", batman_if->dev, batman_if->out.seqno, forw_node_new->send_time );
 	
@@ -123,11 +123,11 @@ void schedule_own_packet( struct batman_if *batman_if, uint32_t current_time ) {
 		ln = list_entry(link_pos, struct link_node, list);
 		
 		purge_old_bits( ( &ln->bi_link_bits[ batman_if->if_num * MAX_NUM_WORDS ] ),
-				   ( ( batman_if->out.seqno - OUT_SEQNO_OFFSET ) - ln->last_bi_link_seqno[batman_if->if_num] ), 0 );
+				   ( ( batman_if->out.seqno - OUT_SEQNO_OFFSET ) - ln->last_bi_link_seqno[batman_if->if_num] ), 0, bidirect_link_to );
 	
 		ln->last_bi_link_seqno[batman_if->if_num] = ( batman_if->out.seqno - OUT_SEQNO_OFFSET );
 		
-		ln->rcvd_bi_link_packets[batman_if->if_num] = bit_packet_count( ( &ln->bi_link_bits[ batman_if->if_num * MAX_NUM_WORDS ] ), sequence_range );
+		ln->rcvd_bi_link_packets[batman_if->if_num] = bit_packet_count( ( &ln->bi_link_bits[ batman_if->if_num * MAX_NUM_WORDS ] ), bidirect_link_to );
 		
 	}
 	

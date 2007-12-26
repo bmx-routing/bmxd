@@ -75,7 +75,7 @@ uint8_t routing_class = 0;
 
 //uint8_t compat_version = DEF_COMPAT_VERSION;
 
-int16_t originator_interval = DEFAULT_ORIGINATOR_INTERVAL;   /* orginator message interval in miliseconds */
+int16_t my_ogi = DEFAULT_ORIGINATOR_INTERVAL;   /* orginator message interval in miliseconds */
 
 int32_t dad_timeout = DEFAULT_DAD_TIMEOUT;
 
@@ -92,7 +92,7 @@ int32_t bidirect_link_to = DEF_BIDIRECT_TIMEOUT;
 
 int32_t aggregations_po = DEF_AGGREGATIONS_PO;
 
-int32_t sequence_range = DEF_SEQ_RANGE;
+int32_t my_ws = DEF_SEQ_RANGE;
 
 int32_t initial_seqno = DEF_INITIAL_SEQNO;
 
@@ -117,7 +117,7 @@ int32_t rebrc_delay = DEF_REBRC_DELAY;
 int32_t default_para_set =  DEF_BMX_PARA_SET;
 
 
-int16_t num_words = ( DEF_SEQ_RANGE / WORD_BIT_SIZE ) + ( ( DEF_SEQ_RANGE % WORD_BIT_SIZE > 0)? 1 : 0 );
+//int16_t num_words = ( DEF_SEQ_RANGE / WORD_BIT_SIZE ) + ( ( DEF_SEQ_RANGE % WORD_BIT_SIZE > 0)? 1 : 0 );
 
 int32_t ogm_port = DEF_BASE_PORT;
 int32_t my_gw_port = DEF_GW_PORT;
@@ -354,11 +354,13 @@ void print_advanced_opts ( int verbose ) {
 	fprintf( stderr, "\n        /%c : attached after an interface name\n", UNDO_IP_HNA_IF_SWITCH );
 	fprintf( stderr, "          to remove the IP address of this interface from the HNA list.\n");
 	
+	/*
 	fprintf( stderr, "\n       --%s <value> : set bidirectional timeout value\n", BIDIRECT_TIMEOUT_SWITCH );
 	fprintf( stderr, "        /%c <value> : attached after an interface name\n", BIDIRECT_TIMEOUT_IF_SWITCH );
 	fprintf( stderr, "          to set individual bidirectionl-timeout value this interface.\n");
 	if ( verbose )
 		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_BIDIRECT_TIMEOUT, MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT  );
+	*/
 	
 	fprintf( stderr, "\n       --%s <value> : set neighbor ranking frame size\n", NBRFSIZE_SWITCH );
 	if ( verbose )
@@ -501,6 +503,12 @@ void verbose_usage( void ) {
 
 }
 
+uint32_t purge_timeout ( struct orig_node *orig_node ) {
+	/* purge originators after time in ms if no valid packet comes in -> TODO: check influence on SEQ_RANGE */
+	
+	/*=2*o*ws*dad/100=300s previously 400000*/
+	return ((((DEFAULT_ORIGINATOR_INTERVAL)*(orig_node->ws)*dad_timeout)/50) + PURGE_SAFETY_PERIOD);
+}
 
 
 int is_batman_if( char *dev, struct batman_if **batman_if ) {
@@ -879,13 +887,14 @@ void choose_gw() {
 	struct list_head *pos;
 	struct gw_node *gw_node, *tmp_curr_gw = NULL;
 	/* TBD: check the calculations of this variables for overflows */
-	uint8_t max_gw_class = 0, max_packets = 0;  
+	uint8_t max_gw_class = 0;
+	uint32_t norm1000_max_packets = 0;  
 	uint32_t current_time, max_gw_factor = 0, tmp_gw_factor = 0;  
 	int download_speed, upload_speed; 
 	static char orig_str[ADDR_STR_LEN];
 
 
-	if ( ( routing_class == 0 ) || ( ( current_time = *received_batman_time ) < originator_interval * sequence_range / CHOOSE_GW_DELAY_DIVISOR ) ) {
+	if ( ( routing_class == 0 ) || ( ( current_time = *received_batman_time ) < my_ogi * my_ws / CHOOSE_GW_DELAY_DIVISOR ) ) {
 
 		prof_stop( PROF_choose_gw );
 		return;
@@ -930,23 +939,26 @@ void choose_gw() {
 			case 1:   /* fast connection */
 				get_gw_speeds( gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWFLAGS, &download_speed, &upload_speed );
 
-				tmp_gw_factor = ( ( ( gw_node->orig_node->router->packet_count * 100 ) / sequence_range ) *
-						  ( ( gw_node->orig_node->router->packet_count * 100 ) / sequence_range ) *
-						  ( download_speed / 64 ) );
+				// is this voodoo ???
+				tmp_gw_factor = ( ( ( ( gw_node->orig_node->router->packet_count * 1000 ) / gw_node->orig_node->ws ) *
+						    ( ( gw_node->orig_node->router->packet_count * 1000 ) / gw_node->orig_node->ws ) ) / 100 ) * 
+						( download_speed / 64 ) ;
 				
 				if ( ( tmp_gw_factor > max_gw_factor ) || 
-				     ( ( tmp_gw_factor == max_gw_factor ) && ( gw_node->orig_node->router->packet_count > max_packets ) ) )
+				     ( ( tmp_gw_factor == max_gw_factor ) && ( ((gw_node->orig_node->router->packet_count * 1000) / gw_node->orig_node->ws) > norm1000_max_packets ) ) )
 					tmp_curr_gw = gw_node;
 				
 				break;
 
 			case 2:   /* stable connection (use best statistic) */
-				if ( gw_node->orig_node->router->packet_count > max_packets )
+				if ( ((gw_node->orig_node->router->packet_count * 1000) / gw_node->orig_node->ws) > norm1000_max_packets )
+				//if ( gw_node->orig_node->router->packet_count > max_packets )
 					tmp_curr_gw = gw_node;
 				break;
 
 			default:  /* fast-switch (use best statistic but change as soon as a better gateway appears) */
-				if ( gw_node->orig_node->router->packet_count > max_packets )
+				if ( ((gw_node->orig_node->router->packet_count * 1000) / gw_node->orig_node->ws) > norm1000_max_packets )
+				//if ( gw_node->orig_node->router->packet_count > max_packets )
 					tmp_curr_gw = gw_node;
 				break;
 
@@ -955,8 +967,9 @@ void choose_gw() {
 		if ( gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWFLAGS > max_gw_class )
 			max_gw_class = gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWFLAGS;
 
-		if ( gw_node->orig_node->router->packet_count > max_packets )
-			max_packets = gw_node->orig_node->router->packet_count;
+		if ( ((gw_node->orig_node->router->packet_count * 1000) / gw_node->orig_node->ws) > norm1000_max_packets )
+		//if ( gw_node->orig_node->router->packet_count > max_packets )
+			norm1000_max_packets = ((gw_node->orig_node->router->packet_count * 1000) / gw_node->orig_node->ws);
 
 		if ( tmp_gw_factor > max_gw_factor )
 			max_gw_factor = tmp_gw_factor;
@@ -966,7 +979,7 @@ void choose_gw() {
 			tmp_curr_gw = gw_node;
 
 			addr_to_string( tmp_curr_gw->orig_node->orig, orig_str, ADDR_STR_LEN );
-			debug_output( 3, "Preferred gateway found: %s (gw_flags: %i, packet_count: %i, gw_product: %i)\n", orig_str, gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWFLAGS, gw_node->orig_node->router->packet_count, tmp_gw_factor );
+			debug_output( 3, "Preferred gateway found: %s (gw_flags: %i, packet_count: %i, ws: %i, gw_product: %i)\n", orig_str, gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWFLAGS, gw_node->orig_node->router->packet_count, gw_node->orig_node->ws, tmp_gw_factor );
 			
 			break;
 
@@ -994,7 +1007,8 @@ void choose_gw() {
 		if ( ( curr_gateway != NULL ) && ( !is_aborted() ) ) {
 
 			addr_to_string( curr_gateway->orig_node->orig, orig_str, ADDR_STR_LEN );
-			debug_output( 3, "Adding default route to %s (gw_flags: %i, packet_count: %i, gw_product: %i)\n", orig_str, max_gw_class, max_packets, max_gw_factor );
+			debug_output( 3, "Adding default route to %s (gw_flags: %i, packet_count: %i, gw_product: %i)\n", 
+				      orig_str, max_gw_class, norm1000_max_packets, max_gw_factor );
 			add_default_route();
 
 		}
@@ -1018,8 +1032,8 @@ void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, 
 
 	/* update routing table and check for changed hna announcements */
 	if ( orig_node->router != neigh_node )
-		debug_output( 3, "change OG and HNA route to %15s via %15s %3d (previously via %15s %3d)\n", orig_str, 
-			      new_nh_str, (neigh_node ? neigh_node->packet_count : 0), 
+		debug_output( 3, "change OG (& HNA) routes of %15s via %15s %3d / %3d (prev. via %15s %3d)\n", orig_str, 
+			      new_nh_str, (neigh_node ? neigh_node->packet_count : 0), orig_node->ws, 
 			      old_nh_str, (orig_node->router ? orig_node->router->packet_count : 0) );
 		
 
@@ -1124,11 +1138,7 @@ void update_gw_list( struct orig_node *orig_node, int16_t gw_array_len, struct e
 			    gw_array ? ((gw_array->EXT_GW_FIELD_GWTYPES & TWO_WAY_TUNNEL_FLAG)?"TWT":"-") : "-",
 			    gw_array ? ((gw_array->EXT_GW_FIELD_GWTYPES & ONE_WAY_TUNNEL_FLAG)?"OWT":"-") : "-" );
 
-			if ( gw_array_len > 0 && gw_array != NULL /* && 
-				( gw_array->EXT_GW_FIELD_GWFLAGS ) &&
-				( gw_array->EXT_GW_FIELD_GWTYPES & ( (two_way_tunnel?TWO_WAY_TUNNEL_FLAG:0) | (one_way_tunnel?ONE_WAY_TUNNEL_FLAG:0) ) ) &&
-				( gw_array->EXT_GW_FIELD_GWPORT  ) &&
-				( gw_array->EXT_GW_FIELD_GWADDR  ) */ )  {
+			if ( gw_array_len > 0 && gw_array != NULL )  {
 
 				gw_node->deleted = 0;
 				if ( gw_node->orig_node->gw_msg == NULL )
@@ -1280,7 +1290,7 @@ uint8_t alreadyConsidered( struct orig_node *orig_node, uint16_t seqno, uint32_t
 				return YES;
 				
 			/* remove this else branch: */	
-			} else if ( ( seqno - neigh_node->last_considered_seqno ) > ( FULL_SEQ_RANGE - sequence_range ) ) {
+			} else if ( ( seqno - neigh_node->last_considered_seqno ) > ( FULL_SEQ_RANGE - orig_node->ws ) ) {
 
 				debug_output( 0, "alreadyConsidered(): This should not happen, we only acceppt current packets anyway !!!!!!!\n");
 				return YES;
@@ -1375,13 +1385,21 @@ int isBidirectionalNeigh( struct orig_node *orig_neigh_node, struct batman_if *i
 
 void generate_vis_packet() {
 
-	struct hash_it_t *hashit = NULL;
-	struct orig_node *orig_node;
+//	struct hash_it_t *hashit = NULL;
+//	struct orig_node *orig_node;
 	struct vis_data *vis_data;
 	struct list_head *list_pos;
 	struct batman_if *batman_if;
 	struct hna_node *hna_node;
+	
+	struct link_node *link_node;
+	struct list_head *link_pos;
 
+	struct neigh_node *neigh_node;
+	struct list_head  *neigh_pos;
+	
+	int q, q_max;
+			
 
 	if ( vis_packet != NULL ) {
 
@@ -1399,14 +1417,57 @@ void generate_vis_packet() {
 
 	((struct vis_packet *)vis_packet)->version = VIS_COMPAT_VERSION;
 	((struct vis_packet *)vis_packet)->gw_class = gateway_class;
-	((struct vis_packet *)vis_packet)->seq_range = sequence_range;
+	((struct vis_packet *)vis_packet)->seq_range = bidirect_link_to;  
 
+	
 	/* neighbor list */
+	
+	list_for_each( link_pos, &link_list ) {
+
+		link_node = list_entry(link_pos, struct link_node, list);
+		
+		if ( link_node->orig_node->router == NULL )
+			continue;
+		
+		list_for_each( neigh_pos, &link_node->orig_node->neigh_list ) {
+			
+			q_max = 0;
+			
+			neigh_node = list_entry( neigh_pos, struct neigh_node, list );
+
+			if( neigh_node->addr == link_node->orig_node->orig ) {
+					
+				q = get_lq_bits( link_node, neigh_node->if_incoming, bidirect_link_to );
+				//  q = tq_rate( link_node->orig_node, neigh_node->if_incoming, bidirect_link_to );
+
+				q_max = ( q > q_max ? q : q_max );
+				
+			}
+			
+			if ( q_max > 0 ) {
+			
+				vis_packet_size += sizeof(struct vis_data);
+		
+				vis_packet = debugRealloc( vis_packet, vis_packet_size, 105 );
+		
+				vis_data = (struct vis_data *)(vis_packet + vis_packet_size - sizeof(struct vis_data));
+		
+				//TBD: Why memcpy this uint32_t assignement ???
+				memcpy( &vis_data->ip, (unsigned char *)&link_node->orig_node->orig, 4 );
+		
+				vis_data->data = q_max;
+				vis_data->type = DATA_TYPE_NEIGH;
+			
+			}
+		}
+	}
+
+	/*
 	while ( NULL != ( hashit = hash_iterate( orig_hash, hashit ) ) ) {
 
 		orig_node = hashit->bucket->data;
 
-		/* we interested in 1 hop neighbours only */
+		// we interested in 1 hop neighbours only
 		if ( ( orig_node->router != NULL ) && ( orig_node->orig == orig_node->router->addr ) && ( orig_node->router->packet_count > 0 ) ) {
 
 			vis_packet_size += sizeof(struct vis_data);
@@ -1424,7 +1485,8 @@ void generate_vis_packet() {
 		}
 
 	}
-
+	*/
+	
 	/* secondary interfaces */
 	if ( found_ifs > 1 ) {
 
@@ -1484,7 +1546,6 @@ void generate_vis_packet() {
 	}
 
 }
-
 
 
 void send_vis_packet() {
@@ -1712,7 +1773,7 @@ int8_t batman() {
 		batman_if->out.flags = 0x00;
 		batman_if->out.size = 0x00;
 		
-		batman_if->out.nbrf     = sequence_range;
+		batman_if->out.ws     = my_ws;
 		
 		batman_if->out.ttl      = batman_if->if_ttl;
 		batman_if->out.seqno    = initial_seqno;
@@ -1949,20 +2010,20 @@ int8_t batman() {
 					debug_output( 4, "Drop packet: TTL of zero! \n" );
 					drop_it = YES;
 
-				} else if ( ((uint16_t)( ogm->seqno - orig_node->last_rcvd_seqno )) > ((uint16_t)( FULL_SEQ_RANGE - ((uint16_t)sequence_range ))) ) {
+				} else if ( ((uint16_t)( ogm->seqno - orig_node->last_rcvd_seqno )) > ((uint16_t)( FULL_SEQ_RANGE - orig_node->ws )) ) {
 
-					debug_output( 3, "WARNING: Drop packet: OGM from %s, via NB %s, with old seqno! rcvd sqno %i  nbrf %d  ttl %d  last rcvd seqno %i  (last valid seqno %i)  largest_ttl %d  time %d ! Maybe OGM-aggregation is to radical!?\n", orig_str, neigh_str, ogm->seqno, sequence_range, ogm->ttl, orig_node->last_rcvd_seqno, orig_node->last_valid_seqno, orig_node->last_valid_largest_ttl, orig_node->last_valid );
+					debug_output( 3, "WARNING: Drop packet: OGM from %s, via NB %s, with old seqno! rcvd sqno %i  new ws %d  (old ws %d)  ttl %d  last rcvd seqno %i  (last valid seqno %i)  largest_ttl %d  time %d ! Maybe OGM-aggregation is to radical!?\n", orig_str, neigh_str, ogm->seqno, ogm->ws, orig_node->ws, ogm->ttl, orig_node->last_rcvd_seqno, orig_node->last_valid_seqno, orig_node->last_valid_largest_ttl, orig_node->last_valid );
 					drop_it = YES;
 
 				} else if ( /* this originator IP is known and*/ 
 					    orig_node->last_valid != 0 && 
-					    /* seqno is out of range and*/
-					    ((uint16_t)( ogm->seqno - orig_node->last_valid_seqno )) > ((uint16_t)((dad_timeout*sequence_range)/100)) && 
-					    /* we have just recently received an in-range seqno */
-					    curr_time < (orig_node->last_valid + ((originator_interval*dad_timeout*sequence_range)/100))  ) 
+					    /* seqno is (more than four times: 4/100=25) out of range and*/
+					    ((uint16_t)( ogm->seqno - orig_node->last_valid_seqno )) > ((uint16_t)((dad_timeout*orig_node->ws )/25)) && 
+					    /* but we have received an ogm in less than  (ws * DEFAULT_ORIGINATOR_INTERVAL) ms */
+					    curr_time < (orig_node->last_valid + (( DEFAULT_ORIGINATOR_INTERVAL * dad_timeout * (orig_node->ws) )/100))  ) 
 					{
 
-						debug_output( 3, "Drop packet: DAD alert! OGM from %s via NB %s with out of range seqno! rcvd sqno %i, last valid seqno: %i at %d!\n              Maybe two nodes are using this IP!? Waiting %d more seconds before reinitialization...\n", orig_str, neigh_str, ogm->seqno, orig_node->last_valid_seqno, orig_node->last_valid, ((orig_node->last_valid + ((originator_interval*sequence_range*dad_timeout)/100)) - curr_time)/1000 );
+						debug_output( 0, "Drop packet: DAD alert! OGM from %s via NB %s with out of range seqno! rcvd sqno %i, last valid seqno: %i at %d!\n              Maybe two nodes are using this IP!? Waiting %d more seconds before reinitialization...\n", orig_str, neigh_str, ogm->seqno, orig_node->last_valid_seqno, orig_node->last_valid, ((orig_node->last_valid + ((DEFAULT_ORIGINATOR_INTERVAL * dad_timeout * (orig_node->ws))/100)) - curr_time)/1000 );
 					
 					drop_it = YES;
 
@@ -2006,11 +2067,13 @@ int8_t batman() {
 					//t_g_cpu_time+= (uint32_t)clock() - s_g_cpu_time;
 					//s_h_cpu_time = (uint32_t)clock();
 
-					tq_rate_value = tq_rate( orig_neigh_node, if_incoming );
+					tq_rate_value = tq_rate( orig_neigh_node, if_incoming, bidirect_link_to );
 					
-					rand_nb_value = rand_num( sequence_range -1 ); //cheating to absorb late own OGM replies
+					rand_nb_value = rand_num( bidirect_link_to -1 ); //cheating to absorb late own OGM replies
 										
-					acceptance_nb_value = acceptance_rate( tq_rate_value, sequence_range /*sequence_range <-> 100% because lq loss has already been applied by realety*/ );
+					/* value between 0 and range. Return value of range indicates 100% acceptance*/
+					acceptance_nb_value = tq_power( tq_rate_value, bidirect_link_to ) ;
+					
 					
 					uint16_t rand_num_hundret = rand_num( 100 );
 					
@@ -2018,7 +2081,7 @@ int8_t batman() {
 					/* do we accept or ignore the OGM according to our current policy ? */
 					is_accepted = ( is_bidirectional &&
 							( rand_nb_value < acceptance_nb_value +
-								( ( ((MAX_ASYMMETRIC_WEIGHT - asymmetric_weight) * sequence_range ) / 100 )  ) )  &&
+								( ( ((MAX_ASYMMETRIC_WEIGHT - asymmetric_weight) * bidirect_link_to ) / 100 )  ) )  &&
 							( !is_duplicate || /* FIXME: Do we really need this, we dont acceppt old seqno... */
 							  ( dup_ttl_limit > 0  && 
 							    orig_node->last_valid_seqno == ogm->seqno  &&
@@ -2149,7 +2212,7 @@ int8_t batman() {
 
 		if ( aggregations_po  &&  aggregation_time <= curr_time ) {
 				
-			aggr_interval = (originator_interval/aggregations_po > MAX_AGGREGATION_INTERVAL_MS) ? MAX_AGGREGATION_INTERVAL_MS :  (originator_interval/aggregations_po);
+			aggr_interval = (my_ogi/aggregations_po > MAX_AGGREGATION_INTERVAL_MS) ? MAX_AGGREGATION_INTERVAL_MS :  (my_ogi/aggregations_po);
 
 			send_outstanding_packets();
 			aggregation_time = (curr_time + aggr_interval + rand_num( aggr_interval/2 )) - (aggr_interval/4);
@@ -2179,6 +2242,8 @@ int8_t batman() {
 				if (	( debug_clients.clients_num[DBGL_GATEWAYS-1] > 0 ) || 
 					( debug_clients.clients_num[DBGL_ROUTES-1] > 0 ) || 
 					( debug_clients.clients_num[DBGL_DETAILS-1] > 0 ) || 
+					( debug_clients.clients_num[DBGL_HNAS-1] > 0 ) || 
+					( debug_clients.clients_num[DBGL_SERVICES-1] > 0 ) || 
 					( debug_clients.clients_num[DBGL_ALL-1] > 0 )  ) {
 					
 					debug_orig();
@@ -2265,7 +2330,7 @@ int8_t batman() {
 					
 					curr_statistic_period_ms = ( curr_time - statistic_timeout );
 					
-					debug_output( 7, "stats: load %2d, %2d  sched. %3d, Agg. rcvd %3d, brc %3d (cp %3d), OGMs rcvd %3d, accept %3d, brc %3d, rt %3d \n",
+					debug_output( DBGL_STATISTICS, "stats: load %2d, %2d  sched. %3d, Agg. rcvd %3d, brc %3d (cp %3d), OGMs rcvd %3d, accept %3d, brc %3d, rt %3d \n",
 					( s_curr_cpu_time / curr_time ),
 					( s_curr_avg_cpu_load = ( (s_curr_cpu_time - s_last_cpu_time) / curr_statistic_period_ms ) ),
 					  s_returned_select * 1000 / curr_statistic_period_ms,
@@ -2312,7 +2377,7 @@ int8_t batman() {
 	if ( debug_level > 0 )
 		printf( "Deleting all BATMAN routes\n" );
 
-	purge_orig( curr_time + ( 5 * PURGE_TIMEOUT ) + originator_interval );
+	purge_orig( 0 );
 	
 	add_del_own_srv( YES /*purge*/ );
 	

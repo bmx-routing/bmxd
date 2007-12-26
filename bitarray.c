@@ -63,6 +63,7 @@ uint8_t get_bit_status( TYPE_OF_WORD *seq_bits, uint16_t last_seqno, uint16_t cu
 */
 
 /* print the packet array, for debugging purposes */
+/*
 static char bit_string[MAX_SEQ_RANGE+2];
 char* bit_print( TYPE_OF_WORD *seq_bits ) {
 	int i,j,k=0,b=0;
@@ -70,7 +71,7 @@ char* bit_print( TYPE_OF_WORD *seq_bits ) {
 // 	printf("the last %d packets, we got %d:\n", SEQ_RANGE, bit_packet_count(seq_bits));
 	for ( i=0; i<num_words; i++ ) {
 		for ( j=0; j<WORD_BIT_SIZE; j++) {
-			bit_string[k++] = ((seq_bits[i]>>j)%2 ? '1':'0'); /* print the j position */
+			bit_string[k++] = ((seq_bits[i]>>j)%2 ? '1':'0'); // print the j position
 			if( ++b == sequence_range ) {
 				bit_string[k++]='|';
 			}
@@ -82,12 +83,13 @@ char* bit_print( TYPE_OF_WORD *seq_bits ) {
 //	printf("\n\n");
 	return bit_string;
 }
-
+*/
+		
 /* turn corresponding bit on, so we can remember that we got the packet */
 void bit_mark( TYPE_OF_WORD *seq_bits, int32_t n ) {
 	int32_t word_offset,word_num;
 
-	if ( n<0 || n >= sequence_range ) {			/* if too old, just drop it */
+	if ( n<0 || n >= MAX_SEQ_RANGE ) {	/* if too old, just drop it */
 // 		printf("got old packet, dropping\n");
 		return;
 	}
@@ -111,7 +113,7 @@ void bit_shift( TYPE_OF_WORD *seq_bits, int32_t n ) {
 	word_offset= n%WORD_BIT_SIZE;	/* shift how much inside each word */
 	word_num   = n/WORD_BIT_SIZE;	/* shift over how much (full) words */
 
-	for ( i=num_words-1; i>word_num; i-- ) {
+	for ( i=MAX_NUM_WORDS-1; i>word_num; i-- ) {
 		/* going from old to new, so we can't overwrite the data we copy from. *
  		 * left is high, right is low: FEDC BA98 7654 3210
 		 *	                                  ^^ ^^
@@ -129,9 +131,9 @@ void bit_shift( TYPE_OF_WORD *seq_bits, int32_t n ) {
 					/* and the upper part of the right half and shift it left to it's position */
 		/* for our example that would be: word[0] = 9800 + 0076 = 9876 */
 	}
+	
 	/* now for our last word, i==word_num, we only have the it's "left" half. that's the 1000 word in
 	 * our example.*/
-
 	seq_bits[i]= (seq_bits[i - word_num] << word_offset);
 
 	/* pad the rest with 0, if there is anything */
@@ -142,28 +144,30 @@ void bit_shift( TYPE_OF_WORD *seq_bits, int32_t n ) {
 	}
 
 	/* pad the trailing end (beyond seqence_range with zeros) */  
+	/* we will only count the heading range bits, so no need to reset the trailing ones...
 	for (i=MAX_NUM_WORDS; i>num_words; i--) {
 		seq_bits[i-1]= 0;  
 	}
 
 	TYPE_OF_WORD last_word_reset_mask = 0;  
 	last_word_reset_mask = ~0;  
+	
 	if ( sequence_range % WORD_BIT_SIZE > 0 ) {  
 		last_word_reset_mask = last_word_reset_mask >> ( WORD_BIT_SIZE - (sequence_range % WORD_BIT_SIZE) );  
 		seq_bits[i-1] = seq_bits[i-1] & last_word_reset_mask;  
 	}
-
+	*/
 //        bit_print( seq_bits );  
 }
 
 
 /* receive and process one packet, returns 1 if received seq_num is considered new, 0 if old  */
-char purge_old_bits( TYPE_OF_WORD *seq_bits, int16_t seq_num_diff, int8_t set_mark ) {
+char purge_old_bits( TYPE_OF_WORD *seq_bits, int16_t seq_num_diff, int8_t set_mark, int range ) {
 
 	int i;
 
 	/* old, but in-range seqno */
-	if ( ( seq_num_diff < 0 ) && ( seq_num_diff >= -sequence_range ) ) {  
+	if ( ( seq_num_diff < 0 ) && ( seq_num_diff >= -range ) ) {  
 
 		
 		debug_output( 0, "Error - We do not acceppt old seqno anymore !!!, seq_num_diff %d  \n", seq_num_diff );
@@ -176,12 +180,12 @@ char purge_old_bits( TYPE_OF_WORD *seq_bits, int16_t seq_num_diff, int8_t set_ma
 	
 	
 	/* it seems we missed a lot of packets or the other host restarted */
-	if ( ( seq_num_diff > sequence_range ) || ( seq_num_diff < -sequence_range ) ) {        
+	if ( ( seq_num_diff > range ) || ( seq_num_diff < -range ) ) {
 
-		if ( seq_num_diff > sequence_range )
+		if ( seq_num_diff > range )
 			debug_output( 4, "It seems we missed a lot of packets (%i) !\n",  seq_num_diff-1 );
 
-		if ( -seq_num_diff > sequence_range )
+		if ( -seq_num_diff > range )
 			debug_output( 4, "Other host probably restarted !\n" );
 
 		
@@ -212,7 +216,7 @@ int bit_packet_count( TYPE_OF_WORD *seq_bits, uint16_t range_to_count ) {
 
 	int i, hamming = 0;
 	TYPE_OF_WORD word;
-
+	
 	uint16_t words_to_count = ( range_to_count / WORD_BIT_SIZE );
 	
 	TYPE_OF_WORD last_word_reset_mask = ~0;  
@@ -220,12 +224,12 @@ int bit_packet_count( TYPE_OF_WORD *seq_bits, uint16_t range_to_count ) {
 		
 	last_word_reset_mask = last_word_reset_mask >> ( WORD_BIT_SIZE - (range_to_count % WORD_BIT_SIZE) );  
 	
-	for (i=0; ( i < num_words); i++) {
+	for (i=0; ( i < MAX_NUM_WORDS); i++) {
 
 		word = seq_bits[i];
 
 		if ( i > words_to_count )
-			word = 0;
+			break;
 		
 		if ( i == words_to_count )
 			word = word & last_word_reset_mask;

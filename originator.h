@@ -29,13 +29,13 @@ void update_primary_orig( struct orig_node *orig_node /*, uint8_t direct_undupl_
 void update_link( struct orig_node *orig_node, uint16_t in_seqno, struct batman_if *this_if, uint8_t direct_undupl_neigh_ogm );
 void set_lq_bits( struct orig_node *orig_node, uint16_t in_seqno, struct batman_if *this_if, uint8_t direct_undupl_neigh_ogm );
 
-int get_lq_bits( struct orig_node *orig_node, struct batman_if *this_if, uint16_t read_range );
+int get_lq_bits( struct link_node *link_node, struct batman_if *this_if, uint16_t read_range );
 
 
 //int update_bi_link_bits ( struct orig_node *orig_neigh_node, struct batman_if * this_if, uint8_t write, uint16_t read_range );
-int tq_rate( struct orig_node *orig_neigh_node, struct batman_if *if_incoming );
-int tq_power( int tq_rate_value );
-int acceptance_rate( int tq_assumption, uint16_t lq_assumtion );
+int tq_rate( struct orig_node *orig_neigh_node, struct batman_if *if_incoming, int range );
+int tq_power( int tq_rate_value, int range );
+//int acceptance_rate( int tq_assumption, uint16_t lq_assumtion );
 void update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node );
 void purge_orig( uint32_t curr_time );
 void debug_orig();

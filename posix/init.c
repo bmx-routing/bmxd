@@ -518,7 +518,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 	int32_t optchar, recv_buff_len, bytes_written, download_speed = 0, upload_speed = 0;
 	char str1[16], str2[16], *slash_ptr, *unix_buff, *buff_ptr, *cr_ptr;
-	char routing_class_opt = 0, gateway_class_opt = 0, pref_gw_opt = 0, hna_opt = 0, tout_opt = 0;
+	char routing_class_opt = 0, gateway_class_opt = 0, pref_gw_opt = 0, hna_opt = 0, tout_opt = 0, ws_opt = 0, ogi_opt = 0, blt_opt = 0;
 	struct ext_type_hna hna_type_request;
 	uint32_t vis_server = 0;
 
@@ -616,12 +616,12 @@ void apply_init_args( int argc, char *argv[] ) {
 				exit(EXIT_FAILURE);
 			}
 			
-			//originator_interval = 1500;
+			//my_ogi = 1500;
 	
 			//set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "20", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
 	
-			set_init_arg( NBRFSIZE_SWITCH, "100", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &sequence_range );
-			num_words = ( sequence_range / WORD_BIT_SIZE ) + ( ( sequence_range % WORD_BIT_SIZE > 0)? 1 : 0 );
+			set_init_arg( NBRFSIZE_SWITCH, "100", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &my_ws );
+			//num_words = ( my_ws / WORD_BIT_SIZE ) + ( ( my_ws % WORD_BIT_SIZE > 0)? 1 : 0 );
 	
 			//set_init_arg( GW_CHANGE_HYSTERESIS_SWITCH, "2", MIN_GW_CHANGE_HYSTERESIS, MAX_GW_CHANGE_HYSTERESIS, &gw_change_hysteresis ); 
 	
@@ -680,12 +680,12 @@ void apply_init_args( int argc, char *argv[] ) {
 
 					//printf ("Applying %s ! \nThis parametrization causes the same behavior as implemented in batmand-0.2 !\n", long_options[option_index].name);
 					
-					originator_interval = 1000;
+					my_ogi = 1000;
 					
 					set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "2", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
 	
-					set_init_arg( NBRFSIZE_SWITCH, "128", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &sequence_range );
-					num_words = ( sequence_range / WORD_BIT_SIZE ) + ( ( sequence_range % WORD_BIT_SIZE > 0)? 1 : 0 );
+					set_init_arg( NBRFSIZE_SWITCH, "128", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &my_ws );
+					//num_words = ( my_ws / WORD_BIT_SIZE ) + ( ( my_ws % WORD_BIT_SIZE > 0)? 1 : 0 );
 	
 					set_init_arg( GW_CHANGE_HYSTERESIS_SWITCH, "2", MIN_GW_CHANGE_HYSTERESIS, MAX_GW_CHANGE_HYSTERESIS, &gw_change_hysteresis ); 
 	
@@ -720,12 +720,12 @@ void apply_init_args( int argc, char *argv[] ) {
 					}
 					
 	
-					originator_interval = 1500;
+					my_ogi = 1500;
 	
 					set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "20", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
 	
-					set_init_arg( NBRFSIZE_SWITCH, "100", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &sequence_range );
-					num_words = ( sequence_range / WORD_BIT_SIZE ) + ( ( sequence_range % WORD_BIT_SIZE > 0)? 1 : 0 );
+					set_init_arg( NBRFSIZE_SWITCH, "100", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &my_ws );
+					//num_words = ( my_ws / WORD_BIT_SIZE ) + ( ( my_ws % WORD_BIT_SIZE > 0)? 1 : 0 );
 	
 					set_init_arg( GW_CHANGE_HYSTERESIS_SWITCH, "2", MIN_GW_CHANGE_HYSTERESIS, MAX_GW_CHANGE_HYSTERESIS, &gw_change_hysteresis ); 
 					
@@ -751,14 +751,18 @@ void apply_init_args( int argc, char *argv[] ) {
 				} else if ( strcmp( BIDIRECT_TIMEOUT_SWITCH, long_options[option_index].name ) == 0 ) {
 
 					set_init_arg( BIDIRECT_TIMEOUT_SWITCH, optarg, MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
+					
+					blt_opt = YES; /* for changing the link-window size on the fly */
+					
 					found_args += 2;
 					break;
 
 				} else if ( strcmp( NBRFSIZE_SWITCH, long_options[option_index].name ) == 0 ) {
 
-					set_init_arg( NBRFSIZE_SWITCH, optarg, MIN_SEQ_RANGE, MAX_SEQ_RANGE, &sequence_range );
+					set_init_arg( NBRFSIZE_SWITCH, optarg, MIN_SEQ_RANGE, MAX_SEQ_RANGE, &my_ws );
+					//num_words = ( my_ws / WORD_BIT_SIZE ) + ( ( my_ws % WORD_BIT_SIZE > 0)? 1 : 0 );
 					
-					num_words = ( sequence_range / WORD_BIT_SIZE ) + ( ( sequence_range % WORD_BIT_SIZE > 0)? 1 : 0 );
+					ws_opt = YES; /* for changing the window-size on-the fly */
 					
 					found_args += 2;
 					break;
@@ -1030,8 +1034,8 @@ void apply_init_args( int argc, char *argv[] ) {
 					set_init_arg( RT_PRIO_OFFSET_SWITCH,  "18500", MIN_RT_PRIO_OFFSET, MAX_RT_PRIO_OFFSET, &rt_prio_offset ); 
 					set_gw_network( "169.254.192.0/22" );
 					
-					set_init_arg( NBRFSIZE_SWITCH, "10", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &sequence_range );
-					num_words = ( sequence_range / WORD_BIT_SIZE ) + ( ( sequence_range % WORD_BIT_SIZE > 0)? 1 : 0 );
+					set_init_arg( NBRFSIZE_SWITCH, "10", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &my_ws );
+					//num_words = ( my_ws / WORD_BIT_SIZE ) + ( ( my_ws % WORD_BIT_SIZE > 0)? 1 : 0 );
 
 					found_args += 1;
 					break;
@@ -1165,15 +1169,16 @@ void apply_init_args( int argc, char *argv[] ) {
 			case 'o':
 
 				errno = 0;
-				originator_interval = strtol (optarg, NULL , 10 );
+				my_ogi = strtol (optarg, NULL , 10 );
 
-				if ( originator_interval < MIN_ORIGINATOR_INTERVAL || originator_interval > MAX_ORIGINATOR_INTERVAL ) {
+				if ( my_ogi < MIN_ORIGINATOR_INTERVAL || my_ogi > MAX_ORIGINATOR_INTERVAL ) {
 
-					printf( "Invalid originator interval specified: %i.\n The value must be >= %i and <= %i.\n", originator_interval, MIN_ORIGINATOR_INTERVAL, MAX_ORIGINATOR_INTERVAL );
+					printf( "Invalid originator interval specified: %i.\n The value must be >= %i and <= %i.\n", my_ogi, MIN_ORIGINATOR_INTERVAL, MAX_ORIGINATOR_INTERVAL );
 
 					exit(EXIT_FAILURE);
 				}
 				
+				ogi_opt = 1;
 
 				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
 				break;
@@ -1348,7 +1353,8 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		FD_ZERO( &receive_wait_set );
 		
-		printf ("Using duplicate-address-detection timeout %ds, purge timeout %ds, originator interval %dms, window size %d \n", ((originator_interval*dad_timeout*sequence_range)/100000), (PURGE_TIMEOUT/1000), originator_interval, sequence_range );
+		printf ("Causing duplicate-address-detection timeout %ds, purge timeout %ds, my originator interval %dms, my window size %d \n",
+		  (((DEFAULT_ORIGINATOR_INTERVAL)*(my_ws)*(dad_timeout))/100000), MY_PURGE_TIMEOUT, my_ogi, my_ws );
 
 		
 
@@ -1361,7 +1367,7 @@ void apply_init_args( int argc, char *argv[] ) {
 			batman_if->dev = argv[found_args];
 			batman_if->if_num = found_ifs;
 			batman_if->udp_tunnel_sock = 0;
-			batman_if->if_bidirect_link_to = bidirect_link_to;
+			//batman_if->if_bidirect_link_to = bidirect_link_to;
 			batman_if->if_ttl = ttl;
 			batman_if->if_send_clones = wl_clones;
 			batman_if->packet_out_len = sizeof( struct bat_header );
@@ -1446,6 +1452,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			while ( argc > found_args && strlen( argv[found_args] ) >= 2 && *argv[found_args] == '/') {
 
+				/*
 				if ( (argv[found_args])[1] == BIDIRECT_TIMEOUT_IF_SWITCH && argc > (found_args+1) ) {
 
 					errno = 0;
@@ -1464,7 +1471,8 @@ void apply_init_args( int argc, char *argv[] ) {
 
 					found_args += 2;
 
-				} else if ( (argv[found_args])[1] == TTL_IF_SWITCH && argc > (found_args+1) ) {
+				} else */
+				if ( (argv[found_args])[1] == TTL_IF_SWITCH && argc > (found_args+1) ) {
 
 					errno = 0;
 					uint8_t tmp = strtol ( argv[ found_args+1 ], NULL , 10 );
@@ -1587,7 +1595,7 @@ void apply_init_args( int argc, char *argv[] ) {
 		
 	
 		if ( initial_seqno == 0 )
-			initial_seqno = rand_num( FULL_SEQ_RANGE - (10*sequence_range) );
+			initial_seqno = rand_num( FULL_SEQ_RANGE - (10*my_ws) );
 	
 		if ( my_gw_port == 0 )
 			my_gw_port = ogm_port + 1;
@@ -1703,8 +1711,8 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			printf( "debug level: %i\n", debug_level );
 
-			if ( originator_interval != 1000 )
-				printf( "originator interval: %i\n", originator_interval );
+			if ( my_ogi != DEFAULT_ORIGINATOR_INTERVAL )
+				printf( "originator interval: %i\n", my_ogi );
 
 			if ( gateway_class > 0 )
 				printf( "gateway class: %i -> propagating: %i%s/%i%s\n", gateway_class, ( download_speed > 2048 ? download_speed / 1024 : download_speed ), ( download_speed > 2048 ? "MBit" : "KBit" ), ( upload_speed > 2048 ? upload_speed / 1024 : upload_speed ), ( upload_speed > 2048 ? "MBit" : "KBit" ) );
@@ -1770,6 +1778,21 @@ void apply_init_args( int argc, char *argv[] ) {
 			batch_mode = 1;
 			snprintf( unix_buff, 10, "g:%c", gateway_class );
 
+		} else if ( ws_opt ) {
+
+			batch_mode = 1;
+			snprintf( unix_buff, 10, "w:%c", my_ws );
+		
+		} else if ( blt_opt ) {
+
+			batch_mode = 1;
+			snprintf( unix_buff, 10, "l:%c", bidirect_link_to );
+		
+		} else if ( ogi_opt ) {
+
+			batch_mode = 1;
+			snprintf( unix_buff, 10, "o:%d", my_ogi );
+		
 		} else if ( hna_opt ) {
 
 			

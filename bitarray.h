@@ -27,10 +27,10 @@
 
 void bit_init( TYPE_OF_WORD *seq_bits );
 //uint8_t get_bit_status( TYPE_OF_WORD *seq_bits, uint16_t last_seqno, uint16_t curr_seqno );
-char *bit_print( TYPE_OF_WORD *seq_bits );
+//char *bit_print( TYPE_OF_WORD *seq_bits );
 void bit_mark( TYPE_OF_WORD *seq_bits, int32_t n );
 void bit_shift( TYPE_OF_WORD *seq_bits, int32_t n );
-char purge_old_bits( TYPE_OF_WORD *seq_bits, int16_t seq_num_diff, int8_t set_mark );
+char purge_old_bits( TYPE_OF_WORD *seq_bits, int16_t seq_num_diff, int8_t set_mark, int range );
 int  bit_packet_count( TYPE_OF_WORD *seq_bits, uint16_t range_to_count );
 uint8_t bit_count( int32_t to_count );
 

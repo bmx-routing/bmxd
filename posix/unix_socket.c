@@ -89,11 +89,21 @@ void debug_output( int8_t debug_prio_arg, char *format, ... ) {
 	} else if ( debug_prio_arg == DBGL_STATISTICS ) {
 	
 		if ( debug_clients.clients_num[DBGL_STATISTICS -1] > 0 ) debug_request[i++] = DBGL_STATISTICS;
-		if ( debug_clients.clients_num[DBGL_ALL      -1] > 0 ) debug_request[i++] = DBGL_ALL;
+		if ( debug_clients.clients_num[DBGL_ALL        -1] > 0 ) debug_request[i++] = DBGL_ALL;
 	
 	} else if ( debug_prio_arg == DBGL_DETAILS ) {
 	
 		if ( debug_clients.clients_num[DBGL_DETAILS  -1] > 0 ) debug_request[i++] = DBGL_DETAILS;
+		if ( debug_clients.clients_num[DBGL_ALL      -1] > 0 ) debug_request[i++] = DBGL_ALL;
+	
+	} else if ( debug_prio_arg == DBGL_HNAS ) {
+	
+		if ( debug_clients.clients_num[DBGL_HNAS     -1] > 0 ) debug_request[i++] = DBGL_HNAS;
+		if ( debug_clients.clients_num[DBGL_ALL      -1] > 0 ) debug_request[i++] = DBGL_ALL;
+	
+	} else if ( debug_prio_arg == DBGL_SERVICES ) {
+	
+		if ( debug_clients.clients_num[DBGL_SERVICES -1] > 0 ) debug_request[i++] = DBGL_SERVICES;
 		if ( debug_clients.clients_num[DBGL_ALL      -1] > 0 ) debug_request[i++] = DBGL_ALL;
 	
 	}
@@ -182,7 +192,7 @@ void internal_output(uint32_t sock)
 	dprintf(sock, "unix_socket_path=%s\n", unix_path);
 	dprintf(sock, "own_ogm_jitter=%i\n", JITTER);
 	dprintf(sock, "default_ttl=%i\n", ttl);
-	dprintf(sock, "originator_timeout=%i\n", PURGE_TIMEOUT);
+	dprintf(sock, "originator_timeout=%i\n", MY_PURGE_TIMEOUT);
 	dprintf(sock, "rt_table_interfaces=%i\n", BATMAN_RT_TABLE_INTERFACES);
 	dprintf(sock, "rt_table_networks=%i\n", BATMAN_RT_TABLE_NETWORKS);
 	dprintf(sock, "rt_table_hosts=%i\n", BATMAN_RT_TABLE_HOSTS);
@@ -216,7 +226,7 @@ void *unix_listen( void *arg ) {
 	socklen_t sun_size = sizeof(struct sockaddr_un);
 	uint8_t unix_client_deleted = NO;
 	uint32_t tmp_enabled, tmp_netmask, tmp_address;
-	uint16_t tmp_port;
+	uint16_t tmp_port, tmp_ogi;
 	uint8_t tmp_seqno;
 
 	INIT_LIST_HEAD_FIRST(unix_if.client_list);
@@ -479,9 +489,62 @@ void *unix_listen( void *arg ) {
 
 								dprintf( unix_client->sock, "EOD\n" );
 
+							} else if ( buff[0] == 'w' ) {
+								
+								if ( status > 2  &&  ((uint8_t)(buff[2])) >= MIN_SEQ_RANGE  &&  ((uint8_t)(buff[2])) <= MAX_SEQ_RANGE ) {
+
+									my_ws = ((uint8_t)(buff[2]));
+									
+									debug_output( 3, "Unix socket: changing to %s to %d \n", NBRFSIZE_SWITCH, my_ws );
+									
+									list_for_each( i_list_pos, &if_list ) {
+
+										batman_if = list_entry( i_list_pos, struct batman_if, list );
+		
+										batman_if->out.ws     = my_ws;
+		
+									}
+										
+								}
+
+								dprintf( unix_client->sock, "EOD\n" );
+
+								
+							} else if ( buff[0] == 'l' ) {
+								
+								if ( status > 2  &&  ((uint8_t)(buff[2])) >= MIN_BIDIRECT_TIMEOUT  &&  ((uint8_t)(buff[2])) <= MAX_BIDIRECT_TIMEOUT ) {
+
+									bidirect_link_to = ((uint8_t)(buff[2]));
+									
+									debug_output( 3, "Unix socket: changing %s to %d \n",BIDIRECT_TIMEOUT_SWITCH, bidirect_link_to );
+									
+								}
+
+								dprintf( unix_client->sock, "EOD\n" );
+
+								
+							} else if ( buff[0] == 'o' ) {
+								
+								if ( status > 2 ) {
+									
+									tmp_ogi = strtoul( buff+2, NULL, 10 );
+									
+									if ( tmp_ogi >= MIN_ORIGINATOR_INTERVAL  &&  tmp_ogi <= MAX_ORIGINATOR_INTERVAL ) {
+
+										my_ogi = tmp_ogi;
+										
+										debug_output( 3, "Unix socket: changing originator interval to %d \n", my_ogi );
+									
+									}
+									
+								}
+
+								dprintf( unix_client->sock, "EOD\n" );
+
+								
 							} else if ( buff[0] == 'a' ) {
 
-								if ( status > 2 ) {
+								if ( status > 8 ) {
 									struct todo_node *new_todo_node;
 									
 									tmp_enabled = strtoul( buff+2, NULL, 10 );
@@ -605,7 +668,7 @@ void *unix_listen( void *arg ) {
 									addr_to_string( srv_node->srv_addr, str, sizeof (str) );
 									
 									if ( srv_node->enabled )
-										dprintf( unix_client->sock, " -t %s:%d:%i", str, srv_node->srv_port, srv_node->srv_seqno );
+										dprintf( unix_client->sock, " --%s %s:%d:%i", ADD_SRV_SWITCH, str, srv_node->srv_port, srv_node->srv_seqno );
 
 								}
 								
