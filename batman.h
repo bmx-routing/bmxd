@@ -150,7 +150,7 @@ extern uint8_t no_tun_persist;
 #define NO_TUNPERSIST_SWITCH  "no-tunpersist"
 
 extern int32_t bidirect_link_to;
-#define DEF_BIDIRECT_TIMEOUT 30 //100, 30 for 24C3
+#define DEF_BIDIRECT_TIMEOUT 50 //100, 30 for 24C3
 #define MAX_BIDIRECT_TIMEOUT 250
 #define MIN_BIDIRECT_TIMEOUT 1
 #define BIDIRECT_TIMEOUT_SWITCH         "link-window-size"
@@ -364,6 +364,8 @@ extern int32_t tunnel_ip_lease_time;
 #define PARALLEL_BAT_NETA_SWITCH "neta"
 #define PARALLEL_BAT_NETB_SWITCH "netb"
 #define PARALLEL_BAT_NETC_SWITCH "netc"
+
+#define PARALLEL_BAT_24C3_SWITCH "24c3"
 
 extern uint8_t routing_class;
 

@@ -476,7 +476,7 @@ int add_del_interface_rules( int8_t del, uint8_t setup_tunnel, uint8_t setup_net
 
 				notun_node = list_entry(notun_pos, struct notun_node, list);
 	
-				if ( notun_node->addr == netaddr && notun_node->netmask == netmask ) {
+				if ( (notun_node->addr & notun_node->netmask) == (netaddr & notun_node->netmask) /*&& notun_node->netmask == netmask*/ ) {
 					add_this_rule = NO;
 					notun_node->match_found = YES;
 				}

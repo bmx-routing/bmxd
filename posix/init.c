@@ -579,6 +579,7 @@ void apply_init_args( int argc, char *argv[] ) {
    {PARALLEL_BAT_NETA_SWITCH,   0, 0, 0},
    {PARALLEL_BAT_NETB_SWITCH,   0, 0, 0},
    {PARALLEL_BAT_NETC_SWITCH,   0, 0, 0},
+   {PARALLEL_BAT_24C3_SWITCH,   0, 0, 0},
    {0, 0, 0, 0}
 		};
 
@@ -1040,6 +1041,24 @@ void apply_init_args( int argc, char *argv[] ) {
 					found_args += 1;
 					break;
 					
+				} else if ( strcmp( PARALLEL_BAT_24C3_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					errno = 0;
+					
+					set_init_arg( BASE_PORT_SWITCH,       "4308", MIN_BASE_PORT,       MAX_BASE_PORT,       &ogm_port ); 
+					set_init_arg( RT_TABLE_OFFSET_SWITCH, "76",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset ); 
+					set_init_arg( RT_PRIO_OFFSET_SWITCH,  "7600", MIN_RT_PRIO_OFFSET, MAX_RT_PRIO_OFFSET, &rt_prio_offset ); 
+					set_gw_network( "0.0.0.0/30" );
+					
+					set_init_arg( TWO_WAY_TUNNEL_SWITCH, "0", MIN_TWO_WAY_TUNNEL, MAX_TWO_WAY_TUNNEL, &two_way_tunnel );
+					set_init_arg( ONE_WAY_TUNNEL_SWITCH, "3", MIN_TWO_WAY_TUNNEL, MAX_TWO_WAY_TUNNEL, &two_way_tunnel );
+
+					set_init_arg( NBRFSIZE_SWITCH, "50", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &my_ws );
+					set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "30", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
+
+					found_args += 1;
+					break;
+				
 				/* this is just a template:
 				} else if ( strcmp( _SWITCH, long_options[option_index].name ) == 0 ) {
 
