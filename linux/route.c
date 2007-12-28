@@ -472,11 +472,15 @@ int add_del_interface_rules( int8_t del, uint8_t setup_tunnel, uint8_t setup_net
 			struct notun_node *notun_node;
 			uint8_t add_this_rule = YES;
 			
+			uint32_t no_netmask;
+						
 			list_for_each(notun_pos, &notun_list) {
 
 				notun_node = list_entry(notun_pos, struct notun_node, list);
-	
-				if ( (notun_node->addr & notun_node->netmask) == (netaddr & notun_node->netmask) /*&& notun_node->netmask == netmask*/ ) {
+				
+				no_netmask = htonl( 0xFFFFFFFF<<(32 - notun_node->netmask ) );
+
+				if ( (notun_node->addr & no_netmask) == (netaddr & no_netmask) /*&& notun_node->netmask == netmask*/ ) {
 					add_this_rule = NO;
 					notun_node->match_found = YES;
 				}
