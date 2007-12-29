@@ -314,6 +314,10 @@ extern int32_t more_rules;
 #define MORE_RULES_SWITCH "more-rules"
 #define DEF_MORE_RULES NO
 
+extern int32_t no_lo_rule;
+#define NO_LO_RULE_SWITCH "no-lo-rule"
+#define DEF_NO_LO_RULE NO
+
 extern int32_t no_prio_rules;
 #define NO_PRIO_RULES_SWITCH "no-prio-rules"
 #define DEF_NO_PRIO_RULES NO

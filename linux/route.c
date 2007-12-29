@@ -480,18 +480,24 @@ int add_del_interface_rules( int8_t del, uint8_t setup_tunnel, uint8_t setup_net
 				
 				no_netmask = htonl( 0xFFFFFFFF<<(32 - notun_node->netmask ) );
 
-				if ( (notun_node->addr & no_netmask) == (netaddr & no_netmask) /*&& notun_node->netmask == netmask*/ ) {
+				if ( ((notun_node->addr & no_netmask) == (netaddr & no_netmask))  ) {
 					add_this_rule = NO;
 					notun_node->match_found = YES;
 				}
+				
 			}
+			
+			if ( no_lo_rule  &&  (netaddr & htonl( 0xFF000000 ) ) == ( htonl( 0x7F000000 /*172.0.0.0*/ ) ) ) {
+				add_this_rule = NO;
+			}
+
 			
 			if ( add_this_rule ) {
 				add_del_rule( netaddr, netmask, BATMAN_RT_TABLE_TUNNEL, ( del ? 0 : BATMAN_RT_PRIO_TUNNEL + if_count ), 0, 0, del );
 				if_count++;
 			}
 			
-			if ( strncmp( ifr->ifr_name, "lo", IFNAMSIZ - 1 ) == 0 )
+			if ( !no_lo_rule && strncmp( ifr->ifr_name, "lo", IFNAMSIZ - 1 ) == 0 )
 				add_del_rule( 0, 0, BATMAN_RT_TABLE_TUNNEL, BATMAN_RT_PRIO_TUNNEL, "lo\0 ", 2, del );
 
 

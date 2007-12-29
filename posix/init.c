@@ -563,6 +563,7 @@ void apply_init_args( int argc, char *argv[] ) {
    {RT_PRIO_OFFSET_SWITCH,      1, 0, 0},
    {MORE_RULES_SWITCH,          0, 0, 0},
    {NO_PRIO_RULES_SWITCH,       0, 0, 0},
+   {NO_LO_RULE_SWITCH,          0, 0, 0},
    {NO_TUNNEL_RULE_SWITCH,      1, 0, 0},
    {NO_THROW_RULES_SWITCH,      0, 0, 0},
    {NO_UNRESP_CHECK_SWITCH,     0, 0, 0},
@@ -978,6 +979,14 @@ void apply_init_args( int argc, char *argv[] ) {
 					found_args += 1;
 					break;
 
+				} else if ( strcmp( NO_LO_RULE_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					printf ("--%s \\ \n", long_options[option_index].name);
+					errno = 0;
+					no_lo_rule = YES;
+					found_args += 1;
+					break;
+
 				} else if ( strcmp( NO_THROW_RULES_SWITCH, long_options[option_index].name ) == 0 ) {
 
 					printf ("--%s \\ \n", long_options[option_index].name);
@@ -1053,8 +1062,9 @@ void apply_init_args( int argc, char *argv[] ) {
 					set_init_arg( TWO_WAY_TUNNEL_SWITCH, "0", MIN_TWO_WAY_TUNNEL, MAX_TWO_WAY_TUNNEL, &two_way_tunnel );
 					set_init_arg( ONE_WAY_TUNNEL_SWITCH, "3", MIN_TWO_WAY_TUNNEL, MAX_TWO_WAY_TUNNEL, &two_way_tunnel );
 
-					set_init_arg( NBRFSIZE_SWITCH, "50", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &my_ws );
+					set_init_arg( NBRFSIZE_SWITCH, "100", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &my_ws );
 					set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "30", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
+					no_lo_rule = YES;
 
 					found_args += 1;
 					break;

@@ -124,7 +124,6 @@ int32_t my_gw_port = DEF_GW_PORT;
 uint32_t my_gw_addr = DEF_GW_ADDR;
 int32_t vis_port = DEF_VIS_PORT;
 
-
 int32_t rt_table_offset   = DEF_RT_TABLE_OFFSET;
 
 int32_t rt_prio_offset = DEF_RT_PRIO_OFFSET;
@@ -132,6 +131,8 @@ int32_t rt_prio_offset = DEF_RT_PRIO_OFFSET;
 int32_t more_rules = DEF_MORE_RULES;
 
 int32_t no_prio_rules = DEF_NO_PRIO_RULES;
+
+int32_t no_lo_rule = DEF_NO_LO_RULE;
 
 int32_t no_throw_rules = DEF_NO_THROW_RULES;
 
