@@ -672,7 +672,7 @@ void *gw_listen( void *arg ) {
 	struct sockaddr_in addr, client_addr /*, pack_dest */;
 	struct iphdr *iphdr;
 	char vstr[16], str[16], str2[16],  tun_dev[IFNAMSIZ];
-	int32_t res, max_sock, tun_fd, tun_ifi, raw_fd;
+	int32_t res, max_sock, tun_fd, tun_ifi;
 	uint32_t addr_len, client_timeout, current_time;
 	uint32_t my_tun_ip, my_tun_netmask, my_tun_ip_h, my_tun_suffix_mask_h, iph_addr_suffix_h;
 	fd_set wait_sockets, tmp_wait_sockets;
@@ -695,13 +695,6 @@ void *gw_listen( void *arg ) {
 	addr_len = sizeof (struct sockaddr_in);
 	client_timeout = get_time();
 
-
-	if ( ( raw_fd = socket( PF_INET, SOCK_RAW, IPPROTO_RAW ) ) < 0 ) {
-
-		debug_output( 0, "Error - can't create raw socket: %s\n", strerror(errno) );
-		return NULL;
-
-	}
 
 	client_addr.sin_family = AF_INET;
 	client_addr.sin_port = htons(my_gw_port);

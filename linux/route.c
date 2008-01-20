@@ -182,7 +182,7 @@ void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t so
 	while ( NLMSG_OK(nh, len) ) {
 
 		if ( nh->nlmsg_type == NLMSG_DONE )
-			return;
+			break;
 
 		if ( ( nh->nlmsg_type == NLMSG_ERROR ) && ( ((struct nlmsgerr*)NLMSG_DATA(nh))->error != 0 ) )
 			debug_output( 0, "Error - can't %s %s to %s/%i via %s (table %i): %s\n", del ? "delete" : "add", ( route_type == 1 ? "throw route" : ( route_type == 2 ? "unreachable route" : "route" ) ), str1, netmask, str2, rt_table, strerror(-((struct nlmsgerr*)NLMSG_DATA(nh))->error) );
@@ -329,6 +329,7 @@ void add_del_rule( uint32_t network, uint8_t netmask, uint8_t rt_table, uint32_t
 	if ( sendto( netlink_sock, &req, req.nlh.nlmsg_len, 0, (struct sockaddr *)&nladdr, sizeof(struct sockaddr_nl) ) < 0 ) {
 
 		debug_output( 0, "Error - can't send message to kernel via netlink socket for routing rule manipulation: %s", strerror(errno) );
+		close ( netlink_sock );
 		return;
 
 	}
@@ -346,7 +347,7 @@ void add_del_rule( uint32_t network, uint8_t netmask, uint8_t rt_table, uint32_t
 	while ( NLMSG_OK(nh, len) ) {
 
 		if ( nh->nlmsg_type == NLMSG_DONE )
-			return;
+			break;
 
 		if ( ( nh->nlmsg_type == NLMSG_ERROR ) && ( ((struct nlmsgerr*)NLMSG_DATA(nh))->error != 0 ) ) {
 
@@ -360,6 +361,8 @@ void add_del_rule( uint32_t network, uint8_t netmask, uint8_t rt_table, uint32_t
 
 	}
 
+	close ( netlink_sock );
+	
 }
 
 
