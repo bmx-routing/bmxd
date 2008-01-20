@@ -902,6 +902,10 @@ void choose_gw() {
 
 	}
 
+	if ( curr_gateway == NULL && curr_gateway_thread_id != 0 )
+		del_default_route();
+
+	
 	if ( list_empty( &gw_list ) ) {
 
 		if ( curr_gateway != NULL ) {
@@ -1002,15 +1006,13 @@ void choose_gw() {
 
 		}
 
-		curr_gateway = tmp_curr_gw;
-
 		/* may be the last gateway is now gone */
-		if ( ( curr_gateway != NULL ) && ( !is_aborted() ) ) {
+		if ( ( tmp_curr_gw != NULL ) && ( !is_aborted() ) ) {
 
-			addr_to_string( curr_gateway->orig_node->orig, orig_str, ADDR_STR_LEN );
+			addr_to_string( tmp_curr_gw->orig_node->orig, orig_str, ADDR_STR_LEN );
 			debug_output( 3, "Adding default route to %s (gw_flags: %i, packet_count: %i, gw_product: %i)\n", 
 				      orig_str, max_gw_class, norm1000_max_packets, max_gw_factor );
-			add_default_route();
+			add_default_route( tmp_curr_gw );
 
 		}
 

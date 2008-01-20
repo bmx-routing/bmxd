@@ -2124,68 +2124,59 @@ void init_interface ( struct batman_if *batman_if ) {
 void init_interface_gw ( struct batman_if *batman_if ) {
 
 	int32_t sock_opts, i;
-	unsigned short tmp_cmd[2];
-	unsigned int cmd;
 
-	if ( ( batman_if->udp_tunnel_sock = use_gateway_module( batman_if->dev ) ) < 0 ) {
 
-		gw_listen_arg.batman_if = batman_if;
-		
-		if( (gw_listen_arg.gw_client_list = debugMalloc( (0xFFFFFFFF>>gw_tunnel_netmask) * sizeof( struct gw_client ), 210 ) ) == NULL ) {
-		
-			debug_output( 0, "Error - init_interface_gw(): could not allocate memory for gw_client_list \n");
-			restore_defaults();
-			exit(EXIT_FAILURE);
-		}
-		
-		for( i=0; i<(0xFFFFFFFF>>gw_tunnel_netmask); i++) {
-			//debug_output( 3, "resetting %d at %ld\n", i, gw_listen_arg.gw_client_list[i]);
-			gw_listen_arg.gw_client_list[i] = NULL;
-		}
-
-		//memset( gw_client_list, 0, (32-gw_tunnel_netmask) * sizeof( struct gw_client ) );
-
-		
-		batman_if->addr.sin_port = htons( my_gw_port );
-
-		batman_if->udp_tunnel_sock = socket( PF_INET, SOCK_DGRAM, 0 );
-
-		if ( batman_if->udp_tunnel_sock < 0 ) {
-
-			debug_output( 0, "Error - can't create tunnel socket: %s", strerror(errno) );
-			restore_defaults();
-			exit(EXIT_FAILURE);
-
-		}
-
-		if ( bind( batman_if->udp_tunnel_sock, (struct sockaddr *)&batman_if->addr, sizeof(struct sockaddr_in) ) < 0 ) {
-
-			debug_output( 0, "Error - can't bind tunnel socket: %s\n", strerror(errno) );
-			restore_defaults();
-			exit(EXIT_FAILURE);
-
-		}
-
-		/* make udp socket non blocking */
-		sock_opts = fcntl( batman_if->udp_tunnel_sock, F_GETFL, 0 );
-		fcntl( batman_if->udp_tunnel_sock, F_SETFL, sock_opts | O_NONBLOCK );
-
-		batman_if->addr.sin_port = htons( ogm_port );
-
-		pthread_create( &batman_if->listen_thread_id, NULL, &gw_listen, &gw_listen_arg );
-
-	} else {
-
-	    tmp_cmd[0] = (unsigned short)IOCSETDEV;
-	    tmp_cmd[1] = (unsigned short)strlen(batman_if->dev);
-	    memcpy(&cmd, tmp_cmd, sizeof(int));
-		/* TODO: test if we can assign tmp_cmd direct */
-	    if(ioctl(batman_if->udp_tunnel_sock,cmd, batman_if->dev) < 0) {
-			debug_output( 0, "Error - can't add device %s: %s\n", batman_if->dev,strerror(errno) );
-			restore_defaults();
-			exit(EXIT_FAILURE);
-	    }
+	gw_listen_arg.batman_if = batman_if;
+	
+	if( (gw_listen_arg.gw_client_list = debugMalloc( (0xFFFFFFFF>>gw_tunnel_netmask) * sizeof( struct gw_client ), 210 ) ) == NULL ) {
+	
+		debug_output( 0, "Error - init_interface_gw(): could not allocate memory for gw_client_list \n");
+		restore_defaults();
+		exit(EXIT_FAILURE);
 	}
+	
+	for( i=0; i<(0xFFFFFFFF>>gw_tunnel_netmask); i++) {
+		//debug_output( 3, "resetting %d at %ld\n", i, gw_listen_arg.gw_client_list[i]);
+		gw_listen_arg.gw_client_list[i] = NULL;
+	}
+
+	//memset( gw_client_list, 0, (32-gw_tunnel_netmask) * sizeof( struct gw_client ) );
+
+	
+	batman_if->addr.sin_port = htons( my_gw_port );
+
+	batman_if->udp_tunnel_sock = socket( PF_INET, SOCK_DGRAM, 0 );
+
+	if ( batman_if->udp_tunnel_sock < 0 ) {
+
+		debug_output( 0, "Error - can't create tunnel socket: %s", strerror(errno) );
+		restore_defaults();
+		exit(EXIT_FAILURE);
+
+	}
+
+	if ( bind( batman_if->udp_tunnel_sock, (struct sockaddr *)&batman_if->addr, sizeof(struct sockaddr_in) ) < 0 ) {
+
+		debug_output( 0, "Error - can't bind tunnel socket: %s\n", strerror(errno) );
+		restore_defaults();
+		exit(EXIT_FAILURE);
+
+	}
+
+	/* make udp socket non blocking */
+	sock_opts = fcntl( batman_if->udp_tunnel_sock, F_GETFL, 0 );
+	fcntl( batman_if->udp_tunnel_sock, F_SETFL, sock_opts | O_NONBLOCK );
+
+	batman_if->addr.sin_port = htons( ogm_port );
+
+	// join old thread if not already done
+	if ( batman_if->listen_thread_id > 0 ) {
+		pthread_join( batman_if->listen_thread_id, NULL );
+		batman_if->listen_thread_id = 0;
+	}
+	
+	pthread_create( &batman_if->listen_thread_id, NULL, &gw_listen, &gw_listen_arg );
+
 
 }
 

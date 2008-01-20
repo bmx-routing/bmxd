@@ -413,8 +413,8 @@ void *unix_listen( void *arg ) {
 											routing_class = 0;
 
 											if ( curr_gateway != NULL )
-												curr_gateway = NULL;
-										
+												del_default_route();
+								
 											add_del_interface_rules( YES/*del*/, YES/*tunnel*/, NO/*networks*/ );
 
 										}
@@ -447,7 +447,8 @@ void *unix_listen( void *arg ) {
 											routing_class = tmp_unix_value;
 										
 											if ( curr_gateway != NULL )
-												curr_gateway = NULL;
+												del_default_route();
+
 
 											if ( ( routing_class > 0 ) && ( gateway_class > 0 ) ) {
 
@@ -477,7 +478,7 @@ void *unix_listen( void *arg ) {
 										pref_gateway = tmp_ip_holder.s_addr;
 
 										if ( curr_gateway != NULL )
-											curr_gateway = NULL;
+											del_default_route();
 
 									} else {
 

@@ -266,13 +266,17 @@ void del_default_route() {
 
 
 
-int8_t add_default_route() {
+int8_t add_default_route( struct gw_node *new_curr_gw ) {
 
 	struct curr_gw_data *curr_gw_data;
 
+	del_default_route();
+	
+	curr_gateway = new_curr_gw;
+	
 	curr_gw_data = debugMalloc( sizeof(struct curr_gw_data), 207 );
-	curr_gw_data->orig = curr_gateway->orig_node->orig;
-	curr_gw_data->gw_node = curr_gateway;
+	curr_gw_data->gw_node = new_curr_gw;
+	curr_gw_data->orig = new_curr_gw->orig_node->orig;
 	curr_gw_data->batman_if = list_entry( (&if_list)->next , struct batman_if, list );
 
 	if ( pthread_create( &curr_gateway_thread_id, NULL, &client_to_gw_tun, curr_gw_data ) != 0 ) {
@@ -280,7 +284,7 @@ int8_t add_default_route() {
 		debug_output( 0, "Error - couldn't spawn thread: %s\n", strerror(errno) );
 		debugFree( curr_gw_data, 1213 );
 		curr_gateway = NULL;
-
+		curr_gateway_thread_id=0;
 	}
 
 	return 1;
@@ -702,8 +706,6 @@ void restore_defaults() {
 
 	struct list_head *if_pos, *if_pos_tmp;
 	struct batman_if *batman_if;
-	unsigned short tmp_cmd[2];
-	unsigned int cmd;
 
 	stop = 1;
 
@@ -712,22 +714,12 @@ void restore_defaults() {
 
 	batman_if = list_entry( (&if_list)->next, struct batman_if, list );
 
-	/* TODO: unregister from kernel module per ioctl */
-
 	if (batman_if->udp_tunnel_sock > 0) {
 
 		if ( batman_if->listen_thread_id != 0 ) {
 			pthread_join( batman_if->listen_thread_id, NULL );
 			batman_if->listen_thread_id = 0;
-		} else {
-			tmp_cmd[0] = (unsigned short)IOCREMDEV;
-			tmp_cmd[1] = (unsigned short)strlen(batman_if->dev);
-			/* TODO: test if we can assign tmp_cmd direct */
-			memcpy(&cmd, tmp_cmd, sizeof(int));
-			if(ioctl(batman_if->udp_tunnel_sock,cmd, batman_if->dev) < 0) {
-				debug_output( 0, "Error - can't remove device %s from kernel module : %s\n", batman_if->dev,strerror(errno) );
-			}
-		}
+		} 
 
 	}
 
@@ -805,47 +797,14 @@ void restore_defaults() {
 
 void restore_and_exit( uint8_t is_sigsegv ) {
 
-//	struct list_head *if_pos;
-//	struct batman_if *batman_if;
 	struct orig_node *orig_node;
 	struct hash_it_t *hashit = NULL;
-//	unsigned short tmp_cmd[2];
-//	unsigned int cmd;
 
 	if ( !unix_client ) {
 
 		/* remove tun interface first */
 		stop = 1;
 
-		/*
-		list_for_each( if_pos, &if_list ) {
-
-			batman_if = list_entry( if_pos, struct batman_if, list );
-			// TODO: unregister from kernel module per ioctl
-			if (batman_if->udp_tunnel_sock > 0) {
-				if(batman_if->listen_thread_id != 0)
-					pthread_join( batman_if->listen_thread_id, NULL );
-				else {
-
-					tmp_cmd[0] = (unsigned short)IOCREMDEV;
-					tmp_cmd[1] = (unsigned short)strlen(batman_if->dev);
-					// TODO: test if we can assign tmp_cmd direct 
-					memcpy(&cmd, tmp_cmd, sizeof(int));
-					if(ioctl(batman_if->udp_tunnel_sock,cmd, batman_if->dev) < 0) {
-						debug_output( 0, "Error - can't remove device %s from kernel module : %s\n", batman_if->dev,strerror(errno) );
-					}
-
-				}
-				batman_if->listen_thread_id = 0;
-
-			}
-
-		}
-
-		if ( ( routing_class != 0 ) && ( curr_gateway != NULL ) )
-			del_default_route();
-		*/
-		
 		restore_defaults();
 
 		/* all rules and routes were purged in segmentation_fault() */

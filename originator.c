@@ -249,7 +249,7 @@ void update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node
 	
 					debug_output( 3, "Restart gateway selection. Current GW %s disqualified...\n", orig_str );
 	
-					curr_gateway = NULL;
+					del_default_route();
 				}
 				
 				return;
@@ -378,7 +378,7 @@ void update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node
 				debug_output( 3, "Restart gateway selection. Routing class 3 and %d OGMs from GW %s (compared to %d from GW %s)\n",
 					      orig_node->router->packet_count, orig_str, curr_gateway->orig_node->router->packet_count, old_gw_str );
 			
-				curr_gateway = NULL;
+				del_default_route();
 		
 			}
 		}
@@ -626,7 +626,7 @@ void purge_orig( uint32_t curr_time ) {
 				if ( gw_node->orig_node == orig_node ) {
 			
 					if( gw_node == curr_gateway )
-						curr_gateway = NULL;
+						del_default_route();
 					
 					addr_to_string( gw_node->orig_node->orig, orig_str, ADDR_STR_LEN );
 					debug_output( 3, "Removing gateway %s from gateway list \n", orig_str );
@@ -765,7 +765,7 @@ void purge_orig( uint32_t curr_time ) {
 			}
 			
 			if( gw_node == curr_gateway )
-				curr_gateway = NULL;
+				del_default_route();
 
 			list_del( prev_list_head, gw_pos, &gw_list );
 			debugFree( gw_pos, 1405 );

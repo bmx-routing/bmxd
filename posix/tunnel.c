@@ -266,7 +266,8 @@ void *client_to_gw_tun( void *arg ) {
 		
 	}
 	
-	while ( ( !is_aborted() ) && ( curr_gateway != NULL ) && ( ! curr_gw_data->gw_node->deleted ) && (which_tunnel & curr_gw_data->gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWTYPES) ) {
+	while ( ( !is_aborted() ) && ( curr_gateway != NULL ) && ( ! curr_gw_data->gw_node->deleted ) && 
+		(which_tunnel & curr_gw_data->gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWTYPES) ) {
 
 		// obtain virtual IP and refresh leased IP  when 90% of lease_duration has expired
 		if ( (which_tunnel & TWO_WAY_TUNNEL_FLAG) && (tun_ip_request_stamp + TUNNEL_IP_REQUEST_TIMEOUT < current_time) && 
@@ -527,6 +528,7 @@ void *client_to_gw_tun( void *arg ) {
 	del_dev_tun( tun_fd );
 
 	curr_gateway = NULL;
+	
 	debugFree( arg, 1212 );
 
 	return NULL;
