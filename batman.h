@@ -47,6 +47,7 @@
 #define DEF_UNIX_PATH "/var/run/batmand.socket" //extended by .port where port is the base-port used by the daemon
 extern char unix_path[]; 
 
+
 #define VIS_COMPAT_VERSION 21
 
 
@@ -89,6 +90,29 @@ extern char unix_path[];
 #define MAX_SELECT_TIMEOUT_MS 200 /* MUST be smaller than (1000/2) to fit into max tv_usec */
 
 
+#define TP32 4294967296
+#define OV32 2147483647
+#define TP16 65536
+#define OV16 32767
+#define TP8  256
+#define OV8  127
+
+#define LESS_U8( a, b )  ( ((uint8_t)( (a) - (b) ) ) >  OV8 )
+#define LSEQ_U8( a, b )  ( ((uint8_t)( (b) - (a) ) ) <= OV8 )
+#define GREAT_U8( a, b ) ( ((uint8_t)( (b) - (a) ) ) >  OV8 )
+#define GRTEQ_U8( a, b ) ( ((uint8_t)( (a) - (b) ) ) <= OV8 )
+
+#define LESS_U16( a, b )  ( ((uint16_t)( (a) - (b) ) ) >  OV16 )
+#define LSEQ_U16( a, b )  ( ((uint16_t)( (b) - (a) ) ) <= OV16 )
+#define GREAT_U16( a, b ) ( ((uint16_t)( (b) - (a) ) ) >  OV16 )
+#define GRTEQ_U16( a, b ) ( ((uint16_t)( (a) - (b) ) ) <= OV16 )
+	
+#define LESS_U32( a, b )  ( ((uint32_t)( (a) - (b) ) ) >  OV32 )
+#define LSEQ_U32( a, b )  ( ((uint32_t)( (b) - (a) ) ) <= OV32 )
+#define GREAT_U32( a, b ) ( ((uint32_t)( (b) - (a) ) ) >  OV32 )
+#define GRTEQ_U32( a, b ) ( ((uint32_t)( (a) - (b) ) ) <= OV32 )
+
+
 #define WARNING_PERIOD 20000
 
 #define BATMAN_TUN_PREFIX "bat"
@@ -96,8 +120,27 @@ extern char unix_path[];
 
 #define TEST_SWITCH            "test"
 
-#define MAX_PACKET_OUT_SIZE 300
+#define MAX_PACKET_OUT_SIZE 256
 #define MAX_AGGREGATION_INTERVAL_MS 250
+
+
+enum {
+ REQ_RESET,
+ REQ_DEBUG,
+ REQ_RT_CLASS,
+ REQ_PREF_GW,
+ REQ_GW_CLASS,
+ REQ_1WT,
+ REQ_2WT,
+ REQ_PWS,
+ REQ_LWS,
+ REQ_OGI,
+ REQ_CHANGE_HNA,
+ REQ_CHANGE_SRV,
+ REQ_INFO,
+ REQ_FAKE_TIME,
+ REQ_DEFAULT
+};
 
 extern int32_t aggregations_po;
 
@@ -122,6 +165,14 @@ extern int32_t initial_seqno;
 #define MAX_INITIAL_SEQNO FULL_SEQ_RANGE
 #define DEF_INITIAL_SEQNO 0 /* causes initial_seqno to be randomized */
 #define INITIAL_SEQNO_SWITCH "initial-seqno"
+
+
+extern int32_t fake_uptime;
+#define MIN_FAKE_UPTIME 0
+#define MAX_FAKE_UPTIME 4292967
+#define DEF_FAKE_UPTIME 0 
+#define FAKE_UPTIME_SWITCH "fake-uptime"
+
 
 extern int16_t my_ogi;
 #define DEFAULT_ORIGINATOR_INTERVAL 1000 //1000
@@ -229,20 +280,16 @@ extern int8_t resist_blocked_send;
 #define RESIST_BLOCKED_SEND_SWITCH "resist-blocked-send"
 #define DEF_RESIST_BLOCKED_SEND NO
 
-//extern int8_t bmx_defaults;
-//#define DEF_BMX_DEFAULTS          0
 #define BMX_DEFAULTS_SWITCH      "bmx-defaults"
 #define GENIII_DEFAULTS_SWITCH   "generation-III"
 #define GRAZ07_DEFAULTS_SWITCH   "graz-2007"
 
-//#define MIN_BMX_PARA_SET   0
 #define PARA_SET_GENIII    1
 #define PARA_SET_BMX       2
 #define PARA_SET_GRAZ07    3
-//#define MAX_BMX_PARA_SET   3
 
 extern int32_t default_para_set;
-#define DEF_BMX_PARA_SET PARA_SET_BMX
+#define DEF_PARA_SET PARA_SET_BMX
 
 #define OGM_ONLY_VIA_OWNING_IF_SWITCH 'i'
 #define MAKE_IP_HNA_IF_SWITCH 'a'
@@ -429,7 +476,7 @@ extern uint8_t no_policy_routing;
 
 extern int8_t stop;
 
-extern struct gw_listen_arg gw_listen_arg;
+//extern struct gw_listen_arg gw_listen_arg;
 
 extern struct gw_node *curr_gateway;
 extern pthread_t curr_gateway_thread_id;
@@ -438,7 +485,7 @@ extern uint8_t found_ifs;
 extern int32_t receive_max_sock;
 extern fd_set receive_wait_set;
 
-extern uint8_t unix_client;
+extern uint8_t conn_client;
 
 extern int g_argc;
 extern char **g_argv;
@@ -478,6 +525,12 @@ extern struct list_head_first pifnb_list;
 
 extern struct vis_if vis_if;
 extern struct unix_if unix_if;
+
+extern pthread_t gw_thread_id;
+
+extern int gw_thread_finish;
+
+
 extern struct debug_clients debug_clients;
 
 
@@ -570,7 +623,7 @@ struct orig_node                 /* structure for orig_list maintaining nodes of
 	
 	uint32_t last_valid;              /* when last valid ogm from this node was received */
 	uint32_t last_aware;              /* when last valid ogm via  this node was received */
-	uint32_t first_valid_sec;
+	uint32_t first_valid_sec;         	/* only used for debugging purposes */
 	uint16_t last_valid_seqno;              /* last and best known squence number */
 	uint16_t last_rcvd_seqno;
 	uint8_t  last_valid_largest_ttl;  /* largest (best) TTL received with last sequence number */
@@ -702,7 +755,7 @@ struct ext_type_def
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 	unsigned int ext_related:2;   // may be used by the related message type
 	unsigned int ext_type:5;      // identifies the extension message size, type and content
-	unsigned int ext_msg:1;      // MUST be set to one for extension messages
+	unsigned int ext_msg:1;       // MUST be set to one for extension messages
 #elif __BYTE_ORDER == __BIG_ENDIAN
 	unsigned int ext_msg:1;
 	unsigned int ext_type:5;
@@ -787,9 +840,6 @@ struct hna_node
 	uint8_t enabled;
 };
 
-#define TODO_TYPE_HNA 0x01
-#define TODO_TYPE_SRV 0x02
-
 struct todo_node
 {
 	struct list_head list;
@@ -854,12 +904,10 @@ struct batman_if
 	char *dev;
 	int32_t udp_send_sock;
 	int32_t udp_recv_sock;
-	int32_t udp_tunnel_sock;
 	int32_t if_index;
 	int16_t if_num;
 	uint8_t if_rp_filter_old;
 	uint8_t if_send_redirects_old;
-	pthread_t listen_thread_id;
 	struct sockaddr_in addr;
 	struct sockaddr_in broad;
 	struct bat_packet out;
@@ -877,8 +925,14 @@ struct batman_if
 
 struct gw_listen_arg
 {
-	struct batman_if *batman_if;
-	struct gw_client **gw_client_list; 
+	struct gw_client **gw_client_list;
+	int32_t sock;
+	uint32_t prefix;
+	int8_t netmask;
+	int32_t port;
+	int32_t owt;
+	int32_t twt;
+	int32_t lease_time;
 };
 	
 
@@ -899,7 +953,7 @@ struct unix_if {
 	struct sockaddr_un addr;
 	struct list_head_first client_list;
 };
-
+	
 struct unix_client {
 	struct list_head list;
 	int32_t sock;

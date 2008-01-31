@@ -36,21 +36,6 @@
 
 uint8_t debug_level = 0;
 
-/*
-#ifdef PROFILE_DATA
-
-uint8_t debug_level_max = 5;
-
-#elif DEBUG_MALLOC && MEMORY_USAGE
-
-uint8_t debug_level_max = 5;
-
-#else
-
-uint8_t debug_level_max = 4;
-
-#endif
-*/
 
 char *prog_name;
 
@@ -96,6 +81,8 @@ int32_t my_ws = DEF_SEQ_RANGE;
 
 int32_t initial_seqno = DEF_INITIAL_SEQNO;
 
+int32_t fake_uptime = DEF_FAKE_UPTIME;
+
 int32_t ttl = DEFAULT_TTL;
 
 uint8_t mobile_device = NO;
@@ -114,10 +101,7 @@ int32_t asymmetric_exp = DEF_ASYMMETRIC_EXP;
 
 int32_t rebrc_delay = DEF_REBRC_DELAY;
 
-int32_t default_para_set =  DEF_BMX_PARA_SET;
-
-
-//int16_t num_words = ( DEF_SEQ_RANGE / WORD_BIT_SIZE ) + ( ( DEF_SEQ_RANGE % WORD_BIT_SIZE > 0)? 1 : 0 );
+int32_t default_para_set =  DEF_PARA_SET;
 
 int32_t ogm_port = DEF_BASE_PORT;
 int32_t my_gw_port = DEF_GW_PORT;
@@ -150,8 +134,6 @@ uint8_t  gw_tunnel_netmask = DEF_GW_TUNNEL_NETMASK;
 
 int32_t tunnel_ip_lease_time = DEF_TUNNEL_IP_LEASE_TIME;
 
-struct gw_listen_arg gw_listen_arg;
-
 struct gw_node *curr_gateway = NULL;
 pthread_t curr_gateway_thread_id = 0;
 
@@ -180,7 +162,7 @@ uint8_t found_ifs = 0;
 int32_t receive_max_sock = 0;
 fd_set receive_wait_set;
 
-uint8_t unix_client = 0;
+uint8_t conn_client = 0;
 
 int g_argc;
 char **g_argv;
@@ -218,6 +200,11 @@ pthread_mutex_t *todo_mutex = NULL;
 
 struct vis_if vis_if;
 struct unix_if unix_if;
+
+pthread_t gw_thread_id = 0;
+
+int gw_thread_finish = 0;
+
 struct debug_clients debug_clients;
 
 unsigned char *vis_packet = NULL;
@@ -410,18 +397,6 @@ void print_advanced_opts ( int verbose ) {
 	
 	fprintf( stderr, "\n       --%s : mobile device mode reluctant to help others.\n", ASOCIAL_SWITCH );
 	
-/*
-	fprintf( stderr, "\n       --%s <value> : do neighbor ranking based on latest received OGMs.\n", PENALTY_MIN_SWITCH );
-	fprintf( stderr, "          choosing the ranking winner with the most recent <value> OGMs in the NBRF \n");
-	if ( verbose )
-		fprintf( stderr, "          default: off, allowed values:  %d <= value <= %d\n", MIN_PENALTY_MIN, MAX_PENALTY_MIN  );
-
-	fprintf( stderr, "\n       --%s <value> : do neighbor ranking based on latest received OGMs.\n", PENALTY_EXCEED_SWITCH );
-	fprintf( stderr, "          choosing a new ranking winner when it came up with <value> more recent OGMs \n");
-	fprintf( stderr, "          than the previous ranking winner \n");
-	if ( verbose )
-		fprintf( stderr, "          default: off, allowed values:  %d <= value <= %d\n", MIN_PENALTY_EXCEED, MAX_PENALTY_EXCEED  );
-*/
 }
 
 void usage( void ) {
@@ -442,8 +417,8 @@ void usage( void ) {
 	fprintf( stderr, "       -v print version\n\n" );
 	
 	fprintf( stderr, "       --%s : parametrize the routing algorithm to the best of BMX knowledge! DEFAULT !\n", BMX_DEFAULTS_SWITCH );
-	fprintf( stderr, "       --%s : parametrize the routing algorithm according to the WCW Graz 2007 experiments!\n", GRAZ07_DEFAULTS_SWITCH );
-	fprintf( stderr, "       --%s : parametrize the routing algorithm according to B.A.T.M.A.N generation III (as implemented in batmand-0.2)!\n\n", GENIII_DEFAULTS_SWITCH );
+	fprintf( stderr, "       --%s : parametrize the routing algorithm according to the WCW Graz 2007 experiments!\n\n", GRAZ07_DEFAULTS_SWITCH );
+	
 	
 	fprintf( stderr, "       --dangerous : show advanced and dangerous options \n" );
 
@@ -497,8 +472,7 @@ void verbose_usage( void ) {
 	fprintf( stderr, "       -v print version\n\n" );
 	
 	fprintf( stderr, "       --%s : parametrize the routing algorithm to the best of BMX knowledge! DEFAULT !\n", BMX_DEFAULTS_SWITCH );
-	fprintf( stderr, "       --%s : parametrize the routing algorithm according to the WCW Graz 2007 experiments!\n", GRAZ07_DEFAULTS_SWITCH );
-	fprintf( stderr, "       --%s : parametrize the routing algorithm according to B.A.T.M.A.N generation III (as implemented in batmand-0.2)!\n\n", GENIII_DEFAULTS_SWITCH );
+	fprintf( stderr, "       --%s : parametrize the routing algorithm according to the WCW Graz 2007 experiments!\n\n", GRAZ07_DEFAULTS_SWITCH );
 	
 	fprintf( stderr, "\n       --dangerous : show advanced and dangerous options \n" );
 
@@ -1326,70 +1300,9 @@ uint8_t alreadyConsidered( struct orig_node *orig_node, uint16_t seqno, uint32_t
 
 }
 
-/*
-int isDuplicate( struct orig_node *orig_node, uint16_t seqno ) {
-
-	prof_start( PROF_is_duplicate );
-	struct list_head *neigh_pos;
-	struct neigh_node *neigh_node;
-
-	list_for_each( neigh_pos, &orig_node->neigh_list ) {
-
-		neigh_node = list_entry( neigh_pos, struct neigh_node, list );
-
-		if ( // ( neigh == 0 || (neigh == neigh_node->addr && if_incoming == neigh_node->if_incoming) ) &&
-		     get_bit_status( neigh_node->seq_bits, orig_node->last_seqno, seqno ) ) {
-
-			prof_stop( PROF_is_duplicate );
-			return 1;
-
-		}
-
-	}
-
-	prof_stop( PROF_is_duplicate );
-
-	return 0;
-
-}
-*/
-
-/*
-int isBntog( uint32_t neigh, struct orig_node *orig_tog_node ) {
-
-	if ( ( orig_tog_node->router != NULL ) && ( orig_tog_node->router->addr == neigh ) ) {
-		
-		return 1;
-		
-	}
-
-	return 0;
-
-}
-*/
-
-/*
-int isBidirectionalNeigh( struct orig_node *orig_neigh_node, struct batman_if *if_incoming ) {
-
-	if ( orig_neigh_node->link_node == NULL ) {
-		
-		return 0;
-	
-	} else if ( ((uint16_t)( (if_incoming->out.seqno - OUT_SEQNO_OFFSET) - orig_neigh_node->link_node->bidirect_link[if_incoming->if_num] )) < bidirect_link_to ) {
-		
-		return 1;
-	}
-	
-	return 0;
-
-}
-*/
-
 
 void generate_vis_packet() {
 
-//	struct hash_it_t *hashit = NULL;
-//	struct orig_node *orig_node;
 	struct vis_data *vis_data;
 	struct list_head *list_pos;
 	struct batman_if *batman_if;
@@ -1465,30 +1378,6 @@ void generate_vis_packet() {
 		}
 	}
 
-	/*
-	while ( NULL != ( hashit = hash_iterate( orig_hash, hashit ) ) ) {
-
-		orig_node = hashit->bucket->data;
-
-		// we interested in 1 hop neighbours only
-		if ( ( orig_node->router != NULL ) && ( orig_node->orig == orig_node->router->addr ) && ( orig_node->router->packet_count > 0 ) ) {
-
-			vis_packet_size += sizeof(struct vis_data);
-
-			vis_packet = debugRealloc( vis_packet, vis_packet_size, 105 );
-
-			vis_data = (struct vis_data *)(vis_packet + vis_packet_size - sizeof(struct vis_data));
-
-			//TBD: Why memcpy this uint32_t assignement ???
-			memcpy( &vis_data->ip, (unsigned char *)&orig_node->orig, 4 );
-
-			vis_data->data = orig_node->router->packet_count;
-			vis_data->type = DATA_TYPE_NEIGH;
-
-		}
-
-	}
-	*/
 	
 	/* secondary interfaces */
 	if ( found_ifs > 1 ) {
@@ -1572,7 +1461,7 @@ void check_todos() {
 		list_for_each_safe( todo_pos, todo_pos_tmp, &todo_list) {
 			todo_node = list_entry( todo_pos, struct todo_node, list );
 			
-			if ( todo_node->todo_type == TODO_TYPE_HNA ) {
+			if ( todo_node->todo_type == REQ_CHANGE_HNA ) {
 				
 				addr_to_string( todo_node->key.addr, addr_str, sizeof(addr_str) );
 				
@@ -1585,7 +1474,7 @@ void check_todos() {
 				add_del_own_hna( NO /* do not purge */ );
 				
 				
-			} else if ( todo_node->todo_type == TODO_TYPE_SRV ) {
+			} else if ( todo_node->todo_type == REQ_CHANGE_SRV ) {
 				
 				addr_to_string( todo_node->def32, addr_str, sizeof(addr_str) );
 				
@@ -1597,6 +1486,12 @@ void check_todos() {
 				
 				add_del_own_srv( NO /* do not purge */ );
 				
+				
+			} else if ( todo_node->todo_type == REQ_FAKE_TIME ) {
+				
+				debug_output( 3, "found todo item fake time by %ld sec \n", todo_node->def32 );
+				
+				fake_start_time ( todo_node->def32 );
 				
 			} else {
 				
@@ -1662,18 +1557,14 @@ int8_t batman() {
 	struct list_head *list_pos, *forw_pos_tmp, *notun_pos_tmp;
 	struct orig_node *orig_neigh_node, *orig_node; 
 	struct batman_if *batman_if;
-	//struct neigh_node *neigh_node;
 	struct forw_node *forw_node;
 	struct notun_node *notun_node;
 	uint32_t debug_timeout, statistic_timeout, todo_timeout, vis_timeout, select_timeout, aggregation_time = 0;
-	//uint16_t neigh_id4him;
-	//struct hna_key key;
 	uint8_t drop_it;
-	//struct hna_hash_node *hash_node;
 
 	uint16_t aggr_interval;
 	
-	static char orig_str[ADDR_STR_LEN], /*blocker_str[ADDR_STR_LEN],*/ /*hna_str[ADDR_STR_LEN],*/ neigh_str[ADDR_STR_LEN], ifaddr_str[ADDR_STR_LEN];
+	static char orig_str[ADDR_STR_LEN], neigh_str[ADDR_STR_LEN], ifaddr_str[ADDR_STR_LEN];
 	uint8_t forward_old, if_rp_filter_all_old, if_rp_filter_default_old, if_send_redirects_all_old, if_send_redirects_default_old;
 	uint8_t is_my_addr, is_my_orig, is_broadcast, is_my_path, is_duplicate, is_bidirectional, is_accepted, is_direct_neigh, is_bntog, forward_duplicate_packet, has_unidirectional_flag, has_directlink_flag, has_duplicated_flag;
 	int tq_rate_value, rand_nb_value, acceptance_nb_value;
@@ -1681,12 +1572,6 @@ int8_t batman() {
 	
 				
 	uint32_t s_last_cpu_time = 0, s_curr_cpu_time = 0;
-	
-	//uint32_t s_start_ref_cpu_time = 0, s_total_ref_cpu_time = 0;
-	
-	//uint32_t s_a_cpu_time = 0, s_b_cpu_time = 0, s_c_cpu_time = 0, s_d_cpu_time = 0, s_e_cpu_time = 0, s_f_cpu_time = 0, s_g_cpu_time = 0, s_h_cpu_time = 0, s_i_cpu_time = 0, s_j_cpu_time = 0, s_k_cpu_time = 0;
-	 
-	//uint32_t t_a_cpu_time = 0, t_b_cpu_time = 0, t_c_cpu_time = 0, t_d_cpu_time = 0, t_e_cpu_time = 0, t_f_cpu_time = 0, t_g_cpu_time = 0, t_h_cpu_time = 0, t_i_cpu_time = 0, t_j_cpu_time = 0, t_k_cpu_time = 0;
 	
 	
 	struct bat_packet *ogm;
@@ -1712,7 +1597,7 @@ int8_t batman() {
 	received_pip_array = &pip_array;
 	received_pip_pos   = &pip_array_len;
 
-	curr_time = debug_timeout = todo_timeout = statistic_timeout = vis_timeout = get_time();
+	curr_time = debug_timeout = todo_timeout = statistic_timeout = vis_timeout = get_time_msec();
 		
 	if ( aggregations_po )
 		aggregation_time = curr_time + 50 + rand_num( 100 );
@@ -1742,23 +1627,6 @@ int8_t batman() {
 	
 	add_del_own_hna( NO /*do not purge*/ );	
 	
-	memset( my_gw_ext_array, 0, sizeof(struct ext_packet) );
-	my_gw_ext_array_len = 0;
-	
-	if ( gateway_class && ( two_way_tunnel || one_way_tunnel ) ) {
-		
-		my_gw_ext_array->EXT_FIELD_MSG  = YES;
-		my_gw_ext_array->EXT_FIELD_TYPE = EXT_TYPE_GW;
-		
-		my_gw_ext_array->EXT_GW_FIELD_GWFLAGS = ( ( two_way_tunnel || one_way_tunnel ) ? gateway_class : 0 );
-		my_gw_ext_array->EXT_GW_FIELD_GWTYPES = ( gateway_class ? ( (two_way_tunnel?TWO_WAY_TUNNEL_FLAG:0) | (one_way_tunnel?ONE_WAY_TUNNEL_FLAG:0) ) : 0);
-		
-		my_gw_ext_array->EXT_GW_FIELD_GWPORT = htons( my_gw_port );
-		my_gw_ext_array->EXT_GW_FIELD_GWADDR = my_gw_addr;
-		
-		my_gw_ext_array_len = 1;
-	
-	}
 	
 	memset( my_pip_ext_array, 0, sizeof(struct ext_packet) );
 	my_pip_ext_array->EXT_FIELD_MSG = YES;
@@ -1781,7 +1649,6 @@ int8_t batman() {
 		batman_if->out.ttl      = batman_if->if_ttl;
 		batman_if->out.seqno    = initial_seqno;
 		batman_if->out.orig     = batman_if->addr.sin_addr.s_addr;
-//		batman_if->out.prev_hop = 0x00;
 
 		batman_if->if_rp_filter_old = get_rp_filter( batman_if->dev );
 		set_rp_filter( 0 , batman_if->dev );
@@ -1813,8 +1680,6 @@ int8_t batman() {
 	forward_old = get_forwarding();
 	set_forwarding(1);
 
-	curr_time = get_time();
-
 	char *init_string = get_init_string( 0 );
 	
 	debug_output(0, "Startup parameters: %s\n", init_string);
@@ -1826,12 +1691,10 @@ int8_t batman() {
 		
 		prof_start( PROF_all );
 		
-		//s_a_cpu_time = (uint32_t)clock();
-
 		debug_output( 4, " \n \n" );
 
 		
-		if ( aggregations_po == NO  &&  curr_time < ((struct forw_node *)forw_list.next)->send_time) {
+		if ( aggregations_po == NO  &&  LESS_U32( curr_time, ((struct forw_node *)forw_list.next)->send_time ) ) {
 			
 			select_timeout = ((struct forw_node *)forw_list.next)->send_time - curr_time ;
 			
@@ -1840,7 +1703,7 @@ int8_t batman() {
 			
 			res = receive_packet( select_timeout );
 			
-		} else if ( aggregations_po  &&  curr_time < aggregation_time ) { 
+		} else if ( aggregations_po  &&  LESS_U32( curr_time,  aggregation_time ) ) {
 		
 			select_timeout = aggregation_time - curr_time ;
 			
@@ -1856,13 +1719,9 @@ int8_t batman() {
 		
 		}
 		
-		//t_a_cpu_time+= (uint32_t)clock() - s_a_cpu_time;
-
 		
 		if ( res > 0 ) {
 
-			//s_b_cpu_time = (uint32_t)clock();
-			
 			addr_to_string( ogm->orig, orig_str, sizeof(orig_str) );
 			addr_to_string( neigh, neigh_str, sizeof(neigh_str) );
 			addr_to_string( if_incoming->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
@@ -1896,8 +1755,6 @@ int8_t batman() {
 			if ( gw_array_len > 0 && gw_array != NULL && gw_array->EXT_GW_FIELD_GWFLAGS != 0 && gw_array->EXT_GW_FIELD_GWTYPES != 0 )
 				debug_output( 4, "Is an internet gateway (class %i, types %i) \n", gw_array->EXT_GW_FIELD_GWFLAGS, gw_array->EXT_GW_FIELD_GWTYPES );
 			
-			//t_b_cpu_time+= (uint32_t)clock() - s_b_cpu_time;
-
 
 			if ( is_my_addr ) {
 
@@ -1909,8 +1766,6 @@ int8_t batman() {
 
 			} else if ( is_my_orig ) {
 				
-				//s_c_cpu_time = (uint32_t)clock();
-
 				orig_neigh_node = get_orig_node( neigh );
 
 				debug_output( 4, "received my own OGM via NB, lastTxIfSeqno: %d, currRxSeqno: %d, prevRxSeqno: %d, currRxSeqno-prevRxSeqno %d, link_node %s \n", ( if_incoming->out.seqno - OUT_SEQNO_OFFSET ), ogm->seqno, 0, 0, (orig_neigh_node->link_node ? "exist":"NOT exists") /*, orig_neigh_node->bidirect_link[if_incoming->if_num], ogm->seqno - orig_neigh_node->bidirect_link[if_incoming->if_num] */ );
@@ -1968,8 +1823,6 @@ int8_t batman() {
 
 				debug_output( 4, "Drop packet: originator packet from myself (via neighbour) \n" );
 				
-				//t_c_cpu_time+= (uint32_t)clock() - s_c_cpu_time;
-
 
 			} else if ( ogm->flags & UNIDIRECTIONAL_FLAG ) {
 
@@ -1977,16 +1830,11 @@ int8_t batman() {
 
 			} else {
 
-				//s_d_cpu_time = (uint32_t)clock();
-
 				
 				orig_node = get_orig_node( ogm->orig );
 
 				/* if sender is a direct neighbor the sender ip equals originator ip */
 				orig_neigh_node = ( is_direct_neigh ? orig_node : get_orig_node( neigh ) );
-				
-				//t_d_cpu_time+= (uint32_t)clock() - s_d_cpu_time;
-				//s_e_cpu_time = (uint32_t)clock();
 
 				drop_it = NO;
 					
@@ -2041,13 +1889,9 @@ int8_t batman() {
 					drop_it = YES;
 
 				}
-				
-				//t_e_cpu_time+= (uint32_t)clock() - s_e_cpu_time;
 
 				if ( ! drop_it ) {
 					
-					//s_f_cpu_time = (uint32_t)clock();
-
 					if ( DEBUG_RCVD_ALL_BITS )
 						set_dbg_rcvd_all_bits( orig_node, ogm->seqno, if_incoming );
 					
@@ -2063,13 +1907,6 @@ int8_t batman() {
 					
 					update_link( orig_node, ogm->seqno, if_incoming, ( !has_duplicated_flag && is_direct_neigh ) );
 					
-					
-					//t_f_cpu_time+= (uint32_t)clock() - s_f_cpu_time;
-					//s_g_cpu_time = (uint32_t)clock();
-
-					//t_g_cpu_time+= (uint32_t)clock() - s_g_cpu_time;
-					//s_h_cpu_time = (uint32_t)clock();
-
 					tq_rate_value = tq_rate( orig_neigh_node, if_incoming, bidirect_link_to );
 					
 					rand_nb_value = rand_num( bidirect_link_to -1 ); //cheating to absorb late own OGM replies
@@ -2116,9 +1953,6 @@ int8_t batman() {
 									rand_nb_value, acceptance_nb_value,  tq_rate_value, asymmetric_weight, orig_node->last_valid_seqno, ogm->seqno ,orig_node->last_valid_largest_ttl, ogm->ttl, dup_ttl_limit, rand_num_hundret, dup_rate, dup_degrad );
 					
 					
-					//t_h_cpu_time+= (uint32_t)clock() - s_h_cpu_time;
-					//s_i_cpu_time = (uint32_t)clock();
-
 					uint8_t not_forwarded = YES;
 					
 					if ( ! mobile_device ) {
@@ -2179,26 +2013,6 @@ int8_t batman() {
 						}
 						
 					}
-/*					
-					if ( not_forwarded ) {
-						
-						debug_output( 3, "\n\nNOT FORWARDED\n\n");
-						debug_output( 3, "Received BATMAN packet via NB: %s , IF: %s %s (from OG: %s, seqno %d, TTL %d, V %d, UDF %d, IDF %d, DPF %d, direct_neigh %d) \n", neigh_str, if_incoming->dev, ifaddr_str, orig_str, ogm->seqno, ogm->ttl, COMPAT_VERSION, has_unidirectional_flag, has_directlink_flag, has_duplicated_flag, is_direct_neigh );
-
-						debug_output( 3, "NOT FORWARDED: packet from OG %s via NB %s dup_ttl_limit %d, last_seqno %d, seqno %d, largest_ttl %d, ttl %d,  rand_num_hundret %d, dup_rate %d, dup_degrad %d \n", orig_str, neigh_str,
-								dup_ttl_limit, orig_node->last_seqno, ogm->seqno, orig_node->last_seqno_largest_ttl, ogm->ttl, rand_num_hundret, dup_rate, dup_degrad );
-						
-						debug_output( 3, "  received via bidirectional link: %s, accepted OGM: %s, BNTOG: %s, iam a mobile device: %s, tq_rate: %d, rand_nb: %d, acceptance_nb: %d !\n", 
-								( is_bidirectional ? "YES" : "NO" ), 
-										( is_accepted ? "YES" : "NO" ), 
-										( is_bntog ? "YES" : "NO" ), 
-										( mobile_device ? "YES" : "NO" ), 
-										tq_rate_value, rand_nb_value, acceptance_nb_value );
-						
-						
-					}
-*/
-					//t_i_cpu_time+= (uint32_t)clock() - s_i_cpu_time;
 					
 				}
 				
@@ -2211,9 +2025,8 @@ int8_t batman() {
 			
 		}
 		
-		//s_j_cpu_time = (uint32_t)clock();
-
-		if ( aggregations_po  &&  aggregation_time <= curr_time ) {
+		
+		if ( aggregations_po  && ( LSEQ_U32( aggregation_time, curr_time ) ) ) {
 				
 			aggr_interval = (my_ogi/aggregations_po > MAX_AGGREGATION_INTERVAL_MS) ? MAX_AGGREGATION_INTERVAL_MS :  (my_ogi/aggregations_po);
 
@@ -2226,16 +2039,12 @@ int8_t batman() {
 			
 		}
 		
-		//t_j_cpu_time+= (uint32_t)clock() - s_j_cpu_time;
-		//s_k_cpu_time = (uint32_t)clock();
-
-		if ( todo_timeout + 200 < curr_time ) {
+		if ( LESS_U32( todo_timeout + 200,  curr_time )  ) {
 			
 			check_todos();
 			
 			
-			
-			if ( debug_timeout + 1000 < curr_time ) {
+			if ( LESS_U32( debug_timeout + 1000,  curr_time ) ) {
 		
 				purge_orig( curr_time );
 				
@@ -2262,7 +2071,7 @@ int8_t batman() {
 					choose_gw();
 		
 				
-				if ( ( vis_timeout + 10000 < curr_time ) && ( vis_if.sock ) ) {
+				if ( LESS_U32( vis_timeout + 10000, curr_time  ) && ( vis_if.sock ) ) {
 		
 					vis_timeout = curr_time;
 					
@@ -2271,91 +2080,37 @@ int8_t batman() {
 				}
 				
 				
-				if ( statistic_timeout + 5000 < curr_time ) {
+				if ( LESS_U32( statistic_timeout + 5000, curr_time ) ) {
 				
-					/* generating some reference statistics... */
-					/*
-					s_start_ref_cpu_time = (uint32_t)clock();
-				
-					unsigned long k, trasha, trashb = 3, trash = 123456789;
-					for( k = 1; k<100000; k++ ) {
-						trasha = trash / k;
-						trashb = trasha / trashb;
-						if ( trashb == 0 ) 
-							i=j=trashb=1;
-					}
-				
-					s_total_ref_cpu_time+= (uint32_t)clock() - s_start_ref_cpu_time;
-					*/
-		
-			
 					/* generating cpu load statistics... */
 					s_curr_cpu_time = (uint32_t)clock();
 					
-					//uint32_t passed_time = (( curr_time - statistic_timeout )/10);
+					curr_statistic_period_ms = ( curr_time - statistic_timeout ) ;
 					
-					/*					
-					debug_output( 7, "stats: load %2d %2d ref %3d [ %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d ] %4d sched. %3d, Agg. rcvd %3d, brc %3d, OGMs rcvd %3d, accept %3d, brc %3d \n",
-						( (s_curr_cpu_time) / curr_time ),
-						( (s_curr_cpu_time - s_last_cpu_time) / ( curr_time - statistic_timeout ) ),
-						( s_total_ref_cpu_time / ( curr_time - statistic_timeout ) ),
-						t_a_cpu_time / passed_time,
-						t_b_cpu_time / passed_time,
-						t_c_cpu_time / passed_time,
-						t_d_cpu_time / passed_time,
-						t_e_cpu_time / passed_time,
-						t_f_cpu_time / passed_time,
-						t_g_cpu_time / passed_time,
-						t_h_cpu_time / passed_time,
-						t_i_cpu_time / passed_time,
-						t_j_cpu_time / passed_time,
-						t_k_cpu_time / passed_time,		
+					if ( curr_statistic_period_ms > 0 ) {
 						
-						(( t_a_cpu_time  +
-						t_b_cpu_time  +
-						t_c_cpu_time  +
-						t_d_cpu_time  +
-						t_e_cpu_time  +
-						t_f_cpu_time  +
-						t_g_cpu_time  +
-						t_h_cpu_time  +
-						t_i_cpu_time  +
-						t_j_cpu_time  +
-						t_k_cpu_time ) / passed_time ),	
+						debug_output( DBGL_STATISTICS, "stats: load %2d  sched. %3d, Agg. rcvd %3d, brc %3d (cp %3d), OGMs rcvd %3d, accept %3d, brc %3d, rt %3d \n",
+						( s_curr_avg_cpu_load = ( (s_curr_cpu_time - s_last_cpu_time) / curr_statistic_period_ms ) ),
+						s_returned_select * 1000 / curr_statistic_period_ms,
+	s_received_aggregations * 1000 / curr_statistic_period_ms,
+	s_broadcasted_aggregations * 1000 / curr_statistic_period_ms,
+	s_broadcasted_cp_aggregations * 1000 / curr_statistic_period_ms,
+	s_received_ogms * 1000 / curr_statistic_period_ms,
+	s_accepted_ogms * 1000 / curr_statistic_period_ms,
+	s_broadcasted_ogms * 1000 / curr_statistic_period_ms,
+	s_pog_route_changes * 1000 / curr_statistic_period_ms );
+	
+						
+						if ( s_curr_avg_cpu_load < 255 )
+							(list_entry( (&if_list)->next, struct batman_if, list ))->out.reserved_someting = s_curr_avg_cpu_load;
+						else 
+							(list_entry( (&if_list)->next, struct batman_if, list ))->out.reserved_someting = 255;
 					
-						s_returned_select,
-						s_received_aggregations,
-						s_broadcasted_aggregations,
-						s_received_ogms,
-						s_accepted_ogms,
-						s_broadcasted_ogms );
-					*/
 					
-					curr_statistic_period_ms = ( curr_time - statistic_timeout );
-					
-					debug_output( DBGL_STATISTICS, "stats: load %2d, %2d  sched. %3d, Agg. rcvd %3d, brc %3d (cp %3d), OGMs rcvd %3d, accept %3d, brc %3d, rt %3d \n",
-					( s_curr_cpu_time / curr_time ),
-					( s_curr_avg_cpu_load = ( (s_curr_cpu_time - s_last_cpu_time) / curr_statistic_period_ms ) ),
-					  s_returned_select * 1000 / curr_statistic_period_ms,
-       s_received_aggregations * 1000 / curr_statistic_period_ms,
-       s_broadcasted_aggregations * 1000 / curr_statistic_period_ms,
-       s_broadcasted_cp_aggregations * 1000 / curr_statistic_period_ms,
-       s_received_ogms * 1000 / curr_statistic_period_ms,
-       s_accepted_ogms * 1000 / curr_statistic_period_ms,
-       s_broadcasted_ogms * 1000 / curr_statistic_period_ms,
-       s_pog_route_changes * 1000 / curr_statistic_period_ms );
-
-					
-					if ( s_curr_avg_cpu_load < 255 )
-						(list_entry( (&if_list)->next, struct batman_if, list ))->out.reserved_someting = s_curr_avg_cpu_load;
-					else 
-						(list_entry( (&if_list)->next, struct batman_if, list ))->out.reserved_someting = 255;
+					}
 					
 					s_returned_select = s_received_aggregations = s_broadcasted_aggregations = s_broadcasted_cp_aggregations = s_received_ogms = s_accepted_ogms = s_broadcasted_ogms = s_pog_route_changes = 0; 
-					
-					//s_total_ref_cpu_time = 0;
-					
-					//t_a_cpu_time = t_b_cpu_time = t_c_cpu_time = t_d_cpu_time = t_e_cpu_time = t_f_cpu_time = t_g_cpu_time = t_h_cpu_time = t_i_cpu_time = t_j_cpu_time = t_k_cpu_time = 0;
+				
 					
 					s_last_cpu_time = s_curr_cpu_time;
 				
@@ -2370,8 +2125,6 @@ int8_t batman() {
 			todo_timeout = curr_time;
 			
 		}
-		
-		//t_k_cpu_time+= (uint32_t)clock() - s_k_cpu_time;
 		
 	prof_stop( PROF_all );
 	}

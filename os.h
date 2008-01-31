@@ -22,15 +22,21 @@
 
 #include "batman.h"
 
-uint32_t get_time( void );
-uint32_t get_time_sec( void );
 
-// returns an
+/* get_time functions MUST be called at least every 2*MAX_SELECT_TIMEOUT_MS to allow for properly working time-drift checks */
+
+/* overlaps after approximately 138 years */
+#define get_time_sec()  get_time( NO  ) 
+
+/* overlaps after 49 days, 17 hours, 2 minutes, and 48 seconds */
+#define get_time_msec() get_time( YES ) 
+uint32_t get_time( uint8_t msec );
+	
+void fake_start_time( int32_t fake );
+
 int32_t rand_num( uint32_t limit );
+
 void addr_to_string( uint32_t addr, char *str, int32_t len );
-
-
-
 
 void add_del_hna( struct orig_node *orig_node, struct ext_packet *hna_array, int16_t hna_array_len /*int8_t del*/ );
 int8_t is_aborted();
@@ -49,18 +55,21 @@ int flush_routes_rules( int8_t rt_table );
 /* tun.c */
 int8_t probe_tun(uint8_t print_to_stderr);
 int8_t del_dev_tun( int32_t fd );
-int8_t add_dev_tun( struct batman_if *batman_if, uint32_t dest_addr, char *tun_dev, size_t tun_dev_size, int32_t *fd, int32_t *ifi );
+int8_t add_dev_tun(  uint32_t dest_addr, char *tun_dev, size_t tun_dev_size, int32_t *fd, int32_t *ifi );
 int8_t set_tun_addr( int32_t fd, uint32_t tun_addr, char *tun_dev );
 
 /* init.c */
 
-#define MAX_UNIX_REQ_SIZE 20 /* there is a strange limit of 20 which I dont understand ??? */
+#define MAX_UNIX_RCV_SIZE 1501 
+#define MAX_UNIX_REQ_SIZE 30 
 
 void prepare_add_del_own_hna ( char *optarg_str, int8_t del, uint8_t atype, uint8_t startup  );
 void prepare_add_del_own_srv ( char *optarg_str, int8_t del, int8_t startup );
 void apply_init_args( int argc, char *argv[] );
 void init_interface ( struct batman_if *batman_if );
-void init_interface_gw ( struct batman_if *batman_if );
+
+void stop_gw_service ( void );
+void start_gw_service ( void );
 
 
 /* kernel.c */
@@ -140,22 +149,22 @@ struct tun_packet
 	uint8_t  reserved3;
 
 	struct tun_packet_start start;
-#define tptype    start.type
-#define tpversion start.version	
+#define TP_TYPE  start.type
+#define TP_VERS  start.version	
 
 	union
 	{
 		struct tun_request_type trt;
 		struct tun_data_type tdt;
 	}tt;
-#define lease_ip  tt.trt.lease_ip
-#define lease_lt  tt.trt.lease_lt
-#define ip_packet tt.tdt.ip_packet
+#define LEASE_IP  tt.trt.lease_ip
+#define LEASE_LT  tt.trt.lease_lt
+#define IP_PACKET tt.tdt.ip_packet
 } __attribute__((packed));
 
 
-#define tx_rp_size (sizeof(struct tun_packet_start) + sizeof(struct tun_request_type))
-#define tx_dp_size (sizeof(struct tun_packet_start) + sizeof(struct tun_data_type))
+#define TX_RP_SIZE (sizeof(struct tun_packet_start) + sizeof(struct tun_request_type))
+#define TX_DP_SIZE (sizeof(struct tun_packet_start) + sizeof(struct tun_data_type))
 
 
 /* unix_sokcet.c */

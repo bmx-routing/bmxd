@@ -91,7 +91,7 @@ int my_daemon() {
 
 void set_init_arg( char* switch_name, char* switch_arg, int min, int max, int32_t *target_value ) {
 	errno = 0;
-	int16_t tmp = strtol (switch_arg, NULL , 10);
+	int32_t tmp = strtol (switch_arg, NULL , 10);
 
 	/*
 	printf ("--%s", switch_name );
@@ -163,15 +163,6 @@ void set_gw_network ( char *optarg_p ) {
 	gw_tunnel_prefix  = gw_tunnel_prefix & htonl( 0xFFFFFFFF<<(32-netmask) );
 	gw_tunnel_netmask = netmask;
 	
-	/*
-	addr_to_string( gw_tunnel_prefix, netmask_str, ADDR_STR_LEN );
-	printf("Setting GW-tunnel-network to (%X) %s/%i  -- %i.%i.%i.%i\n",gw_tunnel_prefix, netmask_str, netmask, 
-		((uint8_t*)&gw_tunnel_prefix)[0],
-		((uint8_t*)&gw_tunnel_prefix)[1],
-		((uint8_t*)&gw_tunnel_prefix)[2],
-		((uint8_t*)&gw_tunnel_prefix)[3]
-	      );
-	*/
 	
 	*slash_ptr = '/';
 	
@@ -508,9 +499,8 @@ void apply_init_args( int argc, char *argv[] ) {
 	struct in_addr tmp_ip_holder;
 	struct batman_if *batman_if;
 	struct debug_level_info *debug_level_info;
-	uint8_t found_args = 1, batch_mode = 0, info_output = 0, apply_default_paras_and_break = NO;
+	uint8_t found_args = 1, batch_mode = 0, info_output = 0;
 	int8_t res;
-	struct list_head *hna_list_pos, *srv_list_pos;
 	struct hna_node *hna_node;
 	struct srv_node *srv_node;
 	char fake_arg[ADDR_STR_LEN + 4], ifaddr_str[ADDR_STR_LEN];
@@ -518,7 +508,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 	int32_t optchar, recv_buff_len, bytes_written, download_speed = 0, upload_speed = 0;
 	char str1[16], str2[16], *slash_ptr, *unix_buff, *buff_ptr, *cr_ptr;
-	char routing_class_opt = 0, gateway_class_opt = 0, pref_gw_opt = 0, hna_opt = 0, tout_opt = 0, ws_opt = 0, ogi_opt = 0, blt_opt = 0;
+	char req_opt = 0;
 	struct ext_type_hna hna_type_request;
 	uint32_t vis_server = 0;
 
@@ -550,6 +540,7 @@ void apply_init_args( int argc, char *argv[] ) {
    {BIDIRECT_TIMEOUT_SWITCH,    1, 0, 0},
    {NBRFSIZE_SWITCH,            1, 0, 0},
    {INITIAL_SEQNO_SWITCH,       1, 0, 0},
+   {FAKE_UPTIME_SWITCH,         1, 0, 0},
    {DAD_TIMEOUT_SWITCH,         1, 0, 0},
    {GW_CHANGE_HYSTERESIS_SWITCH,1, 0, 0},
    {GW_TUNNEL_NETW_SWITCH,      1, 0, 0},
@@ -573,7 +564,7 @@ void apply_init_args( int argc, char *argv[] ) {
    {DUP_TTL_LIMIT_SWITCH,       1, 0, 0},
    {DUP_RATE_SWITCH,	        1, 0, 0},
    {DUP_DEGRAD_SWITCH,	        1, 0, 0},
-   {WL_CLONES_SWITCH,         1, 0, 0},
+   {WL_CLONES_SWITCH,           1, 0, 0},
    {ASYMMETRIC_WEIGHT_SWITCH,   1, 0, 0},
    {ASYMMETRIC_EXP_SWITCH,      1, 0, 0},
    {REBRC_DELAY_SWITCH,         1, 0, 0},
@@ -584,76 +575,13 @@ void apply_init_args( int argc, char *argv[] ) {
    {0, 0, 0, 0}
 		};
 
-		apply_default_paras_and_break = NO;
 		
 		if ( ( optchar = getopt_long ( argc, argv, "a:A:bcmd:hHio:l:q:g:p:r:s:vV", long_options, &option_index ) ) == -1 ) {
-			
-			if ( found_args == 1 ) {
-						
-				apply_default_paras_and_break = YES;
-		
-			} else {
-				break;
-			}
+			break;
 		}
 		
 //		printf(" found_args: %i, optchar %c \n", found_args, optchar );
 		
-		if ( apply_default_paras_and_break || 
-				   ( found_args == 1 && optchar != 0 && optchar != 'c' && optchar != '?' && optchar != 'v' && optchar != 'h' && optchar != 'H') || 
-				   ( found_args == 1 && optchar == 0 &&  
-				     strcmp( ADVANCED_SWITCH, long_options[option_index].name ) != 0 &&
-				     strcmp( GRAZ07_DEFAULTS_SWITCH, long_options[option_index].name ) != 0 &&
-				     strcmp( GENIII_DEFAULTS_SWITCH, long_options[option_index].name ) != 0 ) || 
-				   ( optchar == 0 && strcmp( BMX_DEFAULTS_SWITCH, long_options[option_index].name ) == 0 ) ) {
-
-			
-			errno = 0;
-	
-			if ( found_args == 1 ) {
-				default_para_set = PARA_SET_BMX;
-					
-			} else {
-				printf( "Error - Parametrization set can only be specified once and must be the first given argument !\n" );
-				exit(EXIT_FAILURE);
-			}
-			
-			//my_ogi = 1500;
-	
-			//set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "20", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
-	
-			set_init_arg( NBRFSIZE_SWITCH, "100", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &my_ws );
-			//num_words = ( my_ws / WORD_BIT_SIZE ) + ( ( my_ws % WORD_BIT_SIZE > 0)? 1 : 0 );
-	
-			//set_init_arg( GW_CHANGE_HYSTERESIS_SWITCH, "2", MIN_GW_CHANGE_HYSTERESIS, MAX_GW_CHANGE_HYSTERESIS, &gw_change_hysteresis ); 
-	
-			//set_init_arg( DUP_TTL_LIMIT_SWITCH, "5", MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT, &dup_ttl_limit );
-	
-			//set_init_arg( DUP_RATE_SWITCH, "99", MIN_DUP_RATE, MAX_DUP_RATE, &dup_rate );
-	
-			//set_init_arg( DUP_DEGRAD_SWITCH, "2", MIN_DUP_DEGRAD, MAX_DUP_DEGRAD, &dup_degrad );
-	
-			//set_init_arg( WL_CLONES_SWITCH, "200", MIN_WL_CLONES, MAX_WL_CLONES, &wl_clones );
-	
-			//set_init_arg( ASYMMETRIC_WEIGHT_SWITCH, "100", MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT, &asymmetric_weight );
-	
-			//set_init_arg( ASYMMETRIC_EXP_SWITCH, "1", MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP, &asymmetric_exp );
-	
-			//set_init_arg( REBRC_DELAY_SWITCH, "0", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
-	
-			//set_init_arg( AGGREGATIONS_PO_SWITCH, "5", MIN_AGGREGATIONS_PO, MAX_AGGREGATIONS_PO, &aggregations_po );
-			
-			
-			if ( strcmp( BMX_DEFAULTS_SWITCH, long_options[option_index].name ) == 0 ) {
-				found_args += 1;
-				continue;
-			}
-			
-			if ( apply_default_paras_and_break ) {
-				break;
-			}
-			
-		}
 
 		switch ( optchar ) {
 
@@ -667,54 +595,36 @@ void apply_init_args( int argc, char *argv[] ) {
 					print_advanced_opts( YES /*verbose*/ );
 					exit(EXIT_SUCCESS);
 
-				} else if ( strcmp( GENIII_DEFAULTS_SWITCH, long_options[option_index].name ) == 0 ) {
+				} else if ( strcmp( BMX_DEFAULTS_SWITCH, long_options[option_index].name ) == 0 ) {
 
 	
 					errno = 0;
 	
-					if ( found_args == 1 /*default_para_set == DEF_BMX_PARA_SET || default_para_set == PARA_SET_GENIII */ ) {
-						default_para_set = PARA_SET_GENIII;
+					if ( found_args == 1 ) {
+						default_para_set = PARA_SET_BMX;
 	
 					} else {
 						printf( "Error - Parametrization set can only be specified once and must be the first given argument !\n" );
 						exit(EXIT_FAILURE);
 					}
 
-					//printf ("Applying %s ! \nThis parametrization causes the same behavior as implemented in batmand-0.2 !\n", long_options[option_index].name);
-					
-					my_ogi = 1000;
-					
-					set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "2", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
-	
-					set_init_arg( NBRFSIZE_SWITCH, "128", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &my_ws );
-					//num_words = ( my_ws / WORD_BIT_SIZE ) + ( ( my_ws % WORD_BIT_SIZE > 0)? 1 : 0 );
-	
-					set_init_arg( GW_CHANGE_HYSTERESIS_SWITCH, "2", MIN_GW_CHANGE_HYSTERESIS, MAX_GW_CHANGE_HYSTERESIS, &gw_change_hysteresis ); 
-	
-					set_init_arg( DUP_TTL_LIMIT_SWITCH, "0", MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT, &dup_ttl_limit );
-	
-					set_init_arg( DUP_RATE_SWITCH, "0", MIN_DUP_RATE, MAX_DUP_RATE, &dup_rate );
-	
-					set_init_arg( DUP_DEGRAD_SWITCH, "100", MIN_DUP_DEGRAD, MAX_DUP_DEGRAD, &dup_degrad );
-	
-					set_init_arg( WL_CLONES_SWITCH, "100", MIN_WL_CLONES, MAX_WL_CLONES, &wl_clones );
-	
-					set_init_arg( ASYMMETRIC_WEIGHT_SWITCH, "0", MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT, &asymmetric_weight );
-	
-					set_init_arg( ASYMMETRIC_EXP_SWITCH, "0", MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP, &asymmetric_exp );
-	
-					set_init_arg( REBRC_DELAY_SWITCH, "0", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
-	
-					set_init_arg( AGGREGATIONS_PO_SWITCH, "0", MIN_AGGREGATIONS_PO, MAX_AGGREGATIONS_PO, &aggregations_po );
 
 					found_args += 1;
 					break;
+
+				} else if ( strcmp( GENIII_DEFAULTS_SWITCH, long_options[option_index].name ) == 0 ) {
+
+	
+					errno = 0;
+	
+					printf( "Error - Sorry, %s is not supported anymore... !\n", GENIII_DEFAULTS_SWITCH );
+					exit(EXIT_FAILURE);
 
 				} else if ( strcmp( GRAZ07_DEFAULTS_SWITCH, long_options[option_index].name ) == 0 ) {
 
 					errno = 0;
 	
-					if ( found_args == 1 /*default_para_set == DEF_BMX_PARA_SET || default_para_set == PARA_SET_GRAZ07*/ ) {
+					if ( found_args == 1  ) {
 						default_para_set = PARA_SET_GRAZ07;
 					} else {
 						printf( "Error - Parametrization set can only be specified once !\n" );
@@ -754,7 +664,8 @@ void apply_init_args( int argc, char *argv[] ) {
 
 					set_init_arg( BIDIRECT_TIMEOUT_SWITCH, optarg, MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
 					
-					blt_opt = YES; /* for changing the link-window size on the fly */
+					//blt_opt = YES; /* for changing the link-window size on the fly */
+					req_opt = REQ_LWS;
 					
 					found_args += 2;
 					break;
@@ -764,7 +675,8 @@ void apply_init_args( int argc, char *argv[] ) {
 					set_init_arg( NBRFSIZE_SWITCH, optarg, MIN_SEQ_RANGE, MAX_SEQ_RANGE, &my_ws );
 					//num_words = ( my_ws / WORD_BIT_SIZE ) + ( ( my_ws % WORD_BIT_SIZE > 0)? 1 : 0 );
 					
-					ws_opt = YES; /* for changing the window-size on-the fly */
+					//ws_opt = YES; /* for changing the window-size on-the fly */
+					req_opt = REQ_PWS;
 					
 					found_args += 2;
 					break;
@@ -779,6 +691,17 @@ void apply_init_args( int argc, char *argv[] ) {
 				} else if ( strcmp( INITIAL_SEQNO_SWITCH, long_options[option_index].name ) == 0 ) {
 
 					set_init_arg( INITIAL_SEQNO_SWITCH, optarg, MIN_INITIAL_SEQNO, MAX_INITIAL_SEQNO, &initial_seqno );
+					found_args += 2;
+					break;
+				
+				} else if ( strcmp( FAKE_UPTIME_SWITCH, long_options[option_index].name ) == 0 ) {
+
+					set_init_arg( FAKE_UPTIME_SWITCH, optarg, MIN_FAKE_UPTIME, MAX_FAKE_UPTIME, &fake_uptime );
+					
+					req_opt = REQ_FAKE_TIME;
+					
+					fake_start_time( fake_uptime );
+					
 					found_args += 2;
 					break;
 				
@@ -805,12 +728,14 @@ void apply_init_args( int argc, char *argv[] ) {
 				} else if ( strcmp( TWO_WAY_TUNNEL_SWITCH, long_options[option_index].name ) == 0 ) {
 
 					set_init_arg( TWO_WAY_TUNNEL_SWITCH, optarg, MIN_TWO_WAY_TUNNEL, MAX_TWO_WAY_TUNNEL, &two_way_tunnel );
+					req_opt = REQ_2WT;
 					found_args += 2;
 					break;
 				
 				} else if ( strcmp( ONE_WAY_TUNNEL_SWITCH, long_options[option_index].name ) == 0 ) {
 
 					set_init_arg( ONE_WAY_TUNNEL_SWITCH, optarg, MIN_ONE_WAY_TUNNEL, MAX_ONE_WAY_TUNNEL, &one_way_tunnel );
+					req_opt = REQ_1WT;
 					found_args += 2;
 					break;
 				
@@ -895,7 +820,8 @@ void apply_init_args( int argc, char *argv[] ) {
 
 					prepare_add_del_own_srv( optarg, NO /* do not delete */, YES /* startup-mode */ );
 			
-					tout_opt = YES; /* for activating the add request */
+					//tout_opt = YES; /* for activating the add request */
+					req_opt = REQ_CHANGE_SRV;
 
 					found_args += 2;
 					break;
@@ -904,7 +830,8 @@ void apply_init_args( int argc, char *argv[] ) {
 
 					prepare_add_del_own_srv( optarg, YES /*delete*/, YES /* startup-mode */ );
 				
-					tout_opt = YES; /* for activating the del request */
+					//tout_opt = YES; /* for activating the del request */
+					req_opt = REQ_CHANGE_SRV;
 				
 					found_args += 2;
 					break;
@@ -1092,7 +1019,8 @@ void apply_init_args( int argc, char *argv[] ) {
 
 				prepare_add_del_own_hna( optarg, NO, A_TYPE_NETWORK, YES /* startup-mode */ );
 				
-				hna_opt = YES; /* for activating the add request */
+				//hna_opt = YES; /* for activating the add request */
+				req_opt = REQ_CHANGE_HNA;
 				
 				
 				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
@@ -1102,18 +1030,20 @@ void apply_init_args( int argc, char *argv[] ) {
 
 				prepare_add_del_own_hna( optarg, YES, A_TYPE_NETWORK, YES /* startup-mode */ );
 				
-				hna_opt = YES; /* for activating the del request */
+				//hna_opt = YES; /* for activating the del request */
+				req_opt = REQ_CHANGE_HNA;
 				
 				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
 				break;
 			
 			case 'b':
-				batch_mode++;
+				batch_mode = YES;
 				found_args += 1;
 				break;
 
 			case 'c':
-				unix_client++;
+				conn_client = YES;
+				req_opt = REQ_RESET;
 				found_args += 1;
 				break;
 
@@ -1177,7 +1107,8 @@ void apply_init_args( int argc, char *argv[] ) {
 
 				}
 				
-				gateway_class_opt = 1;
+				//gateway_class_opt = 1;
+				req_opt = REQ_GW_CLASS;
 				
 				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
 				break;
@@ -1207,7 +1138,8 @@ void apply_init_args( int argc, char *argv[] ) {
 					exit(EXIT_FAILURE);
 				}
 				
-				ogi_opt = 1;
+				//ogi_opt = 1;
+				req_opt = REQ_OGI;
 
 				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
 				break;
@@ -1225,7 +1157,9 @@ void apply_init_args( int argc, char *argv[] ) {
 
 				pref_gateway = tmp_ip_holder.s_addr;
 				
-				pref_gw_opt = 1;
+				//pref_gw_opt = 1;
+				req_opt = REQ_PREF_GW;
+
 
 				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
 				break;
@@ -1243,7 +1177,8 @@ void apply_init_args( int argc, char *argv[] ) {
 
 				}
 				
-				routing_class_opt = 1;
+				//routing_class_opt = 1;
+				req_opt = REQ_RT_CLASS;
 
 				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
 				break;
@@ -1288,9 +1223,12 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		}
 
+		if ( conn_client && req_opt )
+			break;
+		
 	}
 	
-	if (!unix_client && info_output) {
+	if (!conn_client && info_output) {
 
 		internal_output(1);
 		exit(EXIT_SUCCESS);
@@ -1331,7 +1269,7 @@ void apply_init_args( int argc, char *argv[] ) {
 	sprintf( unix_path, "%s.%d", DEF_UNIX_PATH, ogm_port);
 
 	
-	if ( !unix_client ) {
+	if ( !conn_client ) {
 
 		if ( argc <= found_args ) {
 
@@ -1395,8 +1333,6 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			batman_if->dev = argv[found_args];
 			batman_if->if_num = found_ifs;
-			batman_if->udp_tunnel_sock = 0;
-			//batman_if->if_bidirect_link_to = bidirect_link_to;
 			batman_if->if_ttl = ttl;
 			batman_if->if_send_clones = wl_clones;
 			batman_if->packet_out_len = sizeof( struct bat_header );
@@ -1727,13 +1663,8 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		}
 
-		if ( gateway_class != 0 ) {
-
-			batman_if = list_entry( (&if_list)->next, struct batman_if, list );
-
-			init_interface_gw( batman_if );
-
-		}
+		if ( gateway_class != 0 )
+			start_gw_service( );
 
 
 		if ( debug_level > 0 ) {
@@ -1778,101 +1709,103 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		}
 
-		unix_buff = debugMalloc( 1501, 5001 );
+		unix_buff = debugMalloc( MAX_UNIX_RCV_SIZE, 5001 );
 
 		if ( debug_level > 0 ) {
 
 			if ( debug_level <= debug_level_max ) {
 
-				snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "d:%c", debug_level );
+				snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%c", REQ_DEBUG, debug_level );
 
 				if ( ( batch_mode ) && ( debug_level == DBGL_CHANGES || debug_level == DBGL_ALL || debug_level == DBGL_PROFILE ) )
 					printf( "WARNING: Your chosen debug level (%i) does not support batch mode !\n", debug_level );
 
 			}
 
-		} else if ( routing_class_opt ) {
+		} else if ( req_opt == REQ_RT_CLASS ) {
 
 			batch_mode = 1;
-			snprintf( unix_buff, 10, "r:%c", routing_class );
+			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%c", REQ_RT_CLASS, routing_class );
 
-		} else if ( pref_gw_opt ) {
+		} else if ( req_opt == REQ_PREF_GW ) {
 
 			batch_mode = 1;
 			addr_to_string( pref_gateway, str1, sizeof(str1) );
-			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "p:%s", str1 );
+			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%s", REQ_PREF_GW, str1 );
 
-		} else if ( gateway_class_opt ) {
-
-			batch_mode = 1;
-			snprintf( unix_buff, 10, "g:%c", gateway_class );
-
-		} else if ( ws_opt ) {
+		} else if ( req_opt == REQ_GW_CLASS ) {
 
 			batch_mode = 1;
-			snprintf( unix_buff, 10, "w:%c", my_ws );
+			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%c", REQ_GW_CLASS, gateway_class );
+
+		} else if ( req_opt == REQ_PWS ) {
+
+			batch_mode = 1;
+			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%c", REQ_PWS, my_ws );
 		
-		} else if ( blt_opt ) {
+		} else if ( req_opt == REQ_LWS ) {
 
 			batch_mode = 1;
-			snprintf( unix_buff, 10, "l:%c", bidirect_link_to );
+			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%c", REQ_LWS, bidirect_link_to );
 		
-		} else if ( ogi_opt ) {
+		} else if ( req_opt == REQ_OGI ) {
 
 			batch_mode = 1;
-			snprintf( unix_buff, 10, "o:%d", my_ogi );
+			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%d", REQ_OGI, my_ogi );
 		
-		} else if ( hna_opt ) {
+		} else if ( req_opt == REQ_1WT ) {
 
-			
-			list_for_each( hna_list_pos, &my_hna_list ) {
+			batch_mode = 1;
+			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%d", REQ_1WT, one_way_tunnel );
+		
+		} else if ( req_opt == REQ_2WT ) {
 
-				hna_node = list_entry( hna_list_pos, struct hna_node, list );
-				
-				addr_to_string( hna_node->key.addr, str1, sizeof(str1) );
-				printf(" sending a:%d %-3d %u %s\n", hna_node->enabled, hna_node->key.KEY_FIELD_ANETMASK, hna_node->key.addr, str1 );
-				
-				snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "a:%d %-3d %u", hna_node->enabled, hna_node->key.KEY_FIELD_ANETMASK, hna_node->key.addr );
-				
-				batch_mode = 1;
-				
-				break;
-			
-			}
-			
-		} else if ( tout_opt ) {
+			batch_mode = 1;
+			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%d", REQ_2WT, two_way_tunnel );
+		
+		} else if ( req_opt == REQ_FAKE_TIME ) {
 
-			
-			list_for_each( srv_list_pos, &my_srv_list ) {
+			batch_mode = 1;
+			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%d", REQ_FAKE_TIME, fake_uptime );
+		
+		} else if ( req_opt ==  REQ_CHANGE_HNA ) {
 
-				srv_node = list_entry( srv_list_pos, struct srv_node, list );
-				
-				addr_to_string( srv_node->srv_addr, str1, sizeof(str1) );
-				printf(" sending %c %-5d %-3d %u (%s)\n", (srv_node->enabled ? 't':'T'), srv_node->srv_port, srv_node->srv_seqno, srv_node->srv_addr, str1 );
-				
-				snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c%-5d%-3d%u", (srv_node->enabled ? 't':'T'), srv_node->srv_port, srv_node->srv_seqno, srv_node->srv_addr );
-				
-				batch_mode = 1;
-				
-				break;
+			hna_node = list_entry( (&my_hna_list)->next, struct hna_node, list );
 			
-			}
+			addr_to_string( hna_node->key.addr, str1, sizeof(str1) );
+			printf(" sending %d:%d %-3d %u %s\n", REQ_CHANGE_HNA, hna_node->enabled, hna_node->key.KEY_FIELD_ANETMASK, hna_node->key.addr, str1 );
+			
+			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%d %-3d %u", REQ_CHANGE_HNA, hna_node->enabled, hna_node->key.KEY_FIELD_ANETMASK, hna_node->key.addr );
+			
+			batch_mode = 1;
+			
+			
+		} else if ( req_opt == REQ_CHANGE_SRV ) {
+
+			srv_node = list_entry( (&my_srv_list)->next, struct srv_node, list );
+			
+			addr_to_string( srv_node->srv_addr, str1, sizeof(str1) );
+			printf(" sending %d:%d %-5d %-3d %u (%s)\n", REQ_CHANGE_SRV, srv_node->enabled, srv_node->srv_port, srv_node->srv_seqno, srv_node->srv_addr, str1 );
+			
+			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%d %-5d %-3d %u", REQ_CHANGE_SRV, srv_node->enabled, srv_node->srv_port, srv_node->srv_seqno, srv_node->srv_addr );
+			
+			batch_mode = 1;
 			
 
 		} else if ( info_output ) {
 
 			batch_mode = 1;
-			snprintf( unix_buff, 10, "i" );
+			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c", REQ_INFO );
 
 		} else {
 
 			batch_mode = 1;
-			snprintf( unix_buff, 10, "y" );
+			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c", REQ_DEFAULT );
 
 		}
 
 
-		if ( write( unix_if.unix_sock, unix_buff, 20 ) < 0 ) {
+		if ( write( unix_if.unix_sock, unix_buff, MAX_UNIX_REQ_SIZE ) < 0 ) {
 
 			printf( "Error - can't write to unix socket: %s\n", strerror(errno) );
 			close( unix_if.unix_sock );
@@ -2119,35 +2052,81 @@ void init_interface ( struct batman_if *batman_if ) {
 }
 
 
-
-
-void init_interface_gw ( struct batman_if *batman_if ) {
-
-	int32_t sock_opts, i;
-
-
-	gw_listen_arg.batman_if = batman_if;
+void stop_gw_service ( void ) {
 	
-	if( (gw_listen_arg.gw_client_list = debugMalloc( (0xFFFFFFFF>>gw_tunnel_netmask) * sizeof( struct gw_client ), 210 ) ) == NULL ) {
+	my_gw_ext_array_len = 0;
+	memset( my_gw_ext_array, 0, sizeof(struct ext_packet) );
+
+	gw_thread_finish = YES;
+	
+	if ( gw_thread_id > 0 ) {
+		pthread_join( gw_thread_id, NULL );
+		gw_thread_id = 0;
+	}
+	
+	gw_thread_finish = NO;
+	
+}
+
+
+
+void start_gw_service ( void ) {
+
+	int32_t sock_opts;
+	struct gw_listen_arg *gw_listen_arg;
+	struct sockaddr_in addr;
+
+	
+	// join old thread if not already done
+	stop_gw_service();
+
+	if (!( gw_thread_id == 0  &&  gateway_class  &&  ( two_way_tunnel || one_way_tunnel ) ) )
+		return;
+	
+	memset( my_gw_ext_array, 0, sizeof(struct ext_packet) );
+		
+	my_gw_ext_array->EXT_FIELD_MSG  = YES;
+	my_gw_ext_array->EXT_FIELD_TYPE = EXT_TYPE_GW;
+	
+	my_gw_ext_array->EXT_GW_FIELD_GWFLAGS = ( ( two_way_tunnel || one_way_tunnel ) ? gateway_class : 0 );
+	my_gw_ext_array->EXT_GW_FIELD_GWTYPES = ( gateway_class ? ( (two_way_tunnel?TWO_WAY_TUNNEL_FLAG:0) | (one_way_tunnel?ONE_WAY_TUNNEL_FLAG:0) ) : 0);
+	
+	my_gw_ext_array->EXT_GW_FIELD_GWPORT = htons( my_gw_port );
+	my_gw_ext_array->EXT_GW_FIELD_GWADDR = my_gw_addr;
+	
+	my_gw_ext_array_len = 1;
+	
+	
+	gw_listen_arg = debugMalloc( sizeof( struct gw_listen_arg ), 223 );
+	
+	memset( gw_listen_arg, 0, sizeof( struct gw_listen_arg ) );
+
+	gw_listen_arg->prefix = gw_tunnel_prefix;
+	gw_listen_arg->netmask = gw_tunnel_netmask;
+	gw_listen_arg->port = my_gw_port;
+	gw_listen_arg->owt = one_way_tunnel;
+	gw_listen_arg->twt = two_way_tunnel;
+	gw_listen_arg->lease_time = tunnel_ip_lease_time;
+	
+	
+	if( (gw_listen_arg->gw_client_list = debugMalloc( (0xFFFFFFFF>>gw_tunnel_netmask) * sizeof( struct gw_client* ), 210 ) ) == NULL ) {
 	
 		debug_output( 0, "Error - init_interface_gw(): could not allocate memory for gw_client_list \n");
 		restore_defaults();
 		exit(EXIT_FAILURE);
 	}
 	
+/*	
 	for( i=0; i<(0xFFFFFFFF>>gw_tunnel_netmask); i++) {
 		//debug_output( 3, "resetting %d at %ld\n", i, gw_listen_arg.gw_client_list[i]);
-		gw_listen_arg.gw_client_list[i] = NULL;
+		gw_listen_arg->gw_client_list[i] = NULL;
 	}
+*/
+	memset( gw_listen_arg->gw_client_list, 0, (0xFFFFFFFF>>gw_tunnel_netmask) * sizeof( struct gw_client* ) );
 
-	//memset( gw_client_list, 0, (32-gw_tunnel_netmask) * sizeof( struct gw_client ) );
+	gw_listen_arg->sock = socket( PF_INET, SOCK_DGRAM, 0 );
 
-	
-	batman_if->addr.sin_port = htons( my_gw_port );
-
-	batman_if->udp_tunnel_sock = socket( PF_INET, SOCK_DGRAM, 0 );
-
-	if ( batman_if->udp_tunnel_sock < 0 ) {
+	if ( gw_listen_arg->sock < 0 ) {
 
 		debug_output( 0, "Error - can't create tunnel socket: %s", strerror(errno) );
 		restore_defaults();
@@ -2155,7 +2134,12 @@ void init_interface_gw ( struct batman_if *batman_if ) {
 
 	}
 
-	if ( bind( batman_if->udp_tunnel_sock, (struct sockaddr *)&batman_if->addr, sizeof(struct sockaddr_in) ) < 0 ) {
+	memset( &addr, 0, sizeof( struct sockaddr_in ) );
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons( my_gw_port );
+	addr.sin_addr.s_addr = (list_entry( (&if_list)->next, struct batman_if, list ))->addr.sin_addr.s_addr;
+	
+	if ( bind( gw_listen_arg->sock, (struct sockaddr *)&addr, sizeof(struct sockaddr_in) ) < 0 ) {
 
 		debug_output( 0, "Error - can't bind tunnel socket: %s\n", strerror(errno) );
 		restore_defaults();
@@ -2164,18 +2148,10 @@ void init_interface_gw ( struct batman_if *batman_if ) {
 	}
 
 	/* make udp socket non blocking */
-	sock_opts = fcntl( batman_if->udp_tunnel_sock, F_GETFL, 0 );
-	fcntl( batman_if->udp_tunnel_sock, F_SETFL, sock_opts | O_NONBLOCK );
+	sock_opts = fcntl( gw_listen_arg->sock, F_GETFL, 0 );
+	fcntl( gw_listen_arg->sock, F_SETFL, sock_opts | O_NONBLOCK );
 
-	batman_if->addr.sin_port = htons( ogm_port );
-
-	// join old thread if not already done
-	if ( batman_if->listen_thread_id > 0 ) {
-		pthread_join( batman_if->listen_thread_id, NULL );
-		batman_if->listen_thread_id = 0;
-	}
-	
-	pthread_create( &batman_if->listen_thread_id, NULL, &gw_listen, &gw_listen_arg );
+	pthread_create( &gw_thread_id, NULL, &gw_listen, gw_listen_arg );
 
 
 }

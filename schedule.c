@@ -135,7 +135,7 @@ void schedule_own_packet( struct batman_if *batman_if, uint32_t current_time ) {
 
 
 
-void schedule_forward_packet( /*struct bat_packet *in,*/ uint8_t unidirectional, uint8_t directlink, uint8_t cloned, /*struct ext_packet *gw_array, int16_t gw_array_len, struct ext_packet *hna_array, int16_t hna_array_len, struct batman_if *if_outgoing, uint32_t curr_time, uint32_t neigh,*/ uint16_t neigh_id ) {
+void schedule_forward_packet( uint8_t unidirectional, uint8_t directlink, uint8_t cloned, uint16_t neigh_id ) {
 
 	prof_start( PROF_schedule_forward_packet );
 	struct forw_node *forw_node_new, *forw_packet_tmp = NULL;
@@ -323,13 +323,10 @@ void send_outstanding_packets() {
 	
 	uint32_t send_time = *received_batman_time;
 	
-	debug_output( 4, "send_outstanding_packets() send_time %d, received_time %d \n", send_time, *received_batman_time);
+	debug_output( 4, "send_outstanding_packets() send_time %u, aggregations_po %d \n", send_time, send_time, aggregations_po );
 
-	if ( list_empty( &forw_list ) || (list_entry( (&forw_list)->next, struct forw_node, list ))->send_time > send_time  ) {
-		
+	if ( list_empty( &forw_list )  ||  GREAT_U32( (list_entry( (&forw_list)->next, struct forw_node, list ))->send_time, send_time ) )
 		return;	
-		
-	}
 	
 	
 	aggregated_size = sizeof( struct bat_header );
@@ -349,17 +346,14 @@ void send_outstanding_packets() {
 			
 		}
 		
-		if ( forw_node->send_time <= send_time && (aggregated_size + forw_node->pack_buff_len) <= MAX_PACKET_OUT_SIZE ) {
+		if ( LSEQ_U32( forw_node->send_time, send_time )  &&  (aggregated_size + forw_node->pack_buff_len) <= MAX_PACKET_OUT_SIZE ) {
 			
 			if ( forw_node->send_bucket == 0 )
 				forw_node->send_bucket =  ((int32_t)(rand_num( 100 )));
 
 			forw_node->iteration++;	
-		
 			forw_node->send = YES;
-			
 			forw_node->done = YES;
-					
 			
 			// keep care to not aggregate more packets than would fit into max packet size
 			aggregated_size+= forw_node->pack_buff_len;
@@ -451,11 +445,15 @@ void send_outstanding_packets() {
 			
 		} else {
 			
-			if ( forw_node->send_time <= send_time && aggregated_size <= sizeof( struct bat_header ) ) {
+			if ( LSEQ_U32( forw_node->send_time, send_time )  &&  aggregated_size <= sizeof( struct bat_header ) ) {
 			
-				debug_output( 0, "Error - single packet to large to fit maximum packet size scheduled time %d, now %d, agg_size %d, next_len %d !! \n", forw_node->send_time,  send_time, aggregated_size,  forw_node->pack_buff_len );
+				debug_output( 0, "Error - Drop Packet, single packet to large to fit maximum packet size scheduled time %d, now %d, agg_size %d, next_len %d !! \n", forw_node->send_time,  send_time, aggregated_size,  forw_node->pack_buff_len );
 				
-				restore_and_exit(0);
+				forw_node->iteration++;	
+				forw_node->send = YES;
+				forw_node->done = YES;
+
+				//restore_and_exit(0);
 				
 			}
 			

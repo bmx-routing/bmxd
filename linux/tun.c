@@ -61,9 +61,9 @@ int8_t probe_tun(uint8_t print_to_stderr) {
 
 int8_t del_dev_tun( int32_t fd ) {
 
-	if( no_tun_persist == NO ) {
+	if ( no_tun_persist == NO ) {
 		
-			if ( ioctl( fd, TUNSETPERSIST, 0 ) < 0 ) {
+		if ( ioctl( fd, TUNSETPERSIST, 0 ) < 0 ) {
 	
 			debug_output( 0, "Error - can't delete tun device: %s\n", strerror(errno) );
 			return -1;
@@ -82,7 +82,7 @@ int8_t del_dev_tun( int32_t fd ) {
 
 
 
-int8_t add_dev_tun( struct batman_if *batman_if, uint32_t tun_addr, char *tun_dev, size_t tun_dev_size, int32_t *fd, int32_t *ifi ) {
+int8_t add_dev_tun(  uint32_t tun_addr, char *tun_dev, size_t tun_dev_size, int32_t *fd, int32_t *ifi ) {
 
 	int32_t tmp_fd, sock_opts;
 	struct ifreq ifr_tun, ifr_if;
@@ -202,26 +202,40 @@ int8_t add_dev_tun( struct batman_if *batman_if, uint32_t tun_addr, char *tun_de
 
 	}
 
-	/* get MTU from real interface */
-	strncpy( ifr_if.ifr_name, batman_if->dev, IFNAMSIZ - 1 );
+	/* find smallest MTU from real interfaces */
+	struct list_head *if_pos;
+	int mtu_min = 64000; //a value greater than the typical MTU of 1500 
+	list_for_each(if_pos, &if_list) {
+			
+		struct batman_if *batman_if = list_entry(if_pos, struct batman_if, list);
+		
+		strncpy( ifr_if.ifr_name, batman_if->dev, IFNAMSIZ - 1 );
 
-	if ( ioctl( tmp_fd, SIOCGIFMTU, &ifr_if ) < 0 ) {
+		if ( ioctl( tmp_fd, SIOCGIFMTU, &ifr_if ) < 0 ) {
 
-		debug_output( 0, "Error - can't create tun device (SIOCGIFMTU): %s\n", strerror(errno) );
-		del_dev_tun( *fd );
-		close( tmp_fd );
-		return -1;
+			debug_output( 0, "Error - can't create tun device (SIOCGIFMTU): %s\n", strerror(errno) );
+			del_dev_tun( *fd );
+			close( tmp_fd );
+			return -1;
 
+		}
+		
+		if( mtu_min > ifr_if.ifr_mtu ) 
+			mtu_min = ifr_if.ifr_mtu;
+		
+		debug_output( 3, "searching min. MTU, so fare: %d, current dev %s, mtu: %d \n", mtu_min, batman_if->dev, ifr_if.ifr_mtu);
+				
 	}
 
-	/* set MTU of tun interface: real MTU - 29 */
-	if ( ifr_if.ifr_mtu < 100 ) {
 
-		debug_output( 0, "Warning - MTU smaller than 100 -> can't reduce MTU anymore\n" );
+	/* set MTU of tun interface: real MTU - 29 */
+	if ( mtu_min < 100 ) {
+
+		debug_output( 0, "Warning - MTU min smaller than 100 -> can't reduce MTU anymore\n" );
 
 	} else {
 
-		ifr_tun.ifr_mtu = ifr_if.ifr_mtu - 29;
+		ifr_tun.ifr_mtu = mtu_min - 29;
 
 		if ( ioctl( tmp_fd, SIOCSIFMTU, &ifr_tun ) < 0 ) {
 

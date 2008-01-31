@@ -17,10 +17,18 @@
 #
 
 
-CC =			gcc
-CFLAGS =		-Wall -O1 -g3 -DDEBUG_MALLOC -DMEMORY_USAGE -DPROFILE_DATA
-STRIP=			strip
-LDFLAGS =		-lpthread -static
+# CC =		gcc
+
+CFLAGS =	-Wall -O1 -g -pg
+
+#-DDEBUG_MALLOC -DMEMORY_USAGE -DPROFILE_DATA
+
+LDFLAGS =	-lpthread -static -g -pg
+
+
+#STRIP=			strip
+
+
 
 CFLAGS_MIPS =	-Wall -O1 -g3 -DDEBUG_MALLOC -DMEMORY_USAGE -DPROFILE_DATA -DREVISION_VERSION=$(REVISION_VERSION)
 LDFLAGS_MIPS =	-lpthread
@@ -59,11 +67,17 @@ SOURCE_VERSION_HEADER= batman.h
 IPKG_DEPENDS=		"kmod-tun libpthread"
 
 
-all:		$(BINARY_NAME)
+all:	$(BINARY_NAME)
 
 $(BINARY_NAME):	$(SRC_C) $(SRC_H) Makefile
 	$(CC) $(CFLAGS) -o $@ $(SRC_C) $(LDFLAGS)
 
+install:	all
+	install -m 755 $(BINARY_NAME) $(INSTALL_DIR)/bin
+	$(STRIP) $(INSTALL_DIR)/bin/$(BINARY_NAME)
+
 clean:
 		rm -f $(BINARY_NAME) *.o
 
+clean-all:
+		rm -rf $(PACKAGE_NAME)_* dl/*

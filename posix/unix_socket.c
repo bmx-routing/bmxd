@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2006 BATMAN contributors:
- * Marek Lindner
+ * Marek Lindner, Axel Neumann
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of version 2 of the GNU General Public
  * License as published by the Free Software Foundation.
@@ -141,7 +141,7 @@ void debug_output( int8_t debug_prio_arg, char *format, ... ) {
 					debug_level_info = list_entry(debug_pos, struct debug_level_info, list);
 	
 					if ( debug_prio == DBGL_CHANGES || debug_prio == DBGL_ALL || debug_prio == DBGL_PROFILE  )
-						dprintf( debug_level_info->fd, "[%10u] ", get_time() );
+						dprintf( debug_level_info->fd, "[%10u] ", get_time_msec() );
 	
 					if ( ( ( debug_level == DBGL_ROUTES ) || ( debug_level == DBGL_GATEWAYS ) ) && ( debug_level_info->fd == 1 ) && ( strncmp( format, "BOD", 3 ) == 0 ) ) {
 	
@@ -221,7 +221,7 @@ void *unix_listen( void *arg ) {
 	struct in_addr tmp_ip_holder;
 	int32_t status, max_sock, unix_opts, download_speed, upload_speed;
 	int8_t res;
-	char buff[100], str[16], was_gateway, is_gateway, tmp_unix_value;
+	char buff[MAX_UNIX_REQ_SIZE], str[16], tmp_unix_value;
 	fd_set wait_sockets, tmp_wait_sockets;
 	socklen_t sun_size = sizeof(struct sockaddr_un);
 	uint8_t unix_client_deleted = NO;
@@ -286,16 +286,16 @@ void *unix_listen( void *arg ) {
 
 						status = read( unix_client->sock, buff, sizeof( buff ) );
 						
-						debug_output( 3, "got request: %s\n", buff);
+						debug_output( 3, "got request: %d\n", buff[0]);
 						
 						if ( status > 0 ) {
 
 							if ( unix_client->sock > max_sock )
 								max_sock = unix_client->sock;
 
-							/* debug_output( 3, "gateway: client sent data via unix socket: %s\n", buff ); */
+							/* debug_output( 3, "gateway: client sent data via unix socket: %s\n", req_buff ); */
 
-							if ( buff[0] == 'd' ) {
+							if ( buff[0] == REQ_DEBUG ) {
 
 								if ( ( status > 2 ) && ( ( buff[2] > 0 ) && ( buff[2] <= debug_level_max ) ) ) {
 
@@ -361,64 +361,60 @@ void *unix_listen( void *arg ) {
 
 								}
 
-							} else if ( buff[0] == 'i' ) {
+							} else if ( buff[0] == REQ_INFO ) {
 
 								internal_output(unix_client->sock);
 								dprintf( unix_client->sock, "EOD\n" );
 
-							} else if ( buff[0] == 'g' ) {
+							} else if ( ( buff[0] == REQ_1WT ) || 
+								    ( buff[0] == REQ_2WT ) ) {
+								
+								if ( status > 2  ) {
+ 								
+									// if there is a gw-client thread: stop it now, it restarts automatically
+									del_default_route(); 
+									
+									// if there is a gw thread: stop it now
+									stop_gw_service();
+									
+									if ( buff[0] == REQ_1WT )
+										one_way_tunnel = strtoul( buff+2, NULL, 10 );
+										
+									if ( buff[0] == REQ_2WT )
+										two_way_tunnel = strtoul( buff+2, NULL, 10 );
+																	
+									debug_output( 3, " changing rt_class: %d owt: %d twt: %d gw_class %d \n", 
+										routing_class, one_way_tunnel, two_way_tunnel, gateway_class );
+									
+									if ( gateway_class  &&  (one_way_tunnel || two_way_tunnel)  &&  probe_tun(0) )
+										start_gw_service();
+									
+									dprintf( unix_client->sock, "EOD\n" );
+								
+								}
+								
+							} else if ( buff[0] == REQ_GW_CLASS ) {
 
-								if ( status > 2 ) {
-
-									if ((buff[2] == 0) || (probe_tun(0))) {
-
-										was_gateway = ( (gateway_class && (one_way_tunnel || two_way_tunnel)) ? 1 : 0 );
-
+								if ( status > 2  ) {
+									
+									if ( buff[0] == REQ_GW_CLASS )
 										gateway_class = buff[2];
 										
-										is_gateway = ( (gateway_class  && (one_way_tunnel || two_way_tunnel)) ? 1 : 0 );
+									stop_gw_service();
+									
+									if ( gateway_class  &&  (one_way_tunnel || two_way_tunnel)  &&  probe_tun(0) ) {
 
-										batman_if = list_entry( (&if_list)->next, struct batman_if, list );
-										
-										if ( is_gateway ) {
-										
-											my_gw_ext_array->EXT_FIELD_MSG = YES;
-											my_gw_ext_array->EXT_FIELD_TYPE = EXT_TYPE_GW;
-										
-											my_gw_ext_array->EXT_GW_FIELD_GWFLAGS = ( ( two_way_tunnel || one_way_tunnel ) ? gateway_class : 0 );
-											
-											my_gw_ext_array->EXT_GW_FIELD_GWTYPES = ( gateway_class ? ( (two_way_tunnel?TWO_WAY_TUNNEL_FLAG:0) | (one_way_tunnel?ONE_WAY_TUNNEL_FLAG:0) ) : 0 );
-										
-											my_gw_ext_array->EXT_GW_FIELD_GWPORT = htons( my_gw_port );
-											my_gw_ext_array->EXT_GW_FIELD_GWADDR = my_gw_addr;
-
-											
-											my_gw_ext_array_len = 1;
-										
-										} else {
-										
-											memset( my_gw_ext_array, 0, sizeof(struct ext_packet) );
-	
-											my_gw_ext_array_len = 0;
-										
-										}
-
-										
-										
-										if ( ( !was_gateway ) && ( is_gateway ) )
-											init_interface_gw( batman_if );
-
-										if ( ( is_gateway ) && ( routing_class > 0 ) ) {
+										if ( routing_class > 0 ) {
 
 											routing_class = 0;
-
-											if ( curr_gateway != NULL )
-												del_default_route();
-								
+		
+											del_default_route();
+									
 											add_del_interface_rules( YES/*del*/, YES/*tunnel*/, NO/*networks*/ );
 
 										}
-
+									
+										start_gw_service();
 									}
 
 								}
@@ -426,7 +422,7 @@ void *unix_listen( void *arg ) {
 								dprintf( unix_client->sock, "EOD\n" );
 
 								
-							} else if ( buff[0] == 'r' ) {
+							} else if ( buff[0] == REQ_RT_CLASS ) {
 
 								if ( status > 2 ) {
 									
@@ -434,7 +430,12 @@ void *unix_listen( void *arg ) {
 
 										tmp_unix_value = buff[2];
 
-										if ( /*( tmp_unix_value >= 0 ) &&*/ ( tmp_unix_value <= 3 ) ) {
+										if (  tmp_unix_value > 0  &&  gateway_class > 0  ) {
+											gateway_class = 0;
+											stop_gw_service();
+										}
+										
+										if ( tmp_unix_value <= 3 ) {
 
 											debug_output( 3, "Unix socket: changing to -r %d \n", tmp_unix_value );
 										
@@ -449,17 +450,6 @@ void *unix_listen( void *arg ) {
 											if ( curr_gateway != NULL )
 												del_default_route();
 
-
-											if ( ( routing_class > 0 ) && ( gateway_class > 0 ) ) {
-
-												gateway_class = 0;
-
-												memset( my_gw_ext_array, 0, sizeof(struct ext_packet) );
-	
-												my_gw_ext_array_len = 0;
-
-											}
-
 										}
 
 									}
@@ -469,7 +459,7 @@ void *unix_listen( void *arg ) {
 								dprintf( unix_client->sock, "EOD\n" );
 							
 								
-							} else if ( buff[0] == 'p' ) {
+							} else if ( buff[0] == REQ_PREF_GW ) {
 
 								if ( status > 2 ) {
 
@@ -490,7 +480,7 @@ void *unix_listen( void *arg ) {
 
 								dprintf( unix_client->sock, "EOD\n" );
 
-							} else if ( buff[0] == 'w' ) {
+							} else if ( buff[0] == REQ_PWS ) {
 								
 								if ( status > 2  &&  ((uint8_t)(buff[2])) >= MIN_SEQ_RANGE  &&  ((uint8_t)(buff[2])) <= MAX_SEQ_RANGE ) {
 
@@ -511,7 +501,7 @@ void *unix_listen( void *arg ) {
 								dprintf( unix_client->sock, "EOD\n" );
 
 								
-							} else if ( buff[0] == 'l' ) {
+							} else if ( buff[0] == REQ_LWS ) {
 								
 								if ( status > 2  &&  ((uint8_t)(buff[2])) >= MIN_BIDIRECT_TIMEOUT  &&  ((uint8_t)(buff[2])) <= MAX_BIDIRECT_TIMEOUT ) {
 
@@ -524,7 +514,7 @@ void *unix_listen( void *arg ) {
 								dprintf( unix_client->sock, "EOD\n" );
 
 								
-							} else if ( buff[0] == 'o' ) {
+							} else if ( buff[0] == REQ_OGI ) {
 								
 								if ( status > 2 ) {
 									
@@ -543,7 +533,7 @@ void *unix_listen( void *arg ) {
 								dprintf( unix_client->sock, "EOD\n" );
 
 								
-							} else if ( buff[0] == 'a' ) {
+							} else if ( buff[0] == REQ_CHANGE_HNA ) {
 
 								if ( status > 8 ) {
 									struct todo_node *new_todo_node;
@@ -565,7 +555,7 @@ void *unix_listen( void *arg ) {
 									memset( new_todo_node, 0,  sizeof( struct todo_node ) );
 									INIT_LIST_HEAD( &new_todo_node->list );
 									new_todo_node->add = tmp_enabled;
-									new_todo_node->todo_type = TODO_TYPE_HNA;
+									new_todo_node->todo_type = REQ_CHANGE_HNA;
 									new_todo_node->key.KEY_FIELD_ANETMASK = tmp_netmask;
 									new_todo_node->key.KEY_FIELD_ATYPE = A_TYPE_NETWORK;
 									new_todo_node->key.addr = tmp_address;
@@ -579,23 +569,16 @@ void *unix_listen( void *arg ) {
 
 								dprintf( unix_client->sock, "EOD\n" );
 
-							} else if ( buff[0] == 't' || buff[0] == 'T' ) {
+							} else if ( buff[0] == REQ_CHANGE_SRV ) {
 
 								if ( status > 10 ) {
 									struct todo_node *new_todo_node;
 									
-									tmp_enabled = ( buff[0] == 't' ? YES : NO );
+									tmp_enabled = strtoul( buff+2,  NULL, 10 );
+									tmp_port    = strtoul( buff+4,  NULL, 10 );
+									tmp_seqno   = strtoul( buff+10, NULL, 10 );
+									tmp_address = strtoul( buff+14, NULL, 10 );
 									
-									memcpy( str, buff+1, 5 );
-									str[5] = '\0';
-									tmp_port    = strtoul( str, NULL, 10 );
-									
-									
-									memcpy( str, buff+6, 3 );
-									str[3] = '\0';
-									tmp_seqno   = strtoul( str, NULL, 10 );
-									
-									tmp_address = strtoul( buff+9, NULL, 10 );
 									addr_to_string( tmp_address, str, sizeof (str) );
 									
 									if ( pthread_mutex_lock( (pthread_mutex_t *)todo_mutex ) != 0 )
@@ -607,9 +590,8 @@ void *unix_listen( void *arg ) {
 									
 									memset( new_todo_node, 0,  sizeof( struct todo_node ) );
 									
-									
 									new_todo_node->add = tmp_enabled;
-									new_todo_node->todo_type = TODO_TYPE_SRV;
+									new_todo_node->todo_type = REQ_CHANGE_SRV;
 									new_todo_node->def16 = tmp_port;
 									new_todo_node->def8  = tmp_seqno;
 									new_todo_node->def32 = tmp_address;
@@ -626,7 +608,39 @@ void *unix_listen( void *arg ) {
 								dprintf( unix_client->sock, "EOD\n" );
 
 							
-							} else if ( buff[0] == 'y' ) {
+							} else if ( buff[0] == REQ_FAKE_TIME ) {
+								
+								if ( status > 2 ) {
+									
+									struct todo_node *new_todo_node;
+
+									debug_output( 3, "Unix socket: Requesting to fake time by %ld sec \n", strtoul( buff+2,  NULL, 10 ) );
+									
+									if ( pthread_mutex_lock( (pthread_mutex_t *)todo_mutex ) != 0 )
+										debug_output( 0, "Error - could not lock todo_mutex: %s \n", strerror( errno ) );
+
+									
+									new_todo_node = debugMalloc( sizeof( struct todo_node ), 220 );
+									
+									memset( new_todo_node, 0,  sizeof( struct todo_node ) );
+									
+									new_todo_node->todo_type = REQ_FAKE_TIME;
+									
+									new_todo_node->def32 = strtoul( buff+2,  NULL, 10 );
+									
+									INIT_LIST_HEAD( &new_todo_node->list );
+									
+									list_add_tail( &new_todo_node->list, &todo_list );
+									
+									if ( pthread_mutex_unlock( (pthread_mutex_t *)todo_mutex ) != 0 )
+										debug_output( 0, "Error - could not unlock mutex (unix_listen => 2): %s \n", strerror( errno ) );
+																	
+								}
+
+								dprintf( unix_client->sock, "EOD\n" );
+
+								
+							} else if ( buff[0] == REQ_DEFAULT ) {
 
 								dprintf( unix_client->sock, "%s [not-all-options-displayed]", prog_name );
 

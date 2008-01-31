@@ -70,9 +70,8 @@ struct orig_node *get_orig_node( uint32_t addr ) {
 	struct orig_node *orig_node;
 	struct hashtable_t *swaphash;
 	static char orig_str[ADDR_STR_LEN];
-//	uint16_t i;
 
-
+	
 	orig_node = ((struct orig_node *)hash_find( orig_hash, &addr ));
 
 	if ( orig_node != NULL ) {
@@ -143,8 +142,15 @@ void update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node
 	debug_output( 4, "update_originator(): Updating originator (%s) entry of received packet,  \n", orig_str );
 
 	/* it seems we missed a lot of packets or the other host restarted */
-	if (  orig_node->first_valid_sec == 0  ||  ((int16_t)(in->seqno - orig_node->last_valid_seqno)) > orig_node->ws  ||  ((int16_t)(in->seqno - orig_node->last_valid_seqno)) < -(orig_node->ws)  )
-		orig_node->first_valid_sec = (*received_batman_time)/1000;
+	
+	
+	/* only used for debugging purposes */
+	if (  orig_node->first_valid_sec == 0  ||  
+		     ((int16_t)(in->seqno - orig_node->last_valid_seqno)) > orig_node->ws  ||  
+		     ((int16_t)(in->seqno - orig_node->last_valid_seqno)) < -(orig_node->ws)  )
+		orig_node->first_valid_sec = get_time_sec();
+	
+	
 	
 	list_for_each( neigh_pos, &orig_node->neigh_list ) {
 
@@ -270,11 +276,10 @@ void update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node
 	if ( orig_node->last_valid_seqno != in->seqno ) {
 
 		/* estimated average originaotr interval of this node */
-		if ( in->seqno > orig_node->last_valid_seqno  &&  orig_node->last_new_valid > 0 ) {
+		if ( GREAT_U16( in->seqno, orig_node->last_valid_seqno )  &&  orig_node->last_new_valid > 0  &&  orig_node->last_new_valid < *received_batman_time ) {
 			
-			orig_node->ca10ogis += ((*received_batman_time - orig_node->last_new_valid) / 
-					(in->seqno - orig_node->last_valid_seqno)) -
-					(orig_node->ca10ogis/10);
+			orig_node->ca10ogis += ((*received_batman_time - orig_node->last_new_valid) / (in->seqno - orig_node->last_valid_seqno)) -
+						(orig_node->ca10ogis/10);
 		
 		}
 		
@@ -573,10 +578,7 @@ void init_link_node( struct orig_node *orig_node ) {
 }
 
 
-/*
- * purge everything older than curr_time or
- * purge everyting if curr_time == 0
- */
+
 void purge_orig( uint32_t curr_time ) {
 
 	prof_start( PROF_purge_originator );
@@ -584,13 +586,12 @@ void purge_orig( uint32_t curr_time ) {
 	struct list_head *neigh_pos, *neigh_temp, *prev_list_head;
 	struct list_head *gw_pos, *gw_pos_tmp;
 	struct orig_node *orig_node;
-	struct neigh_node *neigh_node /*, *best_neigh_node*/;
+	struct neigh_node *neigh_node;
 	struct gw_node *gw_node;
-	//uint8_t gw_purged = 0 /*, neigh_purged*/;
 	static char orig_str[ADDR_STR_LEN], neigh_str[ADDR_STR_LEN];
 	struct list_head *if_pos;
 	struct batman_if *batman_if;
-	uint8_t free_ln;//free_bi_link_bits, free_lq_bits;
+	uint8_t free_ln;
 	
 	/* for all origins... */
 	while ( NULL != ( hashit = hash_iterate( orig_hash, hashit ) ) ) {
@@ -599,22 +600,13 @@ void purge_orig( uint32_t curr_time ) {
 		
 		/* purge outdated originators completely */
 		
-		if ( curr_time == 0  ||  ( orig_node->last_aware + purge_timeout( orig_node ) ) < curr_time  ) {
+		if ( curr_time == 0 || LESS_U32( orig_node->last_aware + purge_timeout( orig_node ) , curr_time  )  ) {
 
 			addr_to_string( orig_node->orig, orig_str, ADDR_STR_LEN );
 			debug_output( 4, "Originator timeout: originator %s, last_valid %u, last_aware %u  \n", orig_str, orig_node->last_valid, orig_node->last_aware );
 
 			hash_remove_bucket( orig_hash, hashit );
 
-			/* for all neighbours towards this originator ... */
-			list_for_each_safe( neigh_pos, neigh_temp, &orig_node->neigh_list ) {
-
-				neigh_node = list_entry(neigh_pos, struct neigh_node, list);
-
-				list_del( (struct list_head *)&orig_node->neigh_list, neigh_pos, &orig_node->neigh_list );
-				debugFree( neigh_node, 1401 );
-
-			}
 			
 			/* remove gw record of this node */
 			prev_list_head = (struct list_head *)&gw_list;
@@ -633,8 +625,6 @@ void purge_orig( uint32_t curr_time ) {
 
 					list_del( prev_list_head, gw_pos, &gw_list );
 					debugFree( gw_pos, 1405 );
-
-					//gw_purged = 1;
 
 					break;
 
@@ -656,6 +646,17 @@ void purge_orig( uint32_t curr_time ) {
 			if ( orig_node->srv_array_len > 0 )
 				add_del_other_srv( orig_node, NULL, 0 );
 
+			
+			/* for all neighbours towards this originator ... */
+			list_for_each_safe( neigh_pos, neigh_temp, &orig_node->neigh_list ) {
+
+				neigh_node = list_entry(neigh_pos, struct neigh_node, list);
+
+				list_del( (struct list_head *)&orig_node->neigh_list, neigh_pos, &orig_node->neigh_list );
+				memset( neigh_node, 123, sizeof( struct neigh_node ) );
+				debugFree( neigh_node, 1401 );
+
+			}
 			
 			
 			/* remove link information of node */
@@ -715,6 +716,7 @@ void purge_orig( uint32_t curr_time ) {
 				free_pifnb_node( orig_node );
 			
 			
+			
 			/* purge outdated neighbor nodes, except our best-ranking neighbor */
 			
 			prev_list_head = (struct list_head *)&orig_node->neigh_list;
@@ -755,7 +757,7 @@ void purge_orig( uint32_t curr_time ) {
 
 		gw_node = list_entry(gw_pos, struct gw_node, list);
 
-		if ( ( gw_node->deleted ) /* && ( (int)((gw_node->deleted + (2 * PURGE_TIMEOUT)) < curr_time) )*/ ) {
+		if ( gw_node->deleted ) {
 			
 			if( gw_node->orig_node != NULL && gw_node->orig_node->gw_msg != NULL ) {
 				
@@ -778,7 +780,6 @@ void purge_orig( uint32_t curr_time ) {
 
 	}
 
-	
 	prof_stop( PROF_purge_originator );
 
 }
@@ -818,20 +819,18 @@ int get_dbg_rcvd_all_bits( struct orig_node *orig_node, struct batman_if *this_i
 	static char orig_str[ADDR_STR_LEN];
 	
 	addr_to_string( orig_node->orig, orig_str, sizeof(orig_str) );
-//	debug_output( 4, "get_dbg_rcvd_all_bits(): %s latest seqno: %d \n", orig_str, orig_node->last_rcvd_seqno );
 		
 	if ( orig_node->dbg_rcvd_bits != NULL ) {
 		
 		if ( read_range > 0 ) {
 			
-			ret_pcnt = bit_packet_count( ( &orig_node->dbg_rcvd_bits[ this_if->if_num * MAX_NUM_WORDS ] ), read_range  ); /* not perfect until bidirect_link_to OGMs have been send by neighbor */
+			/* not perfect until bidirect_link_to OGMs have been send by neighbor */
+			ret_pcnt = bit_packet_count( ( &orig_node->dbg_rcvd_bits[ this_if->if_num * MAX_NUM_WORDS ] ), read_range  );
 			
-//			debug_output( 4, "get_considered_new_bits(): returns %d \n", ret_pcnt );
 			return ret_pcnt;
 		}
 		
 	}
-//	debug_output( 4, "get_considered_new_bits(): returns -1 \n" );
 	
 	return -1;
 
@@ -841,7 +840,7 @@ int get_dbg_rcvd_all_bits( struct orig_node *orig_node, struct batman_if *this_i
 
 
 
-void update_primary_orig( struct orig_node *orig_node /*, uint8_t direct_undupl_neigh_ogm*/ ) {
+void update_primary_orig( struct orig_node *orig_node  ) {
 	static char orig_str[ADDR_STR_LEN], prev_pip_str[ADDR_STR_LEN], new_pip_str[ADDR_STR_LEN];
 	
 	addr_to_string( orig_node->orig, orig_str, sizeof(orig_str) );
@@ -903,13 +902,8 @@ void update_primary_orig( struct orig_node *orig_node /*, uint8_t direct_undupl_
 }
 
 void set_lq_bits( struct orig_node *orig_node, uint16_t in_seqno, struct batman_if *this_if, uint8_t direct_undupl_neigh_ogm ) {
-//	static char orig_str[ADDR_STR_LEN];
 	uint8_t is_new_lq_seqno = 0;
 	int i;
-	
-//	addr_to_string( orig_node->orig, orig_str, sizeof(orig_str) );
-//	debug_output( 4, "set_lq_bits(): %s latest seqno: %d \n", orig_str, orig_node->last_lq_seqno );
-	
 	
 	
 	if ( orig_node->link_node != NULL ) {
@@ -955,63 +949,20 @@ void update_link( struct orig_node *orig_node, uint16_t in_seqno, struct batman_
 int get_lq_bits( struct link_node *link_node, struct batman_if *this_if, uint16_t read_range ) {
 	
 	int ret_pcnt;
-
-//	static char orig_str[ADDR_STR_LEN];
-	
-//	addr_to_string( orig_node->orig, orig_str, sizeof(orig_str) );
-//	debug_output( 4, "get_lq_bits(): %s latest seqno: %d \n", orig_str, orig_node->last_lq_seqno );
 		
 	if ( link_node != NULL  &&  read_range > 0 ) {
 			
 		// not perfect until read_range OGMs have been send by neighbor
 		ret_pcnt = bit_packet_count(  &link_node->lq_bits[ this_if->if_num * MAX_NUM_WORDS ] , read_range  ); 
 		
-		//debug_output( 4, "get_lq_bits(): returns %d \n", ret_pcnt );
 		return ret_pcnt;
 		
 	}
-//	debug_output( 4, "get_lq_bits(): returns -1 \n" );
 	
 	return -1;
 
 }
 
-/*
-int update_bi_link_bits ( struct orig_node *orig_neigh_node, struct batman_if * this_if, uint8_t write, uint16_t read_range ) {
-	
-	uint8_t is_new_bi_link_seqno;				
-	int rcvd_bi_link_packets = -1;
-	
-//	debug_output( 4, "update_bi_link_bits(): \n" );
-
-	if( write && orig_neigh_node->link_node == NULL )
-		return -1;
-	
-	
-	if ( orig_neigh_node->link_node != NULL ) {
-	
-		is_new_bi_link_seqno = purge_old_bits( 
-				( &orig_neigh_node->link_node->bi_link_bits[ this_if->if_num * MAX_NUM_WORDS ] ),
-				( ( this_if->out.seqno - OUT_SEQNO_OFFSET ) - orig_neigh_node->link_node->last_bi_link_seqno[this_if->if_num] ),
-				( ( write ) ? 1 : 0), bidirect_link_to );
-	
-		if ( is_new_bi_link_seqno ) 
-			orig_neigh_node->link_node->last_bi_link_seqno[this_if->if_num] = ( this_if->out.seqno - OUT_SEQNO_OFFSET );
-		
-		if ( read_range > 0 ) {
-			
-			rcvd_bi_link_packets = bit_packet_count( ( &orig_neigh_node->link_node->bi_link_bits[ this_if->if_num * MAX_NUM_WORDS ] ), read_range ); //TBD: not perfect until sequence_range OGMs have been send
-			
-		}
-		
-		return rcvd_bi_link_packets;
-	
-	}	
-
-	return -1;
-	
-}
-*/
 
 int tq_rate( struct orig_node *orig_neigh_node, struct batman_if *if_incoming, int range ) {
 	
@@ -1045,15 +996,7 @@ int tq_power( int tq_rate_value, int range ) {
 	return tq_power_value;
 
 }
-					
-/* returns value between 0 and sequence_range. Return value of sequence_range indicates 100% acceptance*/
-/*
-int acceptance_rate( int tq_assumption, uint16_t lq_assumtion ) {
-	
-	return ( tq_power( tq_assumption ) * lq_assumtion / sequence_range );
-
-}
-*/
+			
 
 void debug_orig() {
 
@@ -1122,7 +1065,7 @@ void debug_orig() {
 	if ( ( debug_clients.clients_num[DBGL_ROUTES-1] > 0 ) || ( debug_clients.clients_num[DBGL_DETAILS-1] > 0 ) || ( debug_clients.clients_num[DBGL_HNAS-1] > 0 ) || ( debug_clients.clients_num[DBGL_SERVICES-1] > 0 ) || ( debug_clients.clients_num[DBGL_ALL-1] > 0 ) ) {
 
 		addr_to_string( ((struct batman_if *)if_list.next)->addr.sin_addr.s_addr, orig_str, sizeof(orig_str) );
-		uptime_sec = (uint32_t)( *received_batman_time / 1000 );
+		uptime_sec = get_time_sec();
 
 		debug_output( DBGL_ROUTES, "BOD \n" );
 		debug_output( DBGL_DETAILS, "BOD \n" );
@@ -1174,6 +1117,7 @@ void debug_orig() {
 			if ( orig_node->router == NULL )
 				continue;
 
+			
 			addr_to_string( orig_node->orig, str, sizeof (str) );
 			addr_to_string( orig_node->router->addr, str2, sizeof (str2) );
 			dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s %-10s %15s %3i ( %3i %2i:%i%i:%i%i:%i%i %5i %4i %3d %3d )",
@@ -1188,7 +1132,7 @@ void debug_orig() {
 					(((uptime_sec-(orig_node->first_valid_sec))%60)/10)%10,
 					(((uptime_sec-(orig_node->first_valid_sec))%60))%10,
 			    		orig_node->last_valid_seqno,
-					( uptime_sec - (orig_node->last_valid/1000) ),
+					( *received_batman_time - orig_node->last_valid)/1000,
 					( orig_node->primary_orig_node != NULL ? orig_node->primary_orig_node->id4me : -1 ),
 					( orig_node->primary_orig_node != NULL ? orig_node->primary_orig_node->id4him : -1 )
 					   ); 
@@ -1227,7 +1171,7 @@ void debug_orig() {
 			if ( orig_node->router == NULL )
 				continue;
 			
-			if ( /* orig_node->primary_orig_node == NULL ||*/ orig_node->primary_orig_node != orig_node )
+			if ( orig_node->primary_orig_node != orig_node )
 				continue;
 			
 			nodes_count++;
@@ -1237,6 +1181,7 @@ void debug_orig() {
 			addr_to_string( orig_node->router->addr, str2, sizeof (str2) );
 			
 			if ( ( debug_clients.clients_num[DBGL_DETAILS-1] > 0 )  ||  ( debug_clients.clients_num[DBGL_ALL-1] > 0 ) ) {
+				
 				
 				dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s %-10s %15s %3i ( %3i %2i:%i%i:%i%i:%i%i %5i %4i %3i %4i %3i %3i %6i )", 
 					str, orig_node->router->if_incoming->dev, str2,
@@ -1250,7 +1195,7 @@ void debug_orig() {
 					(((uptime_sec-(orig_node->first_valid_sec))%60)/10)%10,
 					(((uptime_sec-(orig_node->first_valid_sec))%60))%10,
 					orig_node->last_valid_seqno,
-					( uptime_sec - (orig_node->last_valid/1000) ),
+					( *received_batman_time - orig_node->last_valid)/1000,
 					orig_node->ws,
 					(orig_node->ca10ogis / 10),
 					 orig_node->last_reserved_someting,
@@ -1260,7 +1205,7 @@ void debug_orig() {
 					
 				sum_packet_count+=  (100 * orig_node->router->packet_count) / orig_node->ws; /* accepted */
 				sum_rcvd_all_bits+= DEBUG_RCVD_ALL_BITS ? ( (100 * get_dbg_rcvd_all_bits( orig_node, orig_node->router->if_incoming, orig_node->ws )) / orig_node->ws ) : -1; /* all */ 
-				sum_lvld+= ( uptime_sec - (orig_node->last_valid/1000) );
+				sum_lvld+= (*received_batman_time - orig_node->last_valid)/1000;
 				sum_last_nbrf+= orig_node->ws;
 				sum_esitmated_ten_ogis+= orig_node->ca10ogis;
 				sum_reserved_something+= orig_node->last_reserved_someting;

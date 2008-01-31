@@ -55,8 +55,12 @@ static uint32_t my_ms_tick;
 
 static uint32_t last_blocked_send_warning = 0;
 
-/* MUST be called at least every 2*MAX_SELECT_TIMEOUT_MS  */
-uint32_t get_time( void ) {
+void fake_start_time( int32_t fake ) {
+	start_time_tv.tv_sec-= fake;
+}
+
+
+uint32_t get_time( uint8_t msec ) {
 	//struct tms tp;
 	
 	timeradd( &max_tv, &new_tv, &acceptable_p_tv );
@@ -78,18 +82,13 @@ uint32_t get_time( void ) {
 		debug_log( "WARNING: Critical system time drift detected: --ca %ld s, %ld us! Correcting reference! \n", diff_tv.tv_sec, diff_tv.tv_usec );
 
 	}
-
 	
 	timersub( &new_tv, &start_time_tv, &ret_tv );	
 	
-
-	// ms: ( (tv.tv_usec % 10000) / 1000 )
-	
-	//return (uint32_t)( ( (float)( times(&tp) - start_time ) * 1000 ) / system_tick );
-	
-	//return (uint32_t)( ( ( times(&tp) - start_time ) * my_ms_tick )  );
-	
-	return ( (ret_tv.tv_sec * 1000) + (ret_tv.tv_usec / 1000) );
+	if (  msec )
+		return ( (ret_tv.tv_sec * 1000) + (ret_tv.tv_usec / 1000) );
+	else
+		return ret_tv.tv_sec;
 
 }
 
@@ -291,7 +290,6 @@ int8_t add_default_route( struct gw_node *new_curr_gw ) {
 
 }
 
-
 int8_t receive_packet( uint32_t timeout ) {
 	
 	prof_start( PROF_receive_packet );
@@ -299,7 +297,7 @@ int8_t receive_packet( uint32_t timeout ) {
 	static unsigned char packet_in[2001];
 	static unsigned char *pos = NULL, *check_pos;
 	static int32_t len = 0, check_len, check_done;
-	static uint32_t rcvd_neighbor = 0, rcvd_time = 0;
+	static uint32_t rcvd_neighbor = 0, rcvd_time = 0, last_get_time_result = 0;
 
 	
 	static char str[ADDR_STR_LEN];
@@ -346,8 +344,22 @@ int8_t receive_packet( uint32_t timeout ) {
 		
 		s_returned_select++;
 
-		*received_batman_time = rcvd_time = get_time();
+		*received_batman_time = rcvd_time = get_time_msec();
 		
+		if ( *received_batman_time < last_get_time_result ) {
+			
+			len = 0;
+			last_get_time_result = *received_batman_time;
+			debug_output( 0, "WARNING - Detected Timeoverlap...\n" );
+			prof_stop( PROF_receive_packet );
+			return 0;
+			
+		}
+		
+		last_get_time_result = *received_batman_time;
+		
+		
+				
 		if ( res < 0 && errno != EINTR ) {
 		
 			debug_output( 0, "Error - can't select: %s\n", strerror(errno) );
@@ -357,7 +369,8 @@ int8_t receive_packet( uint32_t timeout ) {
 			
 		if ( res <= 0 ) {
 			
-			if ( return_time < *received_batman_time + 10 /*Often select returns just a few milliseconds before being scheduled */) {
+			/*Often select returns just a few milliseconds before being scheduled */
+			if ( return_time < *received_batman_time + 10 ) {
 				
 				//cheating time :-)
 				*received_batman_time = rcvd_time = return_time;
@@ -705,28 +718,18 @@ int8_t send_udp_packet( unsigned char *packet_buff, int32_t packet_buff_len, str
 void restore_defaults() {
 
 	struct list_head *if_pos, *if_pos_tmp;
-	struct batman_if *batman_if;
 
 	stop = 1;
 
 	add_del_interface_rules( 1, (routing_class > 0 ? YES : NO), YES );
+	
+	stop_gw_service();
 
-
-	batman_if = list_entry( (&if_list)->next, struct batman_if, list );
-
-	if (batman_if->udp_tunnel_sock > 0) {
-
-		if ( batman_if->listen_thread_id != 0 ) {
-			pthread_join( batman_if->listen_thread_id, NULL );
-			batman_if->listen_thread_id = 0;
-		} 
-
-	}
-
+	del_default_route();
 	
 	list_for_each_safe( if_pos, if_pos_tmp, &if_list ) {
 		
-		batman_if = list_entry( if_pos, struct batman_if, list );
+		struct batman_if *batman_if = list_entry( if_pos, struct batman_if, list );
 	
 		close( batman_if->udp_recv_sock );
 		close( batman_if->udp_send_sock );
@@ -773,10 +776,6 @@ void restore_defaults() {
 		add_del_route( 0, 0, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH, 2, 1 );
 
 	
-	
-	if ( ( routing_class != 0 ) && ( curr_gateway != NULL ) )
-		del_default_route();
-
 	if ( vis_if.sock )
 		close( vis_if.sock );
 
@@ -800,7 +799,7 @@ void restore_and_exit( uint8_t is_sigsegv ) {
 	struct orig_node *orig_node;
 	struct hash_it_t *hashit = NULL;
 
-	if ( !unix_client ) {
+	if ( !conn_client ) {
 
 		/* remove tun interface first */
 		stop = 1;
