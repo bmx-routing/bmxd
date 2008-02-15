@@ -1882,6 +1882,7 @@ void init_interface ( struct batman_if *batman_if ) {
 
 	struct ifreq int_req;
 	int16_t on = 1;
+	uint32_t sock_opts;
 
 	if ( strlen( batman_if->dev ) > IFNAMSIZ - 1 ) {
 		printf( "Error - interface name too long: %s\n", batman_if->dev );
@@ -1966,8 +1967,6 @@ void init_interface ( struct batman_if *batman_if ) {
 	
 	
 	/* check if interface is a wireless interface */
-	
-	
 
 	if (  (batman_if->is_wlan = (ioctl( batman_if->udp_recv_sock, SIOCGIWNAME, &int_req ) < 0 ? NO : YES ))  )
 		printf( "Detected wireless interface %s  (use %s /l to correct this assumption) !\n", batman_if->dev, batman_if->dev);
@@ -2017,6 +2016,7 @@ void init_interface ( struct batman_if *batman_if ) {
 
 		}
 
+		// bind socket to interface name
 		if ( bind_to_iface( batman_if->udp_send_sock, batman_if->dev ) < 0 ) {
 
 			restore_defaults();
@@ -2024,6 +2024,7 @@ void init_interface ( struct batman_if *batman_if ) {
 
 		}
 
+		// bind socket to address 
 		if ( bind( batman_if->udp_send_sock, (struct sockaddr *)&batman_if->addr, sizeof(struct sockaddr_in) ) < 0 ) {
 
 			printf( "Error - can't bind send socket: %s\n", strerror(errno) );
@@ -2031,6 +2032,10 @@ void init_interface ( struct batman_if *batman_if ) {
 			exit(EXIT_FAILURE);
 
 		}
+
+		// make udp socket non blocking
+		sock_opts = fcntl( batman_if->udp_send_sock, F_GETFL, 0 );
+		fcntl( batman_if->udp_send_sock, F_SETFL, sock_opts | O_NONBLOCK );
 
 	}
 
@@ -2048,6 +2053,7 @@ void init_interface ( struct batman_if *batman_if ) {
 		exit(EXIT_FAILURE);
 
 	}
+
 
 }
 
@@ -2152,7 +2158,6 @@ void start_gw_service ( void ) {
 	fcntl( gw_listen_arg->sock, F_SETFL, sock_opts | O_NONBLOCK );
 
 	pthread_create( &gw_thread_id, NULL, &gw_listen, gw_listen_arg );
-
 
 }
 
