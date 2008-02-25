@@ -687,25 +687,12 @@ int8_t send_udp_packet( unsigned char *packet_buff, int32_t packet_buff_len, str
 
 	if ( sendto( send_sock, packet_buff, packet_buff_len, 0, (struct sockaddr *)broad, sizeof(struct sockaddr_in) ) < 0 ) {
 
-		if ( errno == 1 ) {
-
-			if ( last_blocked_send_warning == 0 || last_blocked_send_warning + WARNING_PERIOD < *received_batman_time ) {
-						
-				last_blocked_send_warning = *received_batman_time;
-						
-				debug_output( 0, "Error - can't send udp packet: %s.\nDoes your firewall allow outgoing packets on port %i ?\n", strerror(errno), ntohs( broad->sin_port ) );
-			}
-			
-			if( resist_blocked_send )
-				return 0;
-
-		} else {
-
-			debug_output( 0, "Error - can't send udp packet: %s.\n", strerror(errno) );
-
+		if ( last_blocked_send_warning == 0 || last_blocked_send_warning + WARNING_PERIOD < *received_batman_time ) {
+					
+			last_blocked_send_warning = *received_batman_time;
+					
+			debug_output( 0, "Error - can't send udp packet: %s.\nDoes your firewall allow outgoing packets on port %i ?\n", strerror(errno), ntohs( broad->sin_port ) );
 		}
-
-		return -1;
 
 	}
 

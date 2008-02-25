@@ -932,7 +932,7 @@ void apply_init_args( int argc, char *argv[] ) {
 					
 				} else if ( strcmp( RESIST_BLOCKED_SEND_SWITCH, long_options[option_index].name ) == 0 ) {
 
-					printf ("--%s \\ \n", long_options[option_index].name);
+					printf ("WARNING: --%s is deprecated, it is activated by default now! \\ \n", long_options[option_index].name);
 					errno = 0;
 					resist_blocked_send = YES;
 					found_args += 1;

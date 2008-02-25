@@ -238,7 +238,7 @@ void print_advanced_opts ( int verbose ) {
 	
 	fprintf( stderr, "\n       --%s : Set unreachable rule. Limits scope of batman routing table. \n", MORE_RULES_SWITCH);
 	
-	fprintf( stderr, "\n       --%s : lets daemon survive if firewall blocks outgoing OGMs.\n", RESIST_BLOCKED_SEND_SWITCH );
+	fprintf( stderr, "\n       --%s : Deprecated! Now daemon'll always survive blocked sending.\n", RESIST_BLOCKED_SEND_SWITCH );
 	
 	fprintf( stderr, "\n       --%s <value> : set base udp port used by batmand.\n", BASE_PORT_SWITCH );
 	fprintf( stderr, "          <value> for OGMs, <value+1> for GW tunnels, <value+2> for visualization server.\n");
