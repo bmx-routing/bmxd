@@ -229,7 +229,7 @@ void *client_to_gw_tun( void *arg ) {
 
 		debug_output( 0, "Error - can't create udp socket: %s\n", strerror(errno) );
 		curr_gateway = NULL;
-		debugFree( arg, 1209 );
+		debugFree( arg, 1207 );
 		return NULL;
 
 	}
@@ -239,7 +239,7 @@ void *client_to_gw_tun( void *arg ) {
 		debug_output( 0, "Error - can't bind tunnel socket: %s\n", strerror(errno) );
 		close( udp_sock );
 		curr_gateway = NULL;
-		debugFree( arg, 1210 );
+		debugFree( arg, 1207 );
 		return NULL;
 
 	}
@@ -260,8 +260,12 @@ void *client_to_gw_tun( void *arg ) {
 			debug_output( 3, "Gateway client - could not add tun device\n");
 			curr_gw_data->gw_node->last_failure = current_time;
 			curr_gw_data->gw_node->unavail_factor++;
+			
 			curr_gateway = NULL;
-			return 0;
+			close( udp_sock );
+			debugFree( arg, 1207 );
+			return NULL;
+			
 		}
 	
 		add_del_route( 0, 0, 0, 0, tun_ifi, tun_if, BATMAN_RT_TABLE_TUNNEL, 0, 0 );
@@ -534,15 +538,11 @@ void *client_to_gw_tun( void *arg ) {
 	// cleanup:
 	
 	add_del_route( 0, 0, 0, 0, tun_ifi, tun_if, BATMAN_RT_TABLE_TUNNEL, 0, 1 );
-
-	close( udp_sock );
-
 	del_dev_tun( tun_fd );
 
+	close( udp_sock );
 	curr_gateway = NULL;
-	
-	debugFree( arg, 1212 );
-
+	debugFree( arg, 1207 );
 	return NULL;
 
 }
@@ -706,8 +706,13 @@ void *gw_listen( void *arg ) {
 	client_addr.sin_port = htons(gw_listen_arg->port);
 
 	
-	if ( add_dev_tun( my_tun_ip, tun_dev, sizeof(tun_dev), &tun_fd, &tun_ifi ) < 0 )
+	if ( add_dev_tun( my_tun_ip, tun_dev, sizeof(tun_dev), &tun_fd, &tun_ifi ) < 0 ) {
+		debugFree( gw_client_list, 1210);
+		close( gw_listen_arg->sock );
+		gw_listen_arg->sock = 0;
+		debugFree( gw_listen_arg, 1223 );
 		return NULL;
+	}
 
 	add_del_route( my_tun_ip, gw_listen_arg->netmask, 0, 0, tun_ifi, tun_dev, 254, 0, 0 );
 
@@ -922,13 +927,9 @@ void *gw_listen( void *arg ) {
 	cleanup_leased_tun_ips(0, gw_client_list, my_tun_ip, my_tun_netmask );
 	
 	debugFree( gw_client_list, 1210);
-
 	close( gw_listen_arg->sock );
-	
 	gw_listen_arg->sock = 0;
-	
 	debugFree( gw_listen_arg, 1223 );
-	
 	return NULL;
 
 }

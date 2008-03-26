@@ -221,7 +221,7 @@ void *unix_listen( void *arg ) {
 	struct in_addr tmp_ip_holder;
 	int32_t status, max_sock, unix_opts, download_speed, upload_speed;
 	int8_t res;
-	char buff[MAX_UNIX_REQ_SIZE], str[16], tmp_unix_value;
+	char buff[MAX_UNIX_REQ_SIZE], str[16];
 	fd_set wait_sockets, tmp_wait_sockets;
 	socklen_t sun_size = sizeof(struct sockaddr_un);
 	uint8_t unix_client_deleted = NO;
@@ -286,7 +286,7 @@ void *unix_listen( void *arg ) {
 
 						status = read( unix_client->sock, buff, sizeof( buff ) );
 						
-						debug_output( 3, "got request: %d\n", buff[0]);
+						debug_output( 3, "got request: %d, status %d\n", buff[0], status);
 						
 						if ( status > 0 ) {
 
@@ -366,57 +366,89 @@ void *unix_listen( void *arg ) {
 								internal_output(unix_client->sock);
 								dprintf( unix_client->sock, "EOD\n" );
 
-							} else if ( ( buff[0] == REQ_1WT ) || 
-								    ( buff[0] == REQ_2WT ) ) {
+							} else if ( buff[0] == REQ_1WT ) {
 								
 								if ( status > 2  ) {
  								
-									// if there is a gw-client thread: stop it now, it restarts automatically
-									del_default_route(); 
-									
-									// if there is a gw thread: stop it now
-									stop_gw_service();
-									
-									if ( buff[0] == REQ_1WT )
-										one_way_tunnel = strtoul( buff+2, NULL, 10 );
+									struct todo_node *new_todo_node;
 										
-									if ( buff[0] == REQ_2WT )
-										two_way_tunnel = strtoul( buff+2, NULL, 10 );
-																	
-									debug_output( 3, " changing rt_class: %d owt: %d twt: %d gw_class %d \n", 
-										routing_class, one_way_tunnel, two_way_tunnel, gateway_class );
+									if ( pthread_mutex_lock( (pthread_mutex_t *)todo_mutex ) != 0 )
+										debug_output( 0, "Error - could not lock todo_mutex: %s \n", strerror( errno ) );
+			
+									new_todo_node = debugMalloc( sizeof( struct todo_node ), 220 );
+										
+									memset( new_todo_node, 0,  sizeof( struct todo_node ) );
+										
+									new_todo_node->todo_type = REQ_1WT;
+									new_todo_node->def8  = buff[2];
 									
-									if ( gateway_class  &&  (one_way_tunnel || two_way_tunnel)  &&  probe_tun(0) )
-										start_gw_service();
+									debug_output( 3, "Unix socket: Requesting change og GW speed \n" );
+										
+									INIT_LIST_HEAD( &new_todo_node->list );
+										
+									list_add_tail( &new_todo_node->list, &todo_list );
+										
+									if ( pthread_mutex_unlock( (pthread_mutex_t *)todo_mutex ) != 0 )
+										debug_output( 0, "Error - could not unlock mutex: %s \n", strerror( errno ) );
 									
-									dprintf( unix_client->sock, "EOD\n" );
-								
 								}
 								
+								dprintf( unix_client->sock, "EOD\n" );
+								
+							} else if ( buff[0] == REQ_2WT ) {
+								
+								if ( status > 2  ) {
+ 								
+									struct todo_node *new_todo_node;
+										
+									if ( pthread_mutex_lock( (pthread_mutex_t *)todo_mutex ) != 0 )
+										debug_output( 0, "Error - could not lock todo_mutex: %s \n", strerror( errno ) );
+			
+									new_todo_node = debugMalloc( sizeof( struct todo_node ), 220 );
+										
+									memset( new_todo_node, 0,  sizeof( struct todo_node ) );
+										
+									new_todo_node->todo_type = REQ_2WT;
+									new_todo_node->def8  = buff[2];
+									
+									debug_output( 3, "Unix socket: Requesting change og GW speed \n" );
+										
+									INIT_LIST_HEAD( &new_todo_node->list );
+										
+									list_add_tail( &new_todo_node->list, &todo_list );
+										
+									if ( pthread_mutex_unlock( (pthread_mutex_t *)todo_mutex ) != 0 )
+										debug_output( 0, "Error - could not unlock mutex: %s \n", strerror( errno ) );
+									
+								}
+								
+								dprintf( unix_client->sock, "EOD\n" );
+							
 							} else if ( buff[0] == REQ_GW_CLASS ) {
 
 								if ( status > 2  ) {
 									
-									if ( buff[0] == REQ_GW_CLASS )
-										gateway_class = buff[2];
+									struct todo_node *new_todo_node;
 										
-									stop_gw_service();
+									if ( pthread_mutex_lock( (pthread_mutex_t *)todo_mutex ) != 0 )
+										debug_output( 0, "Error - could not lock todo_mutex: %s \n", strerror( errno ) );
+			
+									new_todo_node = debugMalloc( sizeof( struct todo_node ), 220 );
+										
+									memset( new_todo_node, 0,  sizeof( struct todo_node ) );
+										
+									new_todo_node->todo_type = REQ_GW_CLASS;
+									new_todo_node->def8  = buff[2];
 									
-									if ( gateway_class  &&  (one_way_tunnel || two_way_tunnel)  &&  probe_tun(0) ) {
-
-										if ( routing_class > 0 ) {
-
-											routing_class = 0;
-		
-											del_default_route();
+									debug_output( 3, "Unix socket: Requesting change og GW speed \n" );
+										
+									INIT_LIST_HEAD( &new_todo_node->list );
+										
+									list_add_tail( &new_todo_node->list, &todo_list );
+										
+									if ( pthread_mutex_unlock( (pthread_mutex_t *)todo_mutex ) != 0 )
+										debug_output( 0, "Error - could not unlock mutex: %s \n", strerror( errno ) );
 									
-											add_del_interface_rules( YES/*del*/, YES/*tunnel*/, NO/*networks*/ );
-
-										}
-									
-										start_gw_service();
-									}
-
 								}
 
 								dprintf( unix_client->sock, "EOD\n" );
@@ -424,52 +456,61 @@ void *unix_listen( void *arg ) {
 								
 							} else if ( buff[0] == REQ_RT_CLASS ) {
 
-								if ( status > 2 ) {
+								if ( status > 2 && ( buff[2] == 0 || (buff[2] <= 3 && probe_tun(0)) ) ) {
 									
-									if ((buff[2] == 0) || (probe_tun(0))) {
-
-										tmp_unix_value = buff[2];
-
-										if (  tmp_unix_value > 0  &&  gateway_class > 0  ) {
-											gateway_class = 0;
-											stop_gw_service();
-										}
+									struct todo_node *new_todo_node;
 										
-										if ( tmp_unix_value <= 3 ) {
-
-											debug_output( 3, "Unix socket: changing to -r %d \n", tmp_unix_value );
+									if ( pthread_mutex_lock( (pthread_mutex_t *)todo_mutex ) != 0 )
+										debug_output( 0, "Error - could not lock todo_mutex: %s \n", strerror( errno ) );
+			
+									new_todo_node = debugMalloc( sizeof( struct todo_node ), 220 );
 										
-											if ( routing_class == 0 && tmp_unix_value > 0 )
-												add_del_interface_rules( NO/*del*/, YES/*tunnel*/, NO/*networks*/ );
-											
-											if ( routing_class > 0 && tmp_unix_value == 0 )
-												add_del_interface_rules( YES/*del*/, YES/*tunnel*/, NO/*networks*/ );
+									memset( new_todo_node, 0,  sizeof( struct todo_node ) );
 										
-											routing_class = tmp_unix_value;
+									new_todo_node->todo_type = REQ_RT_CLASS;
+									new_todo_node->def8  = buff[2];
+									
+									debug_output( 3, "Unix socket: Requesting change to -r %d \n", new_todo_node->def8 );
 										
-											if ( curr_gateway != NULL )
-												del_default_route();
-
-										}
-
-									}
-
+									INIT_LIST_HEAD( &new_todo_node->list );
+										
+									list_add_tail( &new_todo_node->list, &todo_list );
+										
+									if ( pthread_mutex_unlock( (pthread_mutex_t *)todo_mutex ) != 0 )
+										debug_output( 0, "Error - could not unlock mutex: %s \n", strerror( errno ) );
+										
 								}
-
-								dprintf( unix_client->sock, "EOD\n" );
-							
 								
+								dprintf( unix_client->sock, "EOD\n" );
+
+						
 							} else if ( buff[0] == REQ_PREF_GW ) {
 
 								if ( status > 2 ) {
 
 									if ( inet_pton( AF_INET, buff + 2, &tmp_ip_holder ) > 0 ) {
 
-										pref_gateway = tmp_ip_holder.s_addr;
-
-										if ( curr_gateway != NULL )
-											del_default_route();
-
+										struct todo_node *new_todo_node;
+										
+										if ( pthread_mutex_lock( (pthread_mutex_t *)todo_mutex ) != 0 )
+										debug_output( 0, "Error - could not lock todo_mutex: %s \n", strerror( errno ) );
+			
+										new_todo_node = debugMalloc( sizeof( struct todo_node ), 220 );
+										
+										memset( new_todo_node, 0,  sizeof( struct todo_node ) );
+										
+										new_todo_node->todo_type = REQ_PREF_GW;
+										new_todo_node->def32  = tmp_ip_holder.s_addr;
+									
+										debug_output( 3, "Unix socket: Requesting new preferred GW \n" );
+										
+										INIT_LIST_HEAD( &new_todo_node->list );
+										
+										list_add_tail( &new_todo_node->list, &todo_list );
+										
+										if ( pthread_mutex_unlock( (pthread_mutex_t *)todo_mutex ) != 0 )
+										debug_output( 0, "Error - could not unlock mutex: %s \n", strerror( errno ) );
+										
 									} else {
 
 										debug_output( 3, "Unix socket: rejected new preferred gw (%s) - invalid IP specified\n", buff + 2 );

@@ -1459,9 +1459,94 @@ void check_todos() {
 	} else {
 	
 		list_for_each_safe( todo_pos, todo_pos_tmp, &todo_list) {
+			
 			todo_node = list_entry( todo_pos, struct todo_node, list );
 			
-			if ( todo_node->todo_type == REQ_CHANGE_HNA ) {
+			
+			
+			if ( todo_node->todo_type == REQ_PREF_GW ) {
+			
+				pref_gateway = todo_node->def32;
+
+				if ( curr_gateway != NULL )
+					del_default_route();
+
+			} else if ( todo_node->todo_type == REQ_1WT ) {
+				
+				// if there is a gw-client thread: stop it now, it restarts automatically
+				del_default_route(); 
+									
+				// if there is a gw thread: stop it now
+				stop_gw_service();
+									
+				one_way_tunnel = todo_node->def8;
+																	
+				debug_output( 3, " changing rt_class: %d owt: %d twt: %d gw_class %d \n", 
+					      routing_class, one_way_tunnel, two_way_tunnel, gateway_class );
+									
+				if ( gateway_class  &&  (one_way_tunnel || two_way_tunnel)  &&  probe_tun(0) )
+					start_gw_service();
+
+			} else if ( todo_node->todo_type == REQ_2WT ) {
+				
+				// if there is a gw-client thread: stop it now, it restarts automatically
+				del_default_route(); 
+									
+				// if there is a gw thread: stop it now
+				stop_gw_service();
+									
+				two_way_tunnel = todo_node->def8;
+																	
+				debug_output( 3, " changing rt_class: %d owt: %d twt: %d gw_class %d \n", 
+					      routing_class, one_way_tunnel, two_way_tunnel, gateway_class );
+									
+				if ( gateway_class  &&  (one_way_tunnel || two_way_tunnel)  &&  probe_tun(0) )
+					start_gw_service();
+
+				
+			} else if ( todo_node->todo_type == REQ_GW_CLASS ) {
+				
+				gateway_class = todo_node->def8;
+										
+				stop_gw_service();
+									
+				if ( gateway_class  &&  (one_way_tunnel || two_way_tunnel)  &&  probe_tun(0) ) {
+
+					if ( routing_class > 0 ) {
+
+						routing_class = 0;
+		
+						del_default_route();
+									
+						add_del_interface_rules( YES/*del*/, YES/*tunnel*/, NO/*networks*/ );
+
+					}
+									
+					start_gw_service();
+				}
+
+			} else if ( todo_node->todo_type == REQ_RT_CLASS ) {
+			
+				if (  todo_node->def8 > 0  &&  gateway_class > 0  ) {
+					gateway_class = 0;
+					stop_gw_service();
+				}
+				
+				debug_output( 3, "found todo item, changing to -r %d \n", todo_node->def8 );
+									
+				if ( routing_class == 0 && todo_node->def8 > 0 )
+					add_del_interface_rules( NO/*del*/, YES/*tunnel*/, NO/*networks*/ );
+										
+				if ( routing_class > 0 && todo_node->def8 == 0 )
+					add_del_interface_rules( YES/*del*/, YES/*tunnel*/, NO/*networks*/ );
+									
+				routing_class = todo_node->def8;
+									
+				if ( curr_gateway != NULL )
+					del_default_route();
+	
+
+			} else if ( todo_node->todo_type == REQ_CHANGE_HNA ) {
 				
 				addr_to_string( todo_node->key.addr, addr_str, sizeof(addr_str) );
 				

@@ -402,6 +402,7 @@ int add_del_interface_rules( int8_t del, uint8_t setup_tunnel, uint8_t setup_net
 
 			debug_output( 0, "Error - can't %s interface rules (SIOCGIFCONF): %s\n", del ? "delete" : "add", strerror(errno) );
 			close( tmp_fd );
+			debugFree( buf, 1601 );
 			return -1;
 
 		} else {

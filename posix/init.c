@@ -1756,12 +1756,12 @@ void apply_init_args( int argc, char *argv[] ) {
 		} else if ( req_opt == REQ_1WT ) {
 
 			batch_mode = 1;
-			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%d", REQ_1WT, one_way_tunnel );
+			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%c", REQ_1WT, one_way_tunnel );
 		
 		} else if ( req_opt == REQ_2WT ) {
 
 			batch_mode = 1;
-			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%d", REQ_2WT, two_way_tunnel );
+			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%c", REQ_2WT, two_way_tunnel );
 		
 		} else if ( req_opt == REQ_FAKE_TIME ) {
 

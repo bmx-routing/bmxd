@@ -252,13 +252,14 @@ void handler( int32_t sig ) {
 
 }
 
-
 void del_default_route() {
 
 	curr_gateway = NULL;
 
 	if ( curr_gateway_thread_id != 0 ) {
-		pthread_join( curr_gateway_thread_id, NULL );
+		if ( pthread_join( curr_gateway_thread_id, NULL ) != 0 )
+			debug_output( 0, "Error - couldn't completely join thread, %s! \n", strerror(errno));
+		
 		curr_gateway_thread_id = 0;
 	}
 }
@@ -281,7 +282,7 @@ int8_t add_default_route( struct gw_node *new_curr_gw ) {
 	if ( pthread_create( &curr_gateway_thread_id, NULL, &client_to_gw_tun, curr_gw_data ) != 0 ) {
 
 		debug_output( 0, "Error - couldn't spawn thread: %s\n", strerror(errno) );
-		debugFree( curr_gw_data, 1213 );
+		debugFree( curr_gw_data, 1207 );
 		curr_gateway = NULL;
 		curr_gateway_thread_id=0;
 	}
