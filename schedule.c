@@ -323,11 +323,12 @@ void send_outstanding_packets() {
 	
 	uint32_t send_time = *received_batman_time;
 	
-	debug_output( 4, "send_outstanding_packets() send_time %u, aggregations_po %d \n", send_time, send_time, aggregations_po );
 
 	if ( list_empty( &forw_list )  ||  GREAT_U32( (list_entry( (&forw_list)->next, struct forw_node, list ))->send_time, send_time ) )
 		return;	
 	
+	debug_output( 4, "send_outstanding_packets(): now %u, aggregations_po %d, forw_list holds packets to send \n", send_time, aggregations_po );
+
 	
 	aggregated_size = sizeof( struct bat_header );
 	
@@ -378,9 +379,6 @@ void send_outstanding_packets() {
 			/* rebroadcast only to allow neighbor to detect bidirectional link */
 			if ( forw_node->iteration == 1 && directlink && !cloned && ( unidirectional || ttl == 0 ) ) {
 				
-				/*
-				debug_output( 3, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s, len %d\n", orig_str, ntohs( ((struct bat_packet *)forw_node->pack_buff)->seqno ), ((struct bat_packet *)forw_node->pack_buff)->ttl, forw_node->if_outgoing->dev, forw_node->pack_buff_len );
-				*/
 				
 				dbg_if_out = dbg_if_out + snprintf( (dbg_if_str + dbg_if_out), (MAX_DBG_IF_SIZE - dbg_if_out), " %-12s  (NBD)", forw_node->if_outgoing->dev );
 
@@ -439,7 +437,7 @@ void send_outstanding_packets() {
 			
 			forw_node->send_bucket = forw_node->send_bucket + 100;
 
-			debug_output( 4, "Forwarding packet (originator %-16s, seqno %5d, TTL %2d, IDF %d, UDF %d, CLF %d) iter %d len %3d agg_size %3d IFs %s \n", orig_str, ntohs( ((struct bat_packet *)forw_node->pack_buff)->seqno ), ((struct bat_packet *)forw_node->pack_buff)->ttl, directlink, unidirectional, cloned, forw_node->iteration, forw_node->pack_buff_len, aggregated_size, dbg_if_str );
+			debug_output( 4, "Sending packet (originator %-16s, seqno %5d, TTL %2d, IDF %d, UDF %d, CLF %d) iter %d len %3d agg_size %3d IFs %s \n", orig_str, ntohs( ((struct bat_packet *)forw_node->pack_buff)->seqno ), ((struct bat_packet *)forw_node->pack_buff)->ttl, directlink, unidirectional, cloned, forw_node->iteration, forw_node->pack_buff_len, aggregated_size, dbg_if_str );
 				
 			dbg_if_out = 0;
 			

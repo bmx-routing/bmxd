@@ -350,9 +350,13 @@ void print_advanced_opts ( int verbose ) {
 		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d \n", DEF_BIDIRECT_TIMEOUT, MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT  );
 	*/
 	
-	fprintf( stderr, "\n       --%s <value> : set neighbor ranking frame size\n", NBRFSIZE_SWITCH );
+	fprintf( stderr, "\n       --%s <value> : set window size for path statistic\n", NBRFSIZE_SWITCH );
 	if ( verbose )
 		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d\n", DEF_SEQ_RANGE, MIN_SEQ_RANGE, MAX_SEQ_RANGE  );
+	
+	fprintf( stderr, "\n       --%s <value> : set window size for link statistic\n", BIDIRECT_TIMEOUT_SWITCH );
+	if ( verbose )
+		fprintf( stderr, "          default: %d, allowed values: %d <= value <= %d\n", DEF_BIDIRECT_TIMEOUT, MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT  );
 	
 	fprintf( stderr, "\n       --%s <value> : set initial seqno for this nodes OGMs\n", INITIAL_SEQNO_SWITCH );
 	if ( verbose )
@@ -382,18 +386,18 @@ void print_advanced_opts ( int verbose ) {
 	fprintf( stderr, "          (< value > - 1) defines how much smaller the TTL of a non-first OGM can be compared to \n");
 	fprintf( stderr, "          the largest TTL received so fare (with the same originator IP and sequencenumber).\n");	
 	if ( verbose )
-		fprintf( stderr, "          default: %d (disabled), allowed values: %d <= value <= %d\n", DEF_DUP_TTL_LIMIT, MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT );
+		fprintf( stderr, "          default: %d (0=disabled), allowed values: %d <= value <= %d\n", DEF_DUP_TTL_LIMIT, MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT );
 	
 	fprintf( stderr, "\n       --%s <value> : accept non-quickest OGMs to relieve preference for shortest path. \n", DUP_RATE_SWITCH );
 	fprintf( stderr, "          < value > defines the probability with which non-quickest OGMs are accepted. \n");
 	if ( verbose )
-		fprintf( stderr, "          default: %d (disabled), allowed values in percent: %d <= value <= %d\n", DEF_DUP_RATE, MIN_DUP_RATE, MAX_DUP_RATE );
+		fprintf( stderr, "          default: %d (0=disabled), allowed values in percent: %d <= value <= %d\n", DEF_DUP_RATE, MIN_DUP_RATE, MAX_DUP_RATE );
 	
 	fprintf( stderr, "\n       --%s <value> : accept non-quickest OGMs to relieve preference for shortest path. \n", DUP_DEGRAD_SWITCH );
 	fprintf( stderr, "          < value > defines the probability degradation for each additional hop (compared \n");
 	fprintf( stderr, "          to the OGM arrived via the shortest path) with which non-quickest OGMs are accepted. \n");
 	if ( verbose )
-		fprintf( stderr, "          default: %d (disabled), allowed values in percent: %d <= value <= %d\n", DEF_DUP_DEGRAD, MIN_DUP_DEGRAD, MAX_DUP_DEGRAD );
+		fprintf( stderr, "          default: %d, allowed values in percent: %d <= value <= %d\n", DEF_DUP_DEGRAD, MIN_DUP_DEGRAD, MAX_DUP_DEGRAD );
 	
 	fprintf( stderr, "\n       --%s : mobile device mode reluctant to help others.\n", ASOCIAL_SWITCH );
 	

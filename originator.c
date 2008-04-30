@@ -1219,7 +1219,9 @@ void debug_orig() {
 					
 						addr_to_string( neigh_node->addr, str, sizeof (str) );
 
-						dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), " %15s %3i", str, neigh_node->packet_count );
+						dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), " %15s %3i", str, 
+						/* neigh_node->packet_count */ 
+						(100 * neigh_node->packet_count) / orig_node->ws  /* accpted and and not rebroadcasted */ );
 				
 					}
 				}

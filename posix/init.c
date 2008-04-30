@@ -760,6 +760,8 @@ void apply_init_args( int argc, char *argv[] ) {
 				} else if ( strcmp( DUP_DEGRAD_SWITCH, long_options[option_index].name ) == 0 ) {
 
 					set_init_arg( DUP_DEGRAD_SWITCH, optarg, MIN_DUP_DEGRAD, MAX_DUP_DEGRAD, &dup_degrad );
+					
+					req_opt = REQ_DTD;
 					found_args += 2;
 					break;
 				
@@ -955,8 +957,8 @@ void apply_init_args( int argc, char *argv[] ) {
 					errno = 0;
 					
 					set_init_arg( BASE_PORT_SWITCH,       "16305", MIN_BASE_PORT,       MAX_BASE_PORT,       &ogm_port ); 
-					set_init_arg( RT_TABLE_OFFSET_SWITCH, "164",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset ); 
-					set_init_arg( RT_PRIO_OFFSET_SWITCH,  "16500", MIN_RT_PRIO_OFFSET, MAX_RT_PRIO_OFFSET, &rt_prio_offset ); 
+					set_init_arg( RT_TABLE_OFFSET_SWITCH, "40",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset ); 
+					set_init_arg( RT_PRIO_OFFSET_SWITCH,  "4000", MIN_RT_PRIO_OFFSET, MAX_RT_PRIO_OFFSET, &rt_prio_offset ); 
 					set_gw_network( "169.254.160.0/22" );
 					
 					found_args += 1;
@@ -1747,6 +1749,11 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			batch_mode = 1;
 			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%c", REQ_LWS, bidirect_link_to );
+		
+		} else if ( req_opt == REQ_DTD ) {
+
+			batch_mode = 1;
+			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%c", REQ_DTD, dup_degrad );
 		
 		} else if ( req_opt == REQ_OGI ) {
 

@@ -227,6 +227,7 @@ void *unix_listen( void *arg ) {
 	uint8_t unix_client_deleted = NO;
 	uint32_t tmp_enabled, tmp_netmask, tmp_address;
 	uint16_t tmp_port, tmp_ogi;
+	int tmp_int;
 	uint8_t tmp_seqno;
 
 	INIT_LIST_HEAD_FIRST(unix_if.client_list);
@@ -549,6 +550,24 @@ void *unix_listen( void *arg ) {
 									bidirect_link_to = ((uint8_t)(buff[2]));
 									
 									debug_output( 3, "Unix socket: changing %s to %d \n",BIDIRECT_TIMEOUT_SWITCH, bidirect_link_to );
+									
+								}
+
+								dprintf( unix_client->sock, "EOD\n" );
+
+								
+							} else if ( buff[0] == REQ_DTD ) {
+								
+								if ( status > 2  ) {
+									
+									tmp_int = ((uint8_t)(buff[2]));
+									
+									if ( tmp_int >= MIN_DUP_DEGRAD  &&  ((uint8_t)(buff[2])) <= MAX_DUP_DEGRAD ) {
+
+										dup_degrad = ((uint8_t)(buff[2]));
+										
+										debug_output( 3, "Unix socket: changing %s to %d \n",DUP_DEGRAD_SWITCH, dup_degrad );
+									}
 									
 								}
 
