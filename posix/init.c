@@ -1488,12 +1488,6 @@ void apply_init_args( int argc, char *argv[] ) {
 		}
 		
 		
-		if ( my_gw_port == 0 )
-			my_gw_port = ogm_port + 1;
-	
-		if ( my_gw_addr == 0 )
-			my_gw_addr = (list_entry( (&if_list)->next, struct batman_if, list ))->addr.sin_addr.s_addr ;
-			
 
 		
 		memset( my_pip_ext_array, 0, sizeof(struct ext_packet) );
@@ -2355,6 +2349,16 @@ void start_gw_service ( void ) {
 
 	if (!( gw_thread_id == 0  &&  gateway_class  &&  ( two_way_tunnel || one_way_tunnel ) &&  (list_entry( (&if_list)->next, struct batman_if, list ))->if_active ) )
 		return;
+	
+	/* TODO: This needs a better security concept...
+	if ( my_gw_port == 0 ) */
+		my_gw_port = ogm_port + 1;
+	
+	/* TODO: This needs a better security concept...
+	if ( my_gw_addr == 0 ) */
+		my_gw_addr = (list_entry( (&if_list)->next, struct batman_if, list ))->addr.sin_addr.s_addr ;
+			
+
 	
 	memset( my_gw_ext_array, 0, sizeof(struct ext_packet) );
 		
