@@ -159,10 +159,13 @@ struct ext_packet *my_pip_ext_array = &my_pip_extension_packet;
 uint16_t my_pip_ext_array_len = 0;
 
 uint8_t found_ifs = 0;
+uint8_t active_ifs = 0;
 int32_t receive_max_sock = 0;
 fd_set receive_wait_set;
 
 uint8_t conn_client = 0;
+
+uint8_t log_facility_active = NO;
 
 int g_argc;
 char **g_argv;
@@ -709,11 +712,13 @@ void add_del_other_srv( struct orig_node *orig_node, struct ext_packet *srv_arra
 
 
 void add_del_own_hna( uint8_t purge ) {
-	struct list_head *list_pos, *hna_pos_tmp;
+	
+	struct list_head *list_pos, *hna_pos_tmp, *prev_list_head;
 	struct hna_node *hna_node;
 	struct hna_hash_node *hash_node;
 	static char str[ADDR_STR_LEN], str2[ADDR_STR_LEN];
-
+	
+	prev_list_head = (struct list_head *)&my_hna_list;
 	
 	list_for_each_safe( list_pos, hna_pos_tmp, &my_hna_list ) {
 
@@ -740,7 +745,7 @@ void add_del_own_hna( uint8_t purge ) {
 			hash_remove( hna_hash, hash_node );
 			debugFree( hash_node, 1401 );
 			debugFree( hna_node, 1103 );
-		
+			list_del( prev_list_head, list_pos, &my_hna_list );
 		}
 
 	}
@@ -1449,7 +1454,7 @@ void send_vis_packet() {
 	generate_vis_packet();
 
 	if ( vis_packet != NULL )
-		send_udp_packet( vis_packet, vis_packet_size, &vis_if.addr, vis_if.sock );
+		send_udp_packet( vis_packet, vis_packet_size, &vis_if.addr, vis_if.sock, NULL );
 
 }
 
@@ -1558,7 +1563,7 @@ void check_todos() {
 				
 				sprintf( fake_arg, "%s/%d", addr_str, todo_node->key.KEY_FIELD_ANETMASK);
 				
-				prepare_add_del_own_hna( fake_arg, (todo_node->add ? NO : YES), todo_node->key.KEY_FIELD_ATYPE, NO /*not during startup*/ );
+				prepare_add_del_own_hna( fake_arg, (todo_node->add ? NO : YES), todo_node->key.KEY_FIELD_ATYPE );
 				
 				add_del_own_hna( NO /* do not purge */ );
 				
@@ -1571,7 +1576,7 @@ void check_todos() {
 				
 				sprintf( fake_arg, "%s:%d:%d", addr_str, todo_node->def16, todo_node->def8 );
 				
-				prepare_add_del_own_srv( fake_arg, (todo_node->add ? NO : YES), NO /*not during startup*/ );
+				prepare_add_del_own_srv( fake_arg, (todo_node->add ? NO : YES) );
 				
 				add_del_own_srv( NO /* do not purge */ );
 				
@@ -1617,27 +1622,6 @@ int calc_ogm_if_size( int if_num ) {
 
 
 
-char* get_init_string( int begin ){
-	
-#define INIT_STRING_SIZE 500
-	
-	char *dbg_init_str = debugMalloc( INIT_STRING_SIZE, 127 );
-	int i, dbg_init_out = 0;
-	
-	for (i=0; i < g_argc; i++) {
-		
-		if ( i >= begin && INIT_STRING_SIZE > dbg_init_out) {
-			dbg_init_out = dbg_init_out + snprintf( (dbg_init_str + dbg_init_out), (INIT_STRING_SIZE - dbg_init_out), "%s ", g_argv[i] );
-		}
-		
-	}
-	
-	return dbg_init_str;
-
-}
-
-
-
 
 
 
@@ -1654,7 +1638,6 @@ int8_t batman() {
 	uint16_t aggr_interval;
 	
 	static char orig_str[ADDR_STR_LEN], neigh_str[ADDR_STR_LEN], ifaddr_str[ADDR_STR_LEN];
-	uint8_t forward_old, if_rp_filter_all_old, if_rp_filter_default_old, if_send_redirects_all_old, if_send_redirects_default_old;
 	uint8_t is_my_addr, is_my_orig, is_broadcast, is_my_path, is_duplicate, is_bidirectional, is_accepted, is_direct_neigh, is_bntog, forward_duplicate_packet, has_unidirectional_flag, has_directlink_flag, has_duplicated_flag;
 	int tq_rate_value, rand_nb_value, acceptance_nb_value;
 	int res;
@@ -1698,83 +1681,19 @@ int8_t batman() {
 		return(-1);
 	
 	
-	/* for profiling the functions */
-	prof_init( PROF_all, "all" );
-	prof_init( PROF_choose_gw, "choose_gw" );
-	prof_init( PROF_update_routes, "update_routes" );
-	prof_init( PROF_update_gw_list, "update_gw_list" );
-	prof_init( PROF_is_duplicate, "isDuplicate" );
-	prof_init( PROF_get_orig_node, "get_orig_node" );
-	prof_init( PROF_update_originator, "update_orig" );
-	prof_init( PROF_purge_originator, "purge_orig" );
-	prof_init( PROF_schedule_forward_packet, "schedule_forward_packet" );
-	prof_init( PROF_send_outstanding_packets, "send_outstanding_packets" );
-	prof_init( PROF_receive_packet, "receive_packet" );
-	prof_init( PROF_set_dbg_rcvd_all_bits, "set_dbg_rcvd_all_bits" );
-	
 	add_del_own_srv( NO /*do not purge*/ );	
 	
 	add_del_own_hna( NO /*do not purge*/ );	
 	
 	
-	memset( my_pip_ext_array, 0, sizeof(struct ext_packet) );
-	my_pip_ext_array->EXT_FIELD_MSG = YES;
-	my_pip_ext_array->EXT_FIELD_TYPE = EXT_TYPE_PIP;
-	my_pip_ext_array->EXT_PIP_FIELD_ADDR = (list_entry( (&if_list)->next, struct batman_if, list ))->addr.sin_addr.s_addr;
 	
-	my_pip_ext_array_len = 0;
-
+	
 	list_for_each( list_pos, &if_list ) {
-
+		
 		batman_if = list_entry( list_pos, struct batman_if, list );
-		
-		batman_if->out.ext_msg = NO;
-		batman_if->out.bat_type = BAT_TYPE_OGM;
-		batman_if->out.flags = 0x00;
-		batman_if->out.size = 0x00;
-		
-		batman_if->out.ws     = my_ws;
-		
-		batman_if->out.ttl      = batman_if->if_ttl;
-		batman_if->out.seqno    = initial_seqno;
-		batman_if->out.orig     = batman_if->addr.sin_addr.s_addr;
-
-		batman_if->if_rp_filter_old = get_rp_filter( batman_if->dev );
-		set_rp_filter( 0 , batman_if->dev );
-
-		batman_if->if_send_redirects_old = get_send_redirects( batman_if->dev );
-		set_send_redirects( 0 , batman_if->dev );
-		
-		if ( batman_if->if_num > 0 )
-			my_pip_ext_array_len = 1;
-		
 		schedule_own_packet( batman_if, curr_time );
 
 	}
-	
-
-	
-	if_rp_filter_all_old = get_rp_filter( "all" );
-	if_rp_filter_default_old = get_rp_filter( "default" );
-
-	if_send_redirects_all_old = get_send_redirects( "all" );
-	if_send_redirects_default_old = get_send_redirects( "default" );
-
-	set_rp_filter( 0, "all" );
-	set_rp_filter( 0, "default" );
-
-	set_send_redirects( 0, "all" );
-	set_send_redirects( 0, "default" );
-
-	forward_old = get_forwarding();
-	set_forwarding(1);
-
-	char *init_string = get_init_string( 0 );
-	
-	debug_output(0, "Startup parameters: %s\n", init_string);
-	
-	debugFree( init_string, 1127 );
-
 	
 	while ( !is_aborted() ) {
 		
@@ -2132,7 +2051,8 @@ int8_t batman() {
 			
 			check_todos();
 			
-			
+/*TODO: remove this */	//check_interfaces();
+
 			if ( LESS_U32( debug_timeout + 1000,  curr_time ) ) {
 		
 				purge_orig( curr_time );
@@ -2259,22 +2179,6 @@ int8_t batman() {
 	if ( vis_packet != NULL )
 		debugFree( vis_packet, 1108 );
 
-	set_forwarding( forward_old );
-
-	list_for_each( list_pos, &if_list ) {
-
-		batman_if = list_entry( list_pos, struct batman_if, list );
-
-		set_rp_filter( batman_if->if_rp_filter_old , batman_if->dev );
-		set_send_redirects( batman_if->if_send_redirects_old , batman_if->dev );
-
-	}
-
-	set_rp_filter( if_rp_filter_all_old, "all" );
-	set_rp_filter( if_rp_filter_default_old, "default" );
-
-	set_send_redirects( if_send_redirects_all_old, "all" );
-	set_send_redirects( if_send_redirects_default_old, "default" );
 
 	return 0;
 

@@ -31,7 +31,73 @@
 #include "../os.h"
 #include "../batman.h"
 
+int netlink_sock = -1;
 
+int ifevent_sk = -1;
+
+int open_ifevent_netlink_sk( void ) {
+	
+	struct sockaddr_nl sa;
+	
+	memset (&sa, 0, sizeof(sa));
+	sa.nl_family = AF_NETLINK;
+	sa.nl_groups = RTMGRP_LINK | RTMGRP_IPV4_IFADDR;
+
+	if ( ( ifevent_sk = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE) ) < 0 ) {
+		debug_output( 0, "Error - can't create af_netlink socket for reacting on if up/down events: %s", strerror(errno) );
+		return -1;
+	}
+	
+	if ( ( bind( ifevent_sk, (struct sockaddr*)&sa, sizeof(sa) ) ) < 0 ) {
+		debug_output( 0, "Error - can't bind af_netlink socket for reacting on if up/down events: %s", strerror(errno) );
+		return -1;
+	}
+	
+	return ifevent_sk;
+
+}
+
+void close_ifevent_netlink_sk( void ) {
+	
+	if ( ifevent_sk >= 0 )
+		close( ifevent_sk );
+
+}
+
+void recv_ifevent_netlink_sk( void ) {
+	int len=0;
+	char buf[4096]; //test this with a very small value !!
+	struct iovec iov = { buf, sizeof(buf) };
+	struct sockaddr_nl sa;
+	struct msghdr msg = { (void *)&sa, sizeof(sa), &iov, 1, NULL, 0, 0 };
+//	struct nlmsghdr *nh;
+
+	len = recvmsg (ifevent_sk, &msg, 0);
+	
+	//so fare I just want to consume the pending message...	
+	
+}
+
+
+int open_netlink_socket( void ) {
+	
+	if ( ( netlink_sock = socket( PF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE ) ) < 0 ) {
+
+		debug_output( 0, "Error - can't create netlink socket for routing table manipulation: %s", strerror(errno) );
+		return -1;
+
+	}
+	
+	return netlink_sock;
+
+}
+
+void close_netlink_socket( void ) {
+	
+	if ( netlink_sock >= 0 )
+		close( netlink_sock );
+
+}
 
 /***
  *
@@ -41,7 +107,7 @@
 
 void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t source, int32_t ifi, char *dev, uint8_t rt_table, int8_t route_type, int8_t del ) {
 
-	int netlink_sock, len;
+	int len;
 	uint32_t my_router;
 	char buf[4096], str1[16], str2[16], str3[16];
 	struct rtattr *rta;
@@ -153,18 +219,10 @@ void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t so
 		}
 	}
 
-	if ( ( netlink_sock = socket( PF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE ) ) < 0 ) {
-
-		debug_output( 0, "Error - can't create netlink socket for routing table manipulation: %s", strerror(errno) );
-		return;
-
-	}
-
 
 	if ( sendto( netlink_sock, &req, req.nlh.nlmsg_len, 0, (struct sockaddr *)&nladdr, sizeof(struct sockaddr_nl) ) < 0 ) {
 
 		debug_output( 0, "Error - can't send message to kernel via netlink socket for routing table manipulation: %s", strerror(errno) );
-		close( netlink_sock );
 		return;
 
 	}
@@ -191,8 +249,6 @@ void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t so
 
 	}
 
-	close( netlink_sock );
-
 }
 
 
@@ -205,7 +261,7 @@ void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t so
 
 void add_del_rule( uint32_t network, uint8_t netmask, uint8_t rt_table, uint32_t prio, char *iif, int8_t rule_type, int8_t del ) {
 
-	int netlink_sock, len;
+	int len;
 	char buf[4096], str1[16];
 	struct rtattr *rta;
 	struct sockaddr_nl nladdr;
@@ -318,18 +374,9 @@ void add_del_rule( uint32_t network, uint8_t netmask, uint8_t rt_table, uint32_t
 	}
 
 
-	if ( ( netlink_sock = socket( PF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE ) ) < 0 ) {
-
-		debug_output( 0, "Error - can't create netlink socket for routing rule manipulation: %s", strerror(errno) );
-		return;
-
-	}
-
-
 	if ( sendto( netlink_sock, &req, req.nlh.nlmsg_len, 0, (struct sockaddr *)&nladdr, sizeof(struct sockaddr_nl) ) < 0 ) {
 
 		debug_output( 0, "Error - can't send message to kernel via netlink socket for routing rule manipulation: %s", strerror(errno) );
-		close ( netlink_sock );
 		return;
 
 	}
@@ -361,8 +408,6 @@ void add_del_rule( uint32_t network, uint8_t netmask, uint8_t rt_table, uint32_t
 
 	}
 
-	close ( netlink_sock );
-	
 }
 
 
@@ -376,6 +421,11 @@ int add_del_interface_rules( int8_t del, uint8_t setup_tunnel, uint8_t setup_net
 	struct ifconf ifc;
 	struct ifreq *ifr, ifr_tmp;
 	struct batman_if *batman_if;
+
+	struct list_head *notun_pos;
+	struct notun_node *notun_node;
+	uint32_t no_netmask;
+						
 
 
 	if ( no_policy_routing )
@@ -472,12 +522,8 @@ int add_del_interface_rules( int8_t del, uint8_t setup_tunnel, uint8_t setup_net
 
 		
 		if( !no_prio_rules && setup_tunnel ) {
-			struct list_head *notun_pos;
-			struct notun_node *notun_node;
 			uint8_t add_this_rule = YES;
 			
-			uint32_t no_netmask;
-						
 			list_for_each(notun_pos, &notun_list) {
 
 				notun_node = list_entry(notun_pos, struct notun_node, list);
@@ -518,6 +564,17 @@ int add_del_interface_rules( int8_t del, uint8_t setup_tunnel, uint8_t setup_net
 
 	}
 
+	list_for_each(notun_pos, &notun_list) {
+
+		notun_node = list_entry(notun_pos, struct notun_node, list);
+				
+		no_netmask = htonl( 0xFFFFFFFF<<(32 - notun_node->netmask ) );
+
+		add_del_route( (notun_node->addr & no_netmask), notun_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL, 1, del );
+
+	}
+
+	
 	close( tmp_fd );
 	debugFree( buf, 1605 );
 
@@ -529,7 +586,7 @@ int add_del_interface_rules( int8_t del, uint8_t setup_tunnel, uint8_t setup_net
 
 int flush_routes_rules( int8_t is_rule ) {
 
-	int netlink_sock, len, rtl;
+	int len, rtl;
 	int32_t dest = 0, router = 0, ifi = 0;
 	uint32_t prio = 0;
 	int8_t rule_type = 0;
@@ -564,18 +621,9 @@ int flush_routes_rules( int8_t is_rule ) {
 	req.nlh.nlmsg_type = ( is_rule ? RTM_GETRULE : RTM_GETROUTE );
 	req.rtm.rtm_scope = RTN_UNICAST;
 
-	if ( ( netlink_sock = socket( PF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE ) ) < 0 ) {
-
-		debug_output( 0, "Error - can't create netlink socket for flushing the routing table: %s", strerror(errno) );
-		return -1;
-
-	}
-
-
 	if ( sendto( netlink_sock, &req, req.nlh.nlmsg_len, 0, (struct sockaddr *)&nladdr, sizeof(struct sockaddr_nl) ) < 0 ) {
 
 		debug_output( 0, "Error - can't send message to kernel via netlink socket for flushing the routing table: %s", strerror(errno) );
-		close( netlink_sock );
 		return -1;
 
 	}
@@ -597,7 +645,6 @@ int flush_routes_rules( int8_t is_rule ) {
 		if ( ( nh->nlmsg_type == NLMSG_ERROR ) && ( ((struct nlmsgerr*)NLMSG_DATA(nh))->error != 0 ) ) {
 
 			debug_output( 0, "Error - can't flush %s: %s \n", ( is_rule ? "routing rules" : "routing table" ), strerror(-((struct nlmsgerr*)NLMSG_DATA(nh))->error) );
-			close( netlink_sock );
 			return -1;
 
 		}
@@ -668,7 +715,6 @@ int flush_routes_rules( int8_t is_rule ) {
 
 	}
 
-	close( netlink_sock );
 	return 1;
 
 }

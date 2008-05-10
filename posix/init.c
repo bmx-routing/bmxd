@@ -35,6 +35,7 @@
 #include <fcntl.h>
 
 #include "../os.h"
+#include "../originator.h"
 #include "../batman.h"
 
 #define IOCSETDEV 1
@@ -169,7 +170,7 @@ void set_gw_network ( char *optarg_p ) {
 }
 
 
-void prepare_add_del_own_hna ( char *optarg_str, int8_t del, uint8_t atype, uint8_t startup ) {
+void prepare_add_del_own_hna ( char *optarg_str, int8_t del, uint8_t atype ) {
 	
 	struct hna_node *hna_node;
 	struct in_addr tmp_ip_holder;
@@ -185,13 +186,9 @@ void prepare_add_del_own_hna ( char *optarg_str, int8_t del, uint8_t atype, uint
 		     ( ( 2 /*placeholder for the new hna-ext and one gw-ext packet*/ +  
 		     my_srv_ext_array_len + my_hna_list_enabled) * sizeof(struct ext_packet)) > MAX_PACKET_OUT_SIZE ) {
 		
-		if( startup ) {
-			printf("HNAs do not fit into max packet size \n");
-			exit(EXIT_FAILURE);
-		} else {
-			debug_output(0, "HNAs do not fit into max packet size \n");
-			return;
-		}
+		debug_output(3, "HNAs do not fit into max packet size \n");
+		exit(EXIT_FAILURE);
+		
 
 	}
 
@@ -239,7 +236,9 @@ void prepare_add_del_own_hna ( char *optarg_str, int8_t del, uint8_t atype, uint
 
 		hna_node = list_entry( hna_list_pos, struct hna_node, list );
 
-		if ( hna_node->key.addr == tmp_ip_holder.s_addr && hna_node->key.KEY_FIELD_ANETMASK == netmask && hna_node->key.KEY_FIELD_ATYPE == atype ) {
+		if ( hna_node->key.addr == tmp_ip_holder.s_addr && 
+				   hna_node->key.KEY_FIELD_ANETMASK == netmask && 
+				   hna_node->key.KEY_FIELD_ATYPE == atype ) {
 				
 			found = YES;
 			
@@ -338,7 +337,7 @@ void prepare_add_no_tunnel (  char *optarg_str ) {
 
 	
 	
-void prepare_add_del_own_srv ( char *optarg_str, int8_t del, int8_t startup ) {
+void prepare_add_del_own_srv ( char *optarg_str, int8_t del ) {
 	
 	struct srv_node *srv_node;
 	struct in_addr tmp_ip_holder;
@@ -356,14 +355,8 @@ void prepare_add_del_own_srv ( char *optarg_str, int8_t del, int8_t startup ) {
 		     ( ( 2 /*placeholder for the new hna-ext and one gw-ext packet*/ +  
 		     my_srv_list_enabled + my_hna_list_enabled) * sizeof(struct ext_packet)) > MAX_PACKET_OUT_SIZE ) {
 		
-		if( startup ) {
-			printf("SRV announcements  do not fit into max packet size \n");
-			exit(EXIT_FAILURE);
-		} else {
-			debug_output(0, "SRV announcements do not fit into max packet size \n");
-			return;
-		}
-
+		debug_output(3, "SRV announcements do not fit into max packet size \n");
+		exit(EXIT_FAILURE);
 		
 	}
 
@@ -503,7 +496,7 @@ void apply_init_args( int argc, char *argv[] ) {
 	int8_t res;
 	struct hna_node *hna_node;
 	struct srv_node *srv_node;
-	char fake_arg[ADDR_STR_LEN + 4], ifaddr_str[ADDR_STR_LEN];
+	char  ifaddr_str[ADDR_STR_LEN];
 
 
 	int32_t optchar, recv_buff_len, bytes_written, download_speed = 0, upload_speed = 0;
@@ -820,7 +813,7 @@ void apply_init_args( int argc, char *argv[] ) {
 				
 				} else if ( strcmp( ADD_SRV_SWITCH, long_options[option_index].name ) == 0 ) {
 
-					prepare_add_del_own_srv( optarg, NO /* do not delete */, YES /* startup-mode */ );
+					prepare_add_del_own_srv( optarg, NO /* do not delete */ );
 			
 					//tout_opt = YES; /* for activating the add request */
 					req_opt = REQ_CHANGE_SRV;
@@ -830,7 +823,7 @@ void apply_init_args( int argc, char *argv[] ) {
 				
 				} else if ( strcmp( DEL_SRV_SWITCH, long_options[option_index].name ) == 0 ) {
 
-					prepare_add_del_own_srv( optarg, YES /*delete*/, YES /* startup-mode */ );
+					prepare_add_del_own_srv( optarg, YES /*delete*/ );
 				
 					//tout_opt = YES; /* for activating the del request */
 					req_opt = REQ_CHANGE_SRV;
@@ -1019,7 +1012,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			case 'a':
 
-				prepare_add_del_own_hna( optarg, NO, A_TYPE_NETWORK, YES /* startup-mode */ );
+				prepare_add_del_own_hna( optarg, NO, A_TYPE_NETWORK );
 				
 				//hna_opt = YES; /* for activating the add request */
 				req_opt = REQ_CHANGE_HNA;
@@ -1030,7 +1023,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			case 'A':
 
-				prepare_add_del_own_hna( optarg, YES, A_TYPE_NETWORK, YES /* startup-mode */ );
+				prepare_add_del_own_hna( optarg, YES, A_TYPE_NETWORK );
 				
 				//hna_opt = YES; /* for activating the del request */
 				req_opt = REQ_CHANGE_HNA;
@@ -1320,12 +1313,15 @@ void apply_init_args( int argc, char *argv[] ) {
 			}
 		}
 
-		FD_ZERO( &receive_wait_set );
-		
 		printf ("Causing duplicate-address-detection timeout %ds, purge timeout %ds, my originator interval %dms, my window size %d \n",
 		  (((DEFAULT_ORIGINATOR_INTERVAL)*(my_ws)*(dad_timeout))/100000), MY_PURGE_TIMEOUT, my_ogi, my_ws );
 
 		
+		
+		if ( initial_seqno == 0 )
+			initial_seqno = rand_num( FULL_SEQ_RANGE - (10*my_ws) );
+	
+
 
 		while ( argc > found_args ) {
 
@@ -1333,112 +1329,26 @@ void apply_init_args( int argc, char *argv[] ) {
 			memset( batman_if, 0, sizeof(struct batman_if) );
 			INIT_LIST_HEAD( &batman_if->list );
 
+			list_add_tail( &batman_if->list, &if_list );
+			
 			batman_if->dev = argv[found_args];
 			batman_if->if_num = found_ifs;
-			batman_if->if_ttl = ttl;
-			batman_if->if_send_clones = wl_clones;
-			batman_if->packet_out_len = sizeof( struct bat_header );
-
-			list_add_tail( &batman_if->list, &if_list );
-
-			init_interface ( batman_if );
-
-			if ( batman_if->udp_recv_sock > receive_max_sock )
-				receive_max_sock = batman_if->udp_recv_sock;
-
-			FD_SET( batman_if->udp_recv_sock, &receive_wait_set );
-
-			addr_to_string(batman_if->addr.sin_addr.s_addr, str1, sizeof (str1));
-			addr_to_string(batman_if->broad.sin_addr.s_addr, str2, sizeof (str2));
-
-			printf( "Using interface %s with address %s and broadcast address %s\n", batman_if->dev, str1, str2 );
-
-			if( default_para_set == PARA_SET_BMX ) {
-				
-				if ( batman_if->if_num == 0 ) {
-					
-					//printf ("Applying %s ! \n", BMX_DEFAULTS_SWITCH); 
-				
-				} else {
-					
-					char fake_arg[ADDR_STR_LEN + 4], ifaddr_str[ADDR_STR_LEN];
-					errno = 0;
-						
-					addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
-					sprintf( fake_arg, "%s/32", ifaddr_str);
-					prepare_add_del_own_hna( fake_arg, NO, A_TYPE_INTERFACE, YES );
-					//printf ("Interface %s specific option: /%c \n", batman_if->dev, MAKE_IP_HNA_IF_SWITCH );
-						
-					batman_if->send_ogm_only_via_owning_if = YES;
-					//printf ("Interface %s specific option: /%c \n", batman_if->dev, OGM_ONLY_VIA_OWNING_IF_SWITCH );
-					batman_if->if_ttl = 1;
-					//printf ("Interface %s specific option: /%c %d \n", batman_if->dev, TTL_IF_SWITCH, batman_if->if_ttl );
-
-				}
-					
-				
-				if( !batman_if->is_wlan )
-					batman_if->if_send_clones = DEF_LAN_CLONES;
-					//printf ("Interface %s specific option: /%c %d \n", batman_if->dev, SEND_CLONES_IF_SWITCH, batman_if->if_send_clones );
-
 			
-			} else if( default_para_set == PARA_SET_GRAZ07 ) {
-				
-				if ( batman_if->if_num == 0 ) {
-					
-					//printf ("Applying %s ! \n", GRAZ07_DEFAULTS_SWITCH); 
-					//printf ("Parametrization based on experience gained from the Wireless Community Weekend in Graz 2007!\n");
-					
-				} else {
-					
-					char fake_arg[ADDR_STR_LEN + 4], ifaddr_str[ADDR_STR_LEN];
-					errno = 0;
-					
-					addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
-					sprintf( fake_arg, "%s/32", ifaddr_str);
-					prepare_add_del_own_hna( fake_arg, NO, A_TYPE_INTERFACE, YES );
-					//printf ("Interface %s specific option: /%c \n", batman_if->dev, MAKE_IP_HNA_IF_SWITCH );
-						
-					batman_if->send_ogm_only_via_owning_if = YES;
-					//printf ("Interface %s specific option: /%c \n", batman_if->dev, OGM_ONLY_VIA_OWNING_IF_SWITCH );
-					batman_if->if_ttl = 1;
-					//printf ("Interface %s specific option: /%c %d \n", batman_if->dev, TTL_IF_SWITCH, batman_if->if_ttl );
+			batman_if->out.ext_msg = NO;
+			batman_if->out.bat_type = BAT_TYPE_OGM;
+			batman_if->out.flags = 0x00;
+			batman_if->out.size = 0x00;
+			batman_if->out.ws     = my_ws;
+			batman_if->out.seqno    = initial_seqno;
 
-				}
+			batman_if->if_ttl_conf  = -1;
+			batman_if->if_send_clones_conf  = -1;
+			batman_if->send_ogm_only_via_owning_if_conf  = -1;
+			batman_if->make_ip_hna_if_conf = -1;
+			batman_if->dont_make_ip_hna_if_conf = -1;
 					
-				
-				if( !batman_if->is_wlan )
-					batman_if->if_send_clones = DEF_LAN_CLONES;
-					//printf ("Interface %s specific option: /%c %d \n", batman_if->dev, SEND_CLONES_IF_SWITCH, batman_if->if_send_clones );
-				
-			}
-
-			
-			found_ifs++;
-			found_args++;
-
 			while ( argc > found_args && strlen( argv[found_args] ) >= 2 && *argv[found_args] == '/') {
 
-				/*
-				if ( (argv[found_args])[1] == BIDIRECT_TIMEOUT_IF_SWITCH && argc > (found_args+1) ) {
-
-					errno = 0;
-					int16_t tmp = strtol ( argv[ found_args+1 ], NULL , 10 );
-					//printf ("Interface %s specific option: /%c %d \n", batman_if->dev, ((argv[found_args])[1]), tmp );
-
-					if ( tmp < MIN_BIDIRECT_TIMEOUT || tmp > MAX_BIDIRECT_TIMEOUT ) {
-
-						printf( "Invalid /%c specified: %i.\n Value must be %i <= value <= %i.\n", 
-								BIDIRECT_TIMEOUT_IF_SWITCH, tmp, MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT );
-
-						exit(EXIT_FAILURE);
-					}
-
-					batman_if->if_bidirect_link_to = tmp;
-
-					found_args += 2;
-
-				} else */
 				if ( (argv[found_args])[1] == TTL_IF_SWITCH && argc > (found_args+1) ) {
 
 					errno = 0;
@@ -1452,7 +1362,7 @@ void apply_init_args( int argc, char *argv[] ) {
 						exit(EXIT_FAILURE);
 					}
 
-					batman_if->if_ttl = tmp;
+					batman_if->if_ttl_conf = tmp;
 
 					found_args += 2;
 
@@ -1470,11 +1380,8 @@ void apply_init_args( int argc, char *argv[] ) {
 						exit(EXIT_FAILURE);
 					}
 
-					batman_if->if_send_clones = tmp;
+					batman_if->if_send_clones_conf = tmp;
 					
-//					if( tmp > DEF_SEND_CLONES )
-//						compat_version = DEF_COMPAT_VERSION + 1;
-
 					found_args += 2;
 
 				
@@ -1483,8 +1390,8 @@ void apply_init_args( int argc, char *argv[] ) {
 					errno = 0;
 					//printf ("Interface %s specific option: /%c  \n", batman_if->dev, ((argv[found_args])[1]) );
 
-					batman_if->send_ogm_only_via_owning_if = YES;
-					batman_if->if_ttl = 1;
+					batman_if->send_ogm_only_via_owning_if_conf = YES;
+					batman_if->if_ttl_conf = 1;
 
 					found_args += 1;
 
@@ -1495,7 +1402,7 @@ void apply_init_args( int argc, char *argv[] ) {
 					//printf ("Interface %s specific option: /%c  \n", batman_if->dev, ((argv[found_args])[1]) );
 					//printf (" applying %s specific option: /%c %d \n", batman_if->dev, SEND_CLONES_IF_SWITCH, DEF_WLAN_IF_CLONES );
 
-					batman_if->if_send_clones = wl_clones;
+					batman_if->if_send_clones_conf = wl_clones;
 
 					found_args += 1;
 
@@ -1506,7 +1413,7 @@ void apply_init_args( int argc, char *argv[] ) {
 					//printf ("Interface %s specific option: /%c  \n", batman_if->dev, ((argv[found_args])[1]) );
 					//printf (" applying %s specific option: /%c %d \n", batman_if->dev, SEND_CLONES_IF_SWITCH, DEF_LAN_IF_CLONES );
 
-					batman_if->if_send_clones = DEF_LAN_CLONES;
+					batman_if->if_send_clones_conf = DEF_LAN_CLONES;
 
 					found_args += 1;
 
@@ -1519,12 +1426,7 @@ void apply_init_args( int argc, char *argv[] ) {
 					
 						errno = 0;
 						
-						addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
-						sprintf( fake_arg, "%s/32", ifaddr_str);
-						prepare_add_del_own_hna( fake_arg, NO, A_TYPE_INTERFACE, YES );
-						
-						batman_if->send_ogm_only_via_owning_if = YES;
-						batman_if->if_ttl = 1;
+						batman_if->make_ip_hna_if_conf = YES;
 
 					} else {
 						
@@ -1542,9 +1444,7 @@ void apply_init_args( int argc, char *argv[] ) {
 					
 					errno = 0;
 					
-					addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
-					sprintf( fake_arg, "%s/32", ifaddr_str);
-					prepare_add_del_own_hna( fake_arg, YES, A_TYPE_INTERFACE, YES );
+					batman_if->dont_make_ip_hna_if_conf = YES;
 						
 					found_args += 1;
 
@@ -1558,18 +1458,54 @@ void apply_init_args( int argc, char *argv[] ) {
 			
 			}
 
+			
+			
+			
+			
+			
+			init_interface ( batman_if );
+						
+			found_args++;
+
+			
+		
+			
+			if (batman_if->if_active) {
+
+				addr_to_string(batman_if->addr.sin_addr.s_addr, str1, sizeof (str1));
+				addr_to_string(batman_if->broad.sin_addr.s_addr, str2, sizeof (str2));
+
+				printf("Using interface %s with address %s and broadcast address %s\n", batman_if->dev, str1, str2);
+
+			} else {
+
+				printf("Not using interface %s (retrying later): interface not active\n", batman_if->dev);
+
+			}
+			
+			found_ifs++;
+			
 		}
 		
-	
-		if ( initial_seqno == 0 )
-			initial_seqno = rand_num( FULL_SEQ_RANGE - (10*my_ws) );
-	
+		
 		if ( my_gw_port == 0 )
 			my_gw_port = ogm_port + 1;
 	
 		if ( my_gw_addr == 0 )
 			my_gw_addr = (list_entry( (&if_list)->next, struct batman_if, list ))->addr.sin_addr.s_addr ;
+			
+
+		
+		memset( my_pip_ext_array, 0, sizeof(struct ext_packet) );
+		my_pip_ext_array->EXT_FIELD_MSG = YES;
+		my_pip_ext_array->EXT_FIELD_TYPE = EXT_TYPE_PIP;
+		my_pip_ext_array->EXT_PIP_FIELD_ADDR = (list_entry( (&if_list)->next, struct batman_if, list ))->addr.sin_addr.s_addr;
 	
+		if ( found_ifs > 1 ) 
+			my_pip_ext_array_len = 1;
+		else
+			my_pip_ext_array_len = 0;
+
 		
 		unlink( unix_path );
 		unix_if.unix_sock = socket( AF_LOCAL, SOCK_STREAM, 0 );
@@ -1620,6 +1556,8 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		pthread_create( &unix_if.listen_thread_id, NULL, &unix_listen, NULL );
 
+		log_facility_active = YES;
+		
 		/* add rule for hna networks */
 		if( !no_prio_rules )
 			add_del_rule( 0, 0, BATMAN_RT_TABLE_NETWORKS,   BATMAN_RT_PRIO_NETWORKS,   0, 1, 0 );
@@ -1884,24 +1822,128 @@ void apply_init_args( int argc, char *argv[] ) {
 }
 
 
+void interface_listen_sockets()
+{
+	struct list_head *list_pos;
+	struct batman_if *batman_if;
 
-void init_interface ( struct batman_if *batman_if ) {
+	FD_ZERO(&receive_wait_set);
+	receive_max_sock = 0;
+	
+	receive_max_sock = ifevent_sk;
+	FD_SET(ifevent_sk, &receive_wait_set);
+	
+	list_for_each(list_pos, &if_list) {
+		batman_if = list_entry(list_pos, struct batman_if, list);
 
-	struct ifreq int_req;
-	int16_t on = 1;
-	uint32_t sock_opts;
+		if (batman_if->if_active) {
+			if (batman_if->udp_recv_sock > receive_max_sock)
+				receive_max_sock = batman_if->udp_recv_sock;
 
-	if ( strlen( batman_if->dev ) > IFNAMSIZ - 1 ) {
-		printf( "Error - interface name too long: %s\n", batman_if->dev );
-		restore_defaults();
-		exit(EXIT_FAILURE);
+			FD_SET(batman_if->udp_recv_sock, &receive_wait_set);
+		}
 	}
+}
+
+int is_interface_up(char *dev)
+{
+	struct ifreq int_req;
+	int sock;
+
+	if ((sock = socket(PF_INET, SOCK_DGRAM, 0)) < 0)
+		return 0;
+
+	memset(&int_req, 0, sizeof (struct ifreq));
+	strncpy(int_req.ifr_name, dev, IFNAMSIZ - 1);
+
+	if (ioctl(sock, SIOCGIFFLAGS, &int_req) < 0)
+		goto failure;
+
+	if (!(int_req.ifr_flags & IFF_UP))
+		goto failure;
+
+	if (ioctl(sock, SIOCGIFADDR, &int_req) < 0)
+		goto failure;
+	
+	close (sock);
+	return 1;
+
+failure:
+	close (sock);
+	return 0;
+	
+}
+
+
+void deactivate_interface( struct batman_if *batman_if ) {
+
+	debug_output(3, "1 Deactivating interface: %s\n", batman_if->dev);
+	
+	if (batman_if->udp_recv_sock != 0)
+		close(batman_if->udp_recv_sock);
+
+	if (batman_if->udp_send_sock != 0)
+		close(batman_if->udp_send_sock);
+
+	batman_if->udp_recv_sock = 0;
+	batman_if->udp_send_sock = 0;
+
+	if ( more_rules ) {
+
+		if ( ( batman_if->netaddr > 0 ) && ( batman_if->netmask > 0 ) ) {
+
+			if( !no_prio_rules ) {
+			
+				add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_INTERFACES, BATMAN_RT_PRIO_INTERFACES + batman_if->if_num, 0, 1, 1 );
+				add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_HOSTS + batman_if->if_num, 0, 1, 1 );
+				
+			}
+			
+			if ( !no_unreachable_rule )
+				add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_UNREACH, BATMAN_RT_PRIO_UNREACH + batman_if->if_num, 0, 1, 1 );
+		
+		}
+		
+	} else {
+	
+		if( !no_prio_rules && batman_if->if_num == 0) {
+		
+		// use 0,0 instead of netaddr, netmask to find also batman nodes with different netmasks
+			add_del_rule( 0, 0, BATMAN_RT_TABLE_INTERFACES, BATMAN_RT_PRIO_INTERFACES + batman_if->if_num, 0, 1, 1 );
+			add_del_rule( 0, 0, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_HOSTS + batman_if->if_num, 0, 1, 1 );
+			
+		}
+	
+	}
+	
+	batman_if->if_active = 0;
+	active_ifs--;
+
+	if (batman_if->if_rp_filter_old > -1)
+		set_rp_filter(batman_if->if_rp_filter_old, batman_if->dev);
+
+	if (batman_if->if_send_redirects_old > -1)
+		set_send_redirects(batman_if->if_send_redirects_old, batman_if->dev);
+
+	batman_if->if_rp_filter_old = -1;
+	batman_if->if_send_redirects_old = -1;
+
+	
+	interface_listen_sockets();
+	debug_output(3, "Interface deactivated: %s\n", batman_if->dev);
+}
+
+void activate_interface(struct batman_if *batman_if)
+{
+	struct ifreq int_req;
+	int on = 1, sock_opts;
+	char fake_arg[ADDR_STR_LEN + 4], ifaddr_str[ADDR_STR_LEN];
+
 
 	if ( ( batman_if->udp_recv_sock = socket( PF_INET, SOCK_DGRAM, 0 ) ) < 0 ) {
 
-		printf( "Error - can't create receive socket: %s", strerror(errno) );
-		restore_defaults();
-		exit(EXIT_FAILURE);
+		debug_output(3, "Error - can't create receive socket: %s\n", strerror(errno) );
+		goto error;
 
 	}
 
@@ -1910,9 +1952,8 @@ void init_interface ( struct batman_if *batman_if ) {
 
 	if ( ioctl( batman_if->udp_recv_sock, SIOCGIFADDR, &int_req ) < 0 ) {
 
-		printf( "Error - can't get IP address of interface %s: %s\n", batman_if->dev, strerror(errno) );
-		restore_defaults();
-		exit(EXIT_FAILURE);
+		debug_output(3, "Error - can't get IP address of interface %s: %s\n", batman_if->dev, strerror(errno) );
+		goto error;
 
 	}
 
@@ -1920,11 +1961,17 @@ void init_interface ( struct batman_if *batman_if ) {
 	batman_if->addr.sin_port = htons(ogm_port);
 	batman_if->addr.sin_addr.s_addr = ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr;
 
+	if (batman_if->addr.sin_addr.s_addr == 0) {
+
+		debug_output(3, "Error - invalid ip address detected (0.0.0.0): %s\n", batman_if->dev);
+		goto error;
+
+	}
+
 	if ( ioctl( batman_if->udp_recv_sock, SIOCGIFBRDADDR, &int_req ) < 0 ) {
 
-		printf( "Error - can't get broadcast IP address of interface %s: %s\n", batman_if->dev, strerror(errno) );
-		restore_defaults();
-		exit(EXIT_FAILURE);
+		debug_output(3, "Error - can't get broadcast IP address of interface %s: %s\n", batman_if->dev, strerror(errno) );
+		goto error;
 
 	}
 
@@ -1934,25 +1981,23 @@ void init_interface ( struct batman_if *batman_if ) {
 
 	if ( batman_if->broad.sin_addr.s_addr == 0 ) {
 
-		printf( "Error - invalid broadcast address detected (0.0.0.0): %s\n", batman_if->dev );
-		restore_defaults();
-		exit(EXIT_FAILURE);
+		debug_output(3, "Error - invalid broadcast address detected (0.0.0.0): %s\n", batman_if->dev );
+		goto error;
 
 	}
 
 
 #ifdef __linux__
 	/* The SIOCGIFINDEX ioctl is Linux specific, but I am not yet sure if the
-	 * equivalent exists on *BSD. There is a function called if_nametoindex()
-	 * on both Linux and BSD.
-	 * Maybe it does the same as this code and we can simply call it instead?
-	 * --stsp
-	 */
+	* equivalent exists on *BSD. There is a function called if_nametoindex()
+	* on both Linux and BSD.
+	* Maybe it does the same as this code and we can simply call it instead?
+	* --stsp
+	*/
 	if ( ioctl( batman_if->udp_recv_sock, SIOCGIFINDEX, &int_req ) < 0 ) {
 
-		printf( "Error - can't get index of interface %s: %s\n", batman_if->dev, strerror(errno) );
-		restore_defaults();
-		exit(EXIT_FAILURE);
+		debug_output(3, "Error - can't get index of interface %s: %s\n", batman_if->dev, strerror(errno) );
+		goto error;
 
 	}
 
@@ -1963,16 +2008,14 @@ void init_interface ( struct batman_if *batman_if ) {
 
 	if ( ioctl( batman_if->udp_recv_sock, SIOCGIFNETMASK, &int_req ) < 0 ) {
 
-		printf( "Error - can't get netmask address of interface %s: %s\n", batman_if->dev, strerror(errno) );
-		restore_defaults();
-		exit(EXIT_FAILURE);
+		debug_output(3, "Error - can't get netmask address of interface %s: %s\n", batman_if->dev, strerror(errno) );
+		goto error;
 
 	}
 
 	batman_if->netaddr = ( ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr & batman_if->addr.sin_addr.s_addr );
 	batman_if->netmask = bit_count( ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr );
-	
-	
+
 	/* check if interface is a wireless interface */
 
 	if (  (batman_if->is_wlan = (ioctl( batman_if->udp_recv_sock, SIOCGIWNAME, &int_req ) < 0 ? NO : YES ))  )
@@ -2005,64 +2048,279 @@ void init_interface ( struct batman_if *batman_if ) {
 		
 	}
 
-	if ( ( batman_if->udp_send_sock = use_kernel_module( batman_if->dev ) ) < 0 ) {
 
-		if ( ( batman_if->udp_send_sock = socket( PF_INET, SOCK_DGRAM, 0 ) ) < 0 ) {
+	if ( ( batman_if->udp_send_sock = socket( PF_INET, SOCK_DGRAM, 0 ) ) < 0 ) {
 
-			printf( "Error - can't create send socket: %s", strerror(errno) );
-			restore_defaults();
-			exit(EXIT_FAILURE);
-
-		}
-
-		if ( setsockopt( batman_if->udp_send_sock, SOL_SOCKET, SO_BROADCAST, &on, sizeof(int) ) < 0 ) {
-
-			printf( "Error - can't enable broadcasts: %s\n", strerror(errno) );
-			restore_defaults();
-			exit(EXIT_FAILURE);
-
-		}
-
-		// bind socket to interface name
-		if ( bind_to_iface( batman_if->udp_send_sock, batman_if->dev ) < 0 ) {
-
-			restore_defaults();
-			exit(EXIT_FAILURE);
-
-		}
-
-		// bind socket to address 
-		if ( bind( batman_if->udp_send_sock, (struct sockaddr *)&batman_if->addr, sizeof(struct sockaddr_in) ) < 0 ) {
-
-			printf( "Error - can't bind send socket: %s\n", strerror(errno) );
-			restore_defaults();
-			exit(EXIT_FAILURE);
-
-		}
-
-		// make udp socket non blocking
-		sock_opts = fcntl( batman_if->udp_send_sock, F_GETFL, 0 );
-		fcntl( batman_if->udp_send_sock, F_SETFL, sock_opts | O_NONBLOCK );
+		debug_output(3, "Error - can't create send socket: %s\n", strerror(errno) );
+		goto error;
 
 	}
 
+	if ( setsockopt( batman_if->udp_send_sock, SOL_SOCKET, SO_BROADCAST, &on, sizeof(on) ) < 0 ) {
+
+		debug_output(3, "Error - can't enable broadcasts: %s\n", strerror(errno) );
+		goto error;
+
+	}
+
+	// bind send socket to interface name
+	if ( bind_to_iface( batman_if->udp_send_sock, batman_if->dev ) < 0 ) {
+
+		debug_output(3, "Cannot bind socket to device %s : %s \n", batman_if->dev, strerror(errno));
+		goto error;
+
+	}
+	
+	// bind send socket to address 
+	if ( bind( batman_if->udp_send_sock, (struct sockaddr *)&batman_if->addr, sizeof(struct sockaddr_in) ) < 0 ) {
+
+		debug_output(3, "Error - can't bind send socket: %s\n", strerror(errno) );
+		goto error;
+
+	}
+
+	// make udp send socket non blocking
+	sock_opts = fcntl(batman_if->udp_send_sock, F_GETFL, 0);
+	fcntl(batman_if->udp_send_sock, F_SETFL, sock_opts | O_NONBLOCK);
+
+	
+	// bind recv socket to interface name
 	if ( bind_to_iface( batman_if->udp_recv_sock, batman_if->dev ) < 0 ) {
 
-		restore_defaults();
-		exit(EXIT_FAILURE);
+		debug_output(3, "Cannot bind socket to device %s : %s \n", batman_if->dev, strerror(errno));
+		goto error;
 
 	}
 
+	// bind recv socket to address 
 	if ( bind( batman_if->udp_recv_sock, (struct sockaddr *)&batman_if->broad, sizeof(struct sockaddr_in) ) < 0 ) {
 
-		printf( "Error - can't bind receive socket: %s\n", strerror(errno) );
-		restore_defaults();
-		exit(EXIT_FAILURE);
+		debug_output(3, "Error - can't bind receive socket: %s\n", strerror(errno));
+		goto error;
 
 	}
 
+	
+	batman_if->if_rp_filter_old = get_rp_filter(batman_if->dev);
+	set_rp_filter(0, batman_if->dev);
 
+	batman_if->if_send_redirects_old = get_send_redirects(batman_if->dev);
+	set_send_redirects(0, batman_if->dev);
+
+	
+	//apply default values
+	batman_if->if_ttl = ttl;
+	batman_if->if_send_clones = wl_clones;
+	batman_if->packet_out_len = sizeof( struct bat_header );
+
+	//apply interface specific parametrization sets	
+	if( default_para_set == PARA_SET_BMX || default_para_set == PARA_SET_GRAZ07 ) {
+				
+		if ( batman_if->if_num != 0 ) {
+			
+			errno = 0;
+						
+			addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
+			sprintf( fake_arg, "%s/32", ifaddr_str);
+			prepare_add_del_own_hna( fake_arg, NO, A_TYPE_INTERFACE );
+						
+			batman_if->send_ogm_only_via_owning_if = YES;
+			batman_if->if_ttl = 1;
+
+		}
+					
+				
+		if( !batman_if->is_wlan )
+			batman_if->if_send_clones = DEF_LAN_CLONES;
+				
+	}
+	
+	
+	//apply interface specific parametrizations:
+	
+	if ( batman_if->make_ip_hna_if_conf != -1  &&  batman_if->if_num != 0 ) {
+		addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
+		sprintf( fake_arg, "%s/32", ifaddr_str);
+		prepare_add_del_own_hna( fake_arg, NO, A_TYPE_INTERFACE );
+		
+		batman_if->send_ogm_only_via_owning_if = YES;
+		batman_if->if_ttl = 1;
+	}
+	
+	if ( batman_if->dont_make_ip_hna_if_conf != -1  &&  batman_if->if_num != 0 ) {
+		addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
+		sprintf( fake_arg, "%s/32", ifaddr_str);
+		prepare_add_del_own_hna( fake_arg, YES, A_TYPE_INTERFACE );
+		
+		batman_if->send_ogm_only_via_owning_if_conf = NO;
+		batman_if->if_ttl_conf = ttl;
+	}
+	
+	if ( batman_if->if_ttl_conf != -1 )
+		batman_if->if_ttl = batman_if->if_ttl_conf;
+	
+	if ( batman_if->if_send_clones_conf != -1 )
+		batman_if->if_send_clones =  batman_if->if_send_clones_conf;
+	
+	if ( batman_if->send_ogm_only_via_owning_if_conf  != -1 )
+		batman_if->send_ogm_only_via_owning_if = batman_if->send_ogm_only_via_owning_if_conf;
+	
+	
+	//prepare originator
+	batman_if->out.ttl = batman_if->if_ttl;
+	batman_if->out.orig = batman_if->addr.sin_addr.s_addr;
+	
+	
+	//prepare extenson messages:
+	my_pip_ext_array->EXT_PIP_FIELD_ADDR = (list_entry( (&if_list)->next, struct batman_if, list ))->addr.sin_addr.s_addr;
+
+
+	batman_if->if_active = 1;
+	active_ifs++;
+
+	//activate selector for active interfaces
+	interface_listen_sockets();
+	
+//	add_del_own_hna( NO /*do not purge*/ );
+	
+	debug_output(3, "Interface activated: %s\n", batman_if->dev);
+
+	
+	
+	return;
+
+error:
+	deactivate_interface( batman_if );
+	
 }
+
+void init_interface(struct batman_if *batman_if)
+{
+	if (strlen( batman_if->dev ) > IFNAMSIZ - 1) {
+		printf("Error - interface name too long: %s\n", batman_if->dev);
+		restore_defaults();
+		exit(EXIT_FAILURE);
+	}
+
+	if (is_interface_up(batman_if->dev))
+		activate_interface(batman_if);
+}
+
+
+void check_interfaces() {
+	
+	struct list_head *list_pos;
+	struct batman_if *batman_if;
+	uint8_t purge_origs = NO;
+	char fake_arg[ADDR_STR_LEN + 12], ifaddr_str[ADDR_STR_LEN];
+
+
+	list_for_each(list_pos, &if_list) {
+		
+		int deactivate_if = NO;
+
+		batman_if = list_entry(list_pos, struct batman_if, list);
+
+		if ((!batman_if->if_active) && (is_interface_up(batman_if->dev))) {
+			
+			debug_output( 0, "WARNING: Detected active but unused interface:%s ! Going to activate\n", batman_if->dev );
+			activate_interface(batman_if);
+			add_del_own_hna( NO  /*do not purge*/ );
+			
+			if( batman_if->if_num == 0  &&  batman_if->if_active  &&  gateway_class  &&  (one_way_tunnel || two_way_tunnel)  &&  probe_tun(0) )
+				start_gw_service();
+		
+		} else if ((batman_if->if_active) && (!is_interface_up(batman_if->dev))) {
+			
+			debug_output( 0, "WARNING: Detected inactive but used interface:%s ! Going to deactivate.. \n", batman_if->dev );
+			deactivate_if = YES;
+
+		/* Interface properties might have changed */
+		} else if ((batman_if->if_active) && (is_interface_up(batman_if->dev))) {
+			
+			struct ifreq int_req;
+
+			memset( &int_req, 0, sizeof (struct ifreq) );
+			strncpy( int_req.ifr_name, batman_if->dev, IFNAMSIZ - 1 );
+
+			if ( ioctl( batman_if->udp_recv_sock, SIOCGIFADDR, &int_req ) < 0 ) {
+
+				debug_output(0, "WARNING: can't get IP address of interface %s: %s\n", batman_if->dev, strerror(errno) );
+				deactivate_if = YES;
+
+			} else if ( batman_if->addr.sin_addr.s_addr != ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr ) {
+				
+				debug_output(0, "WARNING: IP address of interface %s: changed !!\n", batman_if->dev );
+				deactivate_if = YES;
+				
+			} else if ( ioctl( batman_if->udp_recv_sock, SIOCGIFBRDADDR, &int_req ) < 0 ) {
+
+				debug_output(0, "WARNING: Can't get broadcast IP address of interface %s: %s\n", batman_if->dev, strerror(errno) );
+				deactivate_if = YES;
+
+			} else if ( batman_if->broad.sin_addr.s_addr != ((struct sockaddr_in *)&int_req.ifr_broadaddr)->sin_addr.s_addr ) {
+
+				debug_output(0, "WARNING: Broadcast address of  interface %s changed \n", batman_if->dev );
+				deactivate_if = YES;
+
+			} else if ( ioctl( batman_if->udp_recv_sock, SIOCGIFNETMASK, &int_req ) < 0 ) {
+
+				debug_output(0, "WARNING: can't get netmask address of interface %s: %s\n", batman_if->dev, strerror(errno) );
+				deactivate_if = YES;
+
+			} else if ( batman_if->netaddr != ( ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr & batman_if->addr.sin_addr.s_addr ) ) {
+				 
+				debug_output(0, "WARNING: Net address of  interface %s changed \n", batman_if->dev );
+				deactivate_if = YES;
+			
+			} else if ( batman_if->netmask != bit_count( ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr ) ) {
+				
+				debug_output(0, "WARNING: Netmask address of  interface %s changed \n", batman_if->dev );
+				deactivate_if = YES;
+			
+			}
+
+		}
+		
+		if ( deactivate_if ) {
+				
+			purge_origs = YES;
+			
+			deactivate_interface( batman_if );
+			
+			if ( batman_if->if_num != 0 ) {
+				
+				addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
+				sprintf( fake_arg, "%s/32", ifaddr_str);
+				prepare_add_del_own_hna( fake_arg, YES, A_TYPE_INTERFACE );
+				add_del_own_hna( NO );	
+		
+			}
+				
+			debug_output( 0, "WARNING: Interface %s deactivated \n", batman_if->dev );
+		}
+	
+	}
+	
+	if ( purge_origs ) {
+		
+		// if there is a gw-client thread: stop it now, it restarts automatically
+		del_default_route(); 
+									
+		// if there is a gw thread: stop it now
+		stop_gw_service();
+									
+		purge_orig( 0 );
+		
+		if ( gateway_class  &&  (one_way_tunnel || two_way_tunnel)  &&  probe_tun(0) )
+			start_gw_service();
+
+	}
+		
+}
+
+
+
 
 
 void stop_gw_service ( void ) {
@@ -2090,10 +2348,12 @@ void start_gw_service ( void ) {
 	struct sockaddr_in addr;
 
 	
+	debug_output( 3, "start_gw_service () \n");
+	
 	// join old thread if not already done
 	stop_gw_service();
 
-	if (!( gw_thread_id == 0  &&  gateway_class  &&  ( two_way_tunnel || one_way_tunnel ) ) )
+	if (!( gw_thread_id == 0  &&  gateway_class  &&  ( two_way_tunnel || one_way_tunnel ) &&  (list_entry( (&if_list)->next, struct batman_if, list ))->if_active ) )
 		return;
 	
 	memset( my_gw_ext_array, 0, sizeof(struct ext_packet) );
@@ -2124,7 +2384,7 @@ void start_gw_service ( void ) {
 	
 	if( (gw_listen_arg->gw_client_list = debugMalloc( (0xFFFFFFFF>>gw_tunnel_netmask) * sizeof( struct gw_client* ), 210 ) ) == NULL ) {
 	
-		debug_output( 0, "Error - init_interface_gw(): could not allocate memory for gw_client_list \n");
+		debug_output( 0, "Error - start_gw_service(): could not allocate memory for gw_client_list \n");
 		restore_defaults();
 		exit(EXIT_FAILURE);
 	}

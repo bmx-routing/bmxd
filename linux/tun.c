@@ -108,7 +108,7 @@ int8_t add_dev_tun(  uint32_t tun_addr, char *tun_dev, size_t tun_dev_size, int3
 		ifr_tun.ifr_flags = IFF_TUN | IFF_NO_PI;
 		sprintf( ifr_tun.ifr_name, "%s%d", BATMAN_TUN_PREFIX, batman_tun_index++ );
 		
-		debug_output( 0, "Trying to name tunnel to %s ... ", ifr_tun.ifr_name );
+		debug_output( 0, "Trying to name tunnel to %s ... \n", ifr_tun.ifr_name );
 		
 		if ( ( ioctl( *fd, TUNSETIFF, (void *) &ifr_tun ) ) < 0 ) {
 	

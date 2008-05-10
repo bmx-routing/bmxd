@@ -53,7 +53,30 @@ static float system_tick;
 static struct timeval ret_tv, new_tv, diff_tv, acceptable_m_tv, acceptable_p_tv, max_tv = {0,(2000*MAX_SELECT_TIMEOUT_MS)};
 static uint32_t my_ms_tick;
 
-static uint32_t last_blocked_send_warning = 0;
+uint8_t forward_old, if_rp_filter_all_old, if_rp_filter_default_old, if_send_redirects_all_old, if_send_redirects_default_old;
+
+
+
+char* get_init_string( int begin ){
+	
+#define INIT_STRING_SIZE 500
+	
+	char *dbg_init_str = debugMalloc( INIT_STRING_SIZE, 127 );
+	int i, dbg_init_out = 0;
+	
+	for (i=0; i < g_argc; i++) {
+		
+		if ( i >= begin && INIT_STRING_SIZE > dbg_init_out) {
+			dbg_init_out = dbg_init_out + snprintf( (dbg_init_str + dbg_init_out), (INIT_STRING_SIZE - dbg_init_out), "%s ", g_argv[i] );
+		}
+		
+	}
+	
+	return dbg_init_str;
+
+}
+
+
 
 void fake_start_time( int32_t fake ) {
 	start_time_tv.tv_sec-= fake;
@@ -311,7 +334,6 @@ int8_t receive_packet( uint32_t timeout ) {
 	struct list_head *if_pos;
 	static struct batman_if *batman_if = NULL;
 	int8_t res;
-//	int16_t hna_pos = 0, gw_pos = 0;
 	int16_t left_pos, ext_type, done_pos, ext_pos;
 	struct ext_packet *ext_array;
 	fd_set tmp_wait_set;
@@ -346,6 +368,8 @@ int8_t receive_packet( uint32_t timeout ) {
 		s_returned_select++;
 
 		*received_batman_time = rcvd_time = get_time_msec();
+		
+		
 		
 		if ( *received_batman_time < last_get_time_result ) {
 			
@@ -385,6 +409,17 @@ int8_t receive_packet( uint32_t timeout ) {
 				continue;
 			}
 		}
+		
+		
+		if ( FD_ISSET( ifevent_sk, &tmp_wait_set ) ) {
+			
+			debug_output( 3, "Select indicated changed interface status! going to check interfaces! \n" );
+			recv_ifevent_netlink_sk( );
+			check_interfaces();
+			
+		}
+		
+		
 		
 		list_for_each( if_pos, &if_list ) {
 		
@@ -684,17 +719,26 @@ int8_t receive_packet( uint32_t timeout ) {
 
 
 
-int8_t send_udp_packet( unsigned char *packet_buff, int32_t packet_buff_len, struct sockaddr_in *broad, int32_t send_sock ) {
+int8_t send_udp_packet( unsigned char *packet_buff, int32_t packet_buff_len, struct sockaddr_in *broad, int32_t send_sock, struct batman_if *batman_if ) {
+	
+	if ((batman_if != NULL) && (!batman_if->if_active))
+		return 0;
 
 	if ( sendto( send_sock, packet_buff, packet_buff_len, 0, (struct sockaddr *)broad, sizeof(struct sockaddr_in) ) < 0 ) {
 
-		if ( last_blocked_send_warning == 0 || last_blocked_send_warning + WARNING_PERIOD < *received_batman_time ) {
-					
-			last_blocked_send_warning = *received_batman_time;
-					
-			debug_output( 0, "Error - can't send udp packet: %s.\nDoes your firewall allow outgoing packets on port %i ?\n", strerror(errno), ntohs( broad->sin_port ) );
-		}
+		
+		if ( errno == 1 ) {
 
+			debug_output(0, "Error - can't send udp packet: %s.\nDoes your firewall allow outgoing packets on port %i ?\n", strerror(errno), ntohs(broad->sin_port));
+
+		} else {
+
+			debug_output(0, "Error - can't send udp packet: %s\n", strerror(errno));
+
+		}
+		
+		return -1;
+		
 	}
 
 	return 0;
@@ -718,37 +762,8 @@ void restore_defaults() {
 	list_for_each_safe( if_pos, if_pos_tmp, &if_list ) {
 		
 		struct batman_if *batman_if = list_entry( if_pos, struct batman_if, list );
-	
-		close( batman_if->udp_recv_sock );
-		close( batman_if->udp_send_sock );
-
-		if ( more_rules ) {
-
-			if ( ( batman_if->netaddr > 0 ) && ( batman_if->netmask > 0 ) ) {
-	
-				if( !no_prio_rules ) {
-					
-					add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_INTERFACES, BATMAN_RT_PRIO_INTERFACES + batman_if->if_num, 0, 1, 1 );
-					add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_HOSTS + batman_if->if_num, 0, 1, 1 );
-					
-				}
-				
-				if ( !no_unreachable_rule )
-					add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_UNREACH, BATMAN_RT_PRIO_UNREACH + batman_if->if_num, 0, 1, 1 );
-				
-			}
-			
-		} else {
 		
-			if( !no_prio_rules && batman_if->if_num == 0) {
-				
-				// use 0,0 instead of netaddr, netmask to find also batman nodes with different netmasks
-				add_del_rule( 0, 0, BATMAN_RT_TABLE_INTERFACES, BATMAN_RT_PRIO_INTERFACES + batman_if->if_num, 0, 1, 1 );
-				add_del_rule( 0, 0, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_HOSTS + batman_if->if_num, 0, 1, 1 );
-				
-			}
-		
-		}
+		deactivate_interface( batman_if );
 
 		list_del( (struct list_head *)&if_list, if_pos, &if_list );
 		debugFree( if_pos, 1214 );
@@ -777,6 +792,15 @@ void restore_defaults() {
 	
 	if ( debug_level == 0 )
 		closelog();
+	
+	set_forwarding( forward_old );
+
+	set_rp_filter( if_rp_filter_all_old, "all" );
+	set_rp_filter( if_rp_filter_default_old, "default" );
+
+	set_send_redirects( if_send_redirects_all_old, "all" );
+	set_send_redirects( if_send_redirects_default_old, "default" );
+
 
 }
 
@@ -902,6 +926,20 @@ int main( int argc, char *argv[] ) {
 	INIT_LIST_HEAD_FIRST( link_list );
 	INIT_LIST_HEAD_FIRST( pifnb_list );
 
+	/* for profiling the functions */
+	prof_init( PROF_all, "all" );
+	prof_init( PROF_choose_gw, "choose_gw" );
+	prof_init( PROF_update_routes, "update_routes" );
+	prof_init( PROF_update_gw_list, "update_gw_list" );
+	prof_init( PROF_is_duplicate, "isDuplicate" );
+	prof_init( PROF_get_orig_node, "get_orig_node" );
+	prof_init( PROF_update_originator, "update_orig" );
+	prof_init( PROF_purge_originator, "purge_orig" );
+	prof_init( PROF_schedule_forward_packet, "schedule_forward_packet" );
+	prof_init( PROF_send_outstanding_packets, "send_outstanding_packets" );
+	prof_init( PROF_receive_packet, "receive_packet" );
+	prof_init( PROF_set_dbg_rcvd_all_bits, "set_dbg_rcvd_all_bits" );
+	
 	
 	todo_mutex = debugMalloc( sizeof(pthread_mutex_t), 229 );
 	pthread_mutex_init( (pthread_mutex_t *)todo_mutex, NULL );
@@ -925,14 +963,49 @@ int main( int argc, char *argv[] ) {
 	
 	srand( getpid() );
 	
+	if( open_netlink_socket() < 0 )
+		exit(EXIT_FAILURE);
+	
+	if ( open_ifevent_netlink_sk() < 0 )
+		exit(EXIT_FAILURE);
+	
 	apply_init_args( argc, argv );
 
-	init_bh_ports();
+	if_rp_filter_all_old = get_rp_filter( "all" );
+	if_rp_filter_default_old = get_rp_filter( "default" );
 
+	if_send_redirects_all_old = get_send_redirects( "all" );
+	if_send_redirects_default_old = get_send_redirects( "default" );
+
+	set_rp_filter( 0, "all" );
+	set_rp_filter( 0, "default" );
+
+	set_send_redirects( 0, "all" );
+	set_send_redirects( 0, "default" );
+		
+	forward_old = get_forwarding();
+	set_forwarding(1);
+
+	
+	char *init_string = get_init_string( 0 );
+	
+	debug_output(0, "Startup parameters: %s\n", init_string);
+	
+	debugFree( init_string, 1127 );
+
+
+	
 	res = batman();
 
+
 	restore_defaults();
+	
+	close_ifevent_netlink_sk();	
+	close_netlink_socket();
+	
 	cleanup();
+	
+	
 	checkLeak();
 	return res;
 

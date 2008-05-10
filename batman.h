@@ -425,15 +425,6 @@ extern uint8_t gateway_class;
 
 
 
-/***
- *
- * ports which are to ignored by the blackhole check
- *
- ***/
-
-#define BH_UDP_PORTS {4307, 162} /* vis, SNMP-TRAP */
-
-
 
 
 
@@ -452,23 +443,25 @@ extern uint8_t debug_level;
 #define debug_level_max 9
 
 
+// my HNA extension messages (attached to all primary OGMs)
 extern struct ext_packet *my_hna_ext_array;
 extern uint16_t my_hna_ext_array_len;
 extern uint16_t my_hna_list_enabled;
 
+// my service extension messages (attached to all primary OGMs)
 extern struct ext_packet *my_srv_ext_array;
 extern uint16_t my_srv_ext_array_len;
 extern uint16_t my_srv_list_enabled;
 
+// my gw extension message (attached to all primary OGMs)
 extern struct ext_packet *my_gw_ext_array;
 extern uint16_t my_gw_ext_array_len;
 
+// primary IP extension message (attached to all non-primary OGMs)
 extern struct ext_packet *my_pip_ext_array;
 extern uint16_t my_pip_ext_array_len;
 
 
-
-//extern int16_t num_words;
 
 extern uint32_t pref_gateway;
 
@@ -483,10 +476,15 @@ extern struct gw_node *curr_gateway;
 extern pthread_t curr_gateway_thread_id;
 
 extern uint8_t found_ifs;
+extern uint8_t active_ifs;
 extern int32_t receive_max_sock;
 extern fd_set receive_wait_set;
 
 extern uint8_t conn_client;
+
+extern uint8_t log_facility_active;
+
+extern int ifevent_sk;
 
 extern int g_argc;
 extern char **g_argv;
@@ -907,8 +905,9 @@ struct batman_if
 	int32_t udp_recv_sock;
 	int32_t if_index;
 	int16_t if_num;
-	uint8_t if_rp_filter_old;
-	uint8_t if_send_redirects_old;
+	uint8_t if_active;
+	int8_t if_rp_filter_old;
+	int8_t if_send_redirects_old;
 	struct sockaddr_in addr;
 	struct sockaddr_in broad;
 	struct bat_packet out;
@@ -922,6 +921,11 @@ struct batman_if
 	int16_t packet_out_len;
 	unsigned char packet_out[MAX_PACKET_OUT_SIZE + 1];
 	uint8_t send_own;
+	int8_t make_ip_hna_if_conf;
+	int8_t dont_make_ip_hna_if_conf;
+	int16_t if_ttl_conf;
+	int8_t if_send_clones_conf;
+	int8_t send_ogm_only_via_owning_if_conf;
 };
 
 struct gw_listen_arg
@@ -1001,6 +1005,9 @@ void choose_gw();
 struct hna_hash_node *get_hna_node( struct hna_key *hk );
 void add_del_other_hna( struct orig_node *orig_node, struct ext_packet *hna_array, int16_t hna_array_len /*int8_t del*/ );
 void add_del_other_srv( struct orig_node *orig_node, struct ext_packet *srv_array, int16_t srv_array_len /*int8_t del*/ );
+void add_del_own_hna( uint8_t purge );
 
+//void add_del_own_srv( uint8_t purge );
+//void purge_empty_hna_nodes( void );
 
 #endif

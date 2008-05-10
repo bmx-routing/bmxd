@@ -45,8 +45,13 @@ void set_rp_filter(int32_t state, char* dev)
 
 	sprintf( filename, "/proc/sys/net/ipv4/conf/%s/rp_filter", dev);
 
-	if((f = fopen(filename, "w")) == NULL)
+	if((f = fopen(filename, "w")) == NULL) {
+		
+		if ( colon_ptr != NULL )
+			*colon_ptr = ':';
 		return;
+		
+	}
 
 	fprintf(f, "%d", state);
 	fclose(f);
@@ -69,8 +74,12 @@ int32_t get_rp_filter(char *dev)
 
 	sprintf( filename, "/proc/sys/net/ipv4/conf/%s/rp_filter", dev);
 
-	if((f = fopen(filename, "r")) == NULL)
+	if((f = fopen(filename, "r")) == NULL) {
+		
+		if ( colon_ptr != NULL )
+			*colon_ptr = ':';
 		return 0;
+	}
 
 	fscanf(f, "%d", &state);
 	fclose(f);
@@ -94,8 +103,12 @@ void set_send_redirects( int32_t state, char* dev ) {
 
 	sprintf( filename, "/proc/sys/net/ipv4/conf/%s/send_redirects", dev);
 
-	if((f = fopen(filename, "w")) == NULL)
+	if((f = fopen(filename, "w")) == NULL) {
+		
+		if ( colon_ptr != NULL )
+			*colon_ptr = ':';
 		return;
+	}
 
 	fprintf(f, "%d", state);
 	fclose(f);
@@ -119,8 +132,12 @@ int32_t get_send_redirects( char *dev ) {
 
 	sprintf( filename, "/proc/sys/net/ipv4/conf/%s/send_redirects", dev);
 
-	if((f = fopen(filename, "r")) == NULL)
+	if((f = fopen(filename, "r")) == NULL) {
+		
+		if ( colon_ptr != NULL )
+			*colon_ptr = ':';
 		return 0;
+	}
 
 	fscanf(f, "%d", &state);
 	fclose(f);
@@ -186,82 +203,6 @@ int8_t bind_to_iface( int32_t sock, char *dev ) {
 		*colon_ptr = ':';
 
 	return 1;
-
-}
-
-
-
-int8_t use_kernel_module( char *dev ) {
-
-	return -1;
-
-	int32_t fd, sock, dummy = 0;
-	char *colon_ptr;
-
-	/* if given interface is an alias bind to parent interface */
-	if ( ( colon_ptr = strchr( dev, ':' ) ) != NULL )
-		*colon_ptr = '\0';
-
-	if ( ( sock = open( "/dev/batman", O_WRONLY ) ) < 0 ) {
-
-		printf( "Warning - batman kernel modul interface (/dev/batman) not usable: %s\nThis may decrease the performance of batman!\n", strerror(errno) );
-
-		if ( colon_ptr != NULL )
-			*colon_ptr = ':';
-
-		return -1;
-
-	}
-
-	if ( ( fd = ioctl( sock, IOCGETNWDEV, dummy ) ) < 0 ) {
-
-		printf( "Warning - can't get batman interface from kernel module: %s\n", strerror(errno) );
-
-		if ( colon_ptr != NULL )
-			*colon_ptr = ':';
-
-		close( sock );
-		return -1;
-
-	}
-
-	if ( ioctl( fd, strlen( dev ) + 1, dev ) < 0 ) {
-
-		printf( "Warning - can't bind batman kernel interface: %s\n", strerror(errno) );
-
-		if ( colon_ptr != NULL )
-			*colon_ptr = ':';
-
-		close( sock );
-		close( fd );
-		return -1;
-
-	}
-
-	if ( colon_ptr != NULL )
-		*colon_ptr = ':';
-
-	close( sock );
-
-	return fd;
-
-}
-
-int8_t use_gateway_module() {
-
-	int32_t fd;
-
-	return -1;
-
-	if ( ( fd = open( "/dev/batgat", O_WRONLY ) ) < 0 ) {
-
-		debug_output( 0, "Warning - batgat kernel modul interface (/dev/batgat) not usable: %s\nThis may decrease the performance of batman!\n", strerror(errno) );
-
-		return -1;
-
-	}
-
-	return fd;
 
 }
 

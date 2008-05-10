@@ -42,19 +42,6 @@
 
 
 
-//static int changed_packet_headers = 0;
-//static int stored_packet_headers = 0;
-
-unsigned short bh_udp_ports[] = BH_UDP_PORTS;
-
-void init_bh_ports()
-{
-	int i;
-
-	for (i = 0; i < sizeof(bh_udp_ports)/sizeof(short); i++)
-		bh_udp_ports[i] = htons(bh_udp_ports[i]);
-}
-
 
 
 uint32_t request_tun_ip( struct curr_gw_data *curr_gw_data, struct sockaddr_in *gw_addr, int32_t udp_sock, uint32_t *pref_addr, 
@@ -458,8 +445,10 @@ void *client_to_gw_tun( void *arg ) {
 					if ( (which_tunnel & ONE_WAY_TUNNEL_FLAG) || 
 					     ((which_tunnel & TWO_WAY_TUNNEL_FLAG) && !invalid_tun_ip && iphdr->saddr == my_tun_addr) ) {
 						
-						if ( sendto( udp_sock, (unsigned char*) &tp.start, tp_len, 0, (struct sockaddr *)&gw_addr, sizeof (struct sockaddr_in) ) < 0 )
+						if ( sendto( udp_sock, (unsigned char*) &tp.start, tp_len, 0, (struct sockaddr *)&gw_addr, sizeof (struct sockaddr_in) ) < 0 ) {
 							debug_output( 0, "Error - can't send data to gateway: %s\n", strerror(errno) );
+							
+						}
 					
 						// activate unresponsive GW check only based on TCP and DNS data
 						if ( (which_tunnel & TWO_WAY_TUNNEL_FLAG) && !no_unresponsive_check && gw_state == GW_STATE_UNKNOWN &&  gw_state_stamp == 0 ) {

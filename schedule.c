@@ -25,6 +25,7 @@
 
 #include "os.h"
 #include "batman.h"
+#include "originator.h"
 #include "schedule.h"
 
 
@@ -263,6 +264,8 @@ void schedule_forward_packet( uint8_t unidirectional, uint8_t directlink, uint8_
 void send_aggregated_packets( int *cycle ) {
 	struct list_head *if_pos;
 	struct batman_if *batman_if;
+//	char fake_arg[ADDR_STR_LEN + 12], ifaddr_str[ADDR_STR_LEN];
+
 	uint8_t iftype;
 
 	(*cycle)++;
@@ -288,8 +291,22 @@ void send_aggregated_packets( int *cycle ) {
 					
 				}
 				
-				if ( send_udp_packet( batman_if->packet_out, batman_if->packet_out_len, &batman_if->broad, batman_if->udp_send_sock ) < 0 )
-					restore_and_exit(0);
+				if ( send_udp_packet( batman_if->packet_out, batman_if->packet_out_len, &batman_if->broad, batman_if->udp_send_sock, batman_if ) < 0 ) {
+					
+					//check_interfaces();
+/*					
+					deactivate_interface( batman_if );
+					
+					if ( batman_if->if_num != 0 ) {
+						addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
+						sprintf( fake_arg, "%s/32", ifaddr_str);
+						prepare_add_del_own_hna( fake_arg, YES, A_TYPE_INTERFACE );
+						add_del_own_hna( NO );	
+					}
+
+					purge_orig( 0 );
+*/					
+				}
 				
 				s_broadcasted_aggregations++;
 				

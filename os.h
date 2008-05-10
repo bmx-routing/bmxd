@@ -45,7 +45,12 @@ void segmentation_fault( int32_t sig );
 void restore_and_exit( uint8_t is_sigsegv );
 
 /* route.c */
-//void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, int32_t ifi, char *dev, uint8_t rt_table, int8_t route_type, int8_t del );
+int  open_netlink_socket( void );
+void close_netlink_socket( void );
+int  open_ifevent_netlink_sk( void );
+void close_ifevent_netlink_sk( void );
+void recv_ifevent_netlink_sk( void );
+
 void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t source, int32_t ifi, char *dev, uint8_t rt_table, int8_t route_type, int8_t del );
 
 void add_del_rule( uint32_t network, uint8_t netmask, uint8_t rt_table, uint32_t prio, char *iif, int8_t dst_rule, int8_t del );
@@ -63,10 +68,13 @@ int8_t set_tun_addr( int32_t fd, uint32_t tun_addr, char *tun_dev );
 #define MAX_UNIX_RCV_SIZE 1501 
 #define MAX_UNIX_REQ_SIZE 30 
 
-void prepare_add_del_own_hna ( char *optarg_str, int8_t del, uint8_t atype, uint8_t startup  );
-void prepare_add_del_own_srv ( char *optarg_str, int8_t del, int8_t startup );
-void apply_init_args( int argc, char *argv[] );
+void prepare_add_del_own_hna ( char *optarg_str, int8_t del, uint8_t atype );
+void prepare_add_del_own_srv ( char *optarg_str, int8_t del );
+void apply_init_args ( int argc, char *argv[] );
 void init_interface ( struct batman_if *batman_if );
+void deactivate_interface ( struct batman_if *batman_if );
+void check_interfaces ();
+
 
 void stop_gw_service ( void );
 void start_gw_service ( void );
@@ -80,20 +88,17 @@ int32_t get_send_redirects( char *dev );
 void set_forwarding( int32_t state );
 int32_t get_forwarding( void );
 int8_t bind_to_iface( int32_t sock, char *dev );
-int8_t use_kernel_module( char *dev );
-int8_t use_gateway_module();
 
 /* posix.c */
 void print_animation( void );
 void   del_default_route();
 int8_t add_default_route( struct gw_node *new_curr_gw );
 int8_t receive_packet( uint32_t timeout );
-int8_t send_udp_packet( unsigned char *packet_buff, int packet_buff_len, struct sockaddr_in *broad, int send_sock );
+int8_t send_udp_packet( unsigned char *packet_buff, int packet_buff_len, struct sockaddr_in *broad, int send_sock, struct batman_if *batman_if );
 void restore_defaults();
 void cleanup();
 
 /* tunnel.c */
-void init_bh_ports();
 void *gw_listen( void *arg );
 void *client_to_gw_tun( void *arg );
 

@@ -58,6 +58,14 @@ void debug_output( int8_t debug_prio_arg, char *format, ... ) {
 	int8_t debug_request[debug_level_max];// = {-1,-1,-1,-1,-1};
 	memset( &debug_request, -1, debug_level_max );
 	
+	if (!log_facility_active) {
+		va_start( args, format );
+		vprintf( format, args );
+		va_end( args );
+		return;
+	}
+	
+	
 	if ( debug_prio_arg == DBGL_SYSTEM ) {
 		
 		debug_request[i++] = DBGL_SYSTEM;
