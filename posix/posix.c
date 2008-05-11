@@ -770,6 +770,15 @@ void restore_defaults() {
 
 	}
 	
+	/* delete rule for hosts and announced interfaces */
+	if( !more_rules  &&  !no_prio_rules ) {
+	
+		add_del_rule( 0, 0, BATMAN_RT_TABLE_INTERFACES, BATMAN_RT_PRIO_INTERFACES, 0, 1, 1 );
+		add_del_rule( 0, 0, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_HOSTS, 0, 1, 1 );
+		
+	}
+
+	
 	/* delete rule for hna networks */
 	if( !no_prio_rules )
 		add_del_rule( 0, 0, BATMAN_RT_TABLE_NETWORKS,   BATMAN_RT_PRIO_NETWORKS,   0, 1, 1 );

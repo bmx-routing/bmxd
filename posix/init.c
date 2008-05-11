@@ -1459,15 +1459,9 @@ void apply_init_args( int argc, char *argv[] ) {
 			}
 
 			
-			
-			
-			
-			
 			init_interface ( batman_if );
 						
 			found_args++;
-
-			
 		
 			
 			if (batman_if->if_active) {
@@ -1487,8 +1481,6 @@ void apply_init_args( int argc, char *argv[] ) {
 			
 		}
 		
-		
-
 		
 		memset( my_pip_ext_array, 0, sizeof(struct ext_packet) );
 		my_pip_ext_array->EXT_FIELD_MSG = YES;
@@ -1552,6 +1544,15 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		log_facility_active = YES;
 		
+		
+		/* add rule for hosts and announced interfaces */
+		if( !more_rules  &&  !no_prio_rules ) { 
+		
+			add_del_rule( 0, 0, BATMAN_RT_TABLE_INTERFACES, BATMAN_RT_PRIO_INTERFACES, 0, 1, 0 );
+			add_del_rule( 0, 0, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_HOSTS, 0, 1, 0 );
+
+		}
+
 		/* add rule for hna networks */
 		if( !no_prio_rules )
 			add_del_rule( 0, 0, BATMAN_RT_TABLE_NETWORKS,   BATMAN_RT_PRIO_NETWORKS,   0, 1, 0 );
@@ -1898,17 +1899,9 @@ void deactivate_interface( struct batman_if *batman_if ) {
 		
 		}
 		
-	} else {
-	
-		if( !no_prio_rules && batman_if->if_num == 0) {
-		
-		// use 0,0 instead of netaddr, netmask to find also batman nodes with different netmasks
-			add_del_rule( 0, 0, BATMAN_RT_TABLE_INTERFACES, BATMAN_RT_PRIO_INTERFACES + batman_if->if_num, 0, 1, 1 );
-			add_del_rule( 0, 0, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_HOSTS + batman_if->if_num, 0, 1, 1 );
-			
-		}
-	
 	}
+	
+	
 	
 	batman_if->if_active = 0;
 	active_ifs--;
@@ -2030,17 +2023,8 @@ void activate_interface(struct batman_if *batman_if)
 		if ( !no_unreachable_rule )
 			add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_UNREACH, BATMAN_RT_PRIO_UNREACH + batman_if->if_num, 0, 1, 0 );
 			
-	} else {
-
-		if( !no_prio_rules && batman_if->if_num == 0) { 
-			
-			// use 0,0 instead of netaddr, netmask to find also batman nodes with different netmasks
-			add_del_rule( 0, 0, BATMAN_RT_TABLE_INTERFACES, BATMAN_RT_PRIO_INTERFACES + batman_if->if_num, 0, 1, 0 );
-			add_del_rule( 0, 0, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_HOSTS + batman_if->if_num, 0, 1, 0 );
-
-		}
-		
 	}
+
 
 
 	if ( ( batman_if->udp_send_sock = socket( PF_INET, SOCK_DGRAM, 0 ) ) < 0 ) {
