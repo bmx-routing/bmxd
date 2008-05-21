@@ -913,7 +913,7 @@ void choose_gw() {
 			gw_node->unavail_factor = MAX_GW_UNAVAIL_FACTOR;
 		
 		/* ignore this gateway if recent connection attempts were unsuccessful */
-		if ( ( gw_node->unavail_factor * gw_node->unavail_factor * MAX_GW_UNAVAIL_TIMEOUT ) + gw_node->last_failure > current_time )
+		if ( ( gw_node->unavail_factor * gw_node->unavail_factor * GW_UNAVAIL_TIMEOUT ) + gw_node->last_failure > current_time )
 			continue;
 
 		if ( gw_node->orig_node->router == NULL || gw_node->deleted || gw_node->orig_node->gw_msg == NULL )

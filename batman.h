@@ -83,8 +83,8 @@ extern char unix_path[];
  */
 
 #define JITTER 100
-#define MAX_GW_UNAVAIL_FACTOR 2 /* 10 */
-#define MAX_GW_UNAVAIL_TIMEOUT 30000 /* 10000 */
+#define MAX_GW_UNAVAIL_FACTOR 10 /* 10 */
+#define GW_UNAVAIL_TIMEOUT 10000
 #define CHOOSE_GW_DELAY_DIVISOR 10 /* 1 */
 
 #define MAX_SELECT_TIMEOUT_MS 200 /* MUST be smaller than (1000/2) to fit into max tv_usec */

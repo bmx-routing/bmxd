@@ -104,9 +104,12 @@ uint32_t handle_tun_ip_reply(
 
 		if ( tp->LEASE_LT < MIN_TUNNEL_IP_LEASE_TIME ) {
 
-			debug_output( 3, "Gateway client - unacceptable virtual IP lifetime\n");
 			curr_gw_data->gw_node->last_failure = current_time;
 			curr_gw_data->gw_node->unavail_factor++;
+			
+			debug_output( 3, "Gateway client - unacceptable virtual IP lifetime, ignoring this GW for %d secs\n",
+				      ( curr_gw_data->gw_node->unavail_factor * curr_gw_data->gw_node->unavail_factor * GW_UNAVAIL_TIMEOUT )/1000 );
+			
 			curr_gateway = NULL;
 			return 0;
 		}
@@ -115,9 +118,12 @@ uint32_t handle_tun_ip_reply(
 
 			if (add_dev_tun( tp->LEASE_IP, tun_if, sizeof(tun_if), tun_fd, tun_ifi ) <= 0 ) {
 		
-				debug_output( 3, "Gateway client - could not add tun device\n");
 				curr_gw_data->gw_node->last_failure = current_time;
 				curr_gw_data->gw_node->unavail_factor++;
+				
+				debug_output( 3, "Gateway client - could not add tun device, ignoring this GW for %d secs\n", 
+					      ( curr_gw_data->gw_node->unavail_factor * curr_gw_data->gw_node->unavail_factor * GW_UNAVAIL_TIMEOUT )/1000 );
+				
 				curr_gateway = NULL;
 				return 0;
 			}
@@ -131,6 +137,10 @@ uint32_t handle_tun_ip_reply(
 		
 				curr_gw_data->gw_node->last_failure = current_time;
 				curr_gw_data->gw_node->unavail_factor++;
+				
+				debug_output( 3, "Gateway client - obtained strange IP, ignoring this GW for %d secs\n", 
+					      ( curr_gw_data->gw_node->unavail_factor * curr_gw_data->gw_node->unavail_factor * GW_UNAVAIL_TIMEOUT )/1000 );
+				
 				curr_gateway = NULL;
 				return 0;
 			}
@@ -145,12 +155,17 @@ uint32_t handle_tun_ip_reply(
 
 		return tp->LEASE_LT;
 
-	} else {
-
-		debug_output( 0, "Error - can't receive ip request: sender IP, packet type, packet size (%i) do not match \n", rcv_buff_len );
-
-	}
-
+	} 
+		
+	debug_output( 0, "Error - can't receive ip request: sender IP, packet type, packet size (%i) do not match \n", rcv_buff_len );
+	
+	curr_gw_data->gw_node->last_failure = current_time;
+	curr_gw_data->gw_node->unavail_factor++;
+			
+	debug_output( 3, "Gateway client - rcvd invalid reply, ignoring this GW for %d secs\n", 
+			( curr_gw_data->gw_node->unavail_factor * curr_gw_data->gw_node->unavail_factor * GW_UNAVAIL_TIMEOUT )/1000 );
+			
+	curr_gateway = NULL;
 	return 0;
 
 }
@@ -236,17 +251,17 @@ void *client_to_gw_tun( void *arg ) {
 	sock_opts = fcntl( udp_sock, F_GETFL, 0 );
 	fcntl( udp_sock, F_SETFL, sock_opts | O_NONBLOCK );
 
-	debug_output( 3, "Gateway client - client_to_gw_tun()\n");
-	
 	
 
 	if ( which_tunnel & ONE_WAY_TUNNEL_FLAG ) {
 		
 		if (add_dev_tun(  curr_gw_data->batman_if->addr.sin_addr.s_addr, tun_if, sizeof(tun_if), &tun_fd, &tun_ifi ) <= 0 ) {
 		
-			debug_output( 3, "Gateway client - could not add tun device\n");
 			curr_gw_data->gw_node->last_failure = current_time;
 			curr_gw_data->gw_node->unavail_factor++;
+			
+			debug_output( 3, "Gateway client - could not add tun device, ignoring this GW for %d secs\n",
+				      ( curr_gw_data->gw_node->unavail_factor * curr_gw_data->gw_node->unavail_factor * GW_UNAVAIL_TIMEOUT )/1000 );
 			
 			curr_gateway = NULL;
 			close( udp_sock );
@@ -254,7 +269,10 @@ void *client_to_gw_tun( void *arg ) {
 			return NULL;
 			
 		}
-	
+		
+		curr_gw_data->gw_node->last_failure = current_time;
+		curr_gw_data->gw_node->unavail_factor = 0;
+
 		add_del_route( 0, 0, 0, 0, tun_ifi, tun_if, BATMAN_RT_TABLE_TUNNEL, 0, 0 );
 
 		my_tun_addr = curr_gw_data->batman_if->addr.sin_addr.s_addr;
@@ -364,8 +382,6 @@ void *client_to_gw_tun( void *arg ) {
 		
 							if ( (ip_lease_duration = handle_tun_ip_reply( curr_gw_data, &gw_addr, udp_sock, &my_tun_addr, &ip_lease_stamp, &new_ip_stamp, tun_if, &tun_fd, &tun_ifi, &tp, &sender_addr, tp_len, current_time )) < MIN_TUNNEL_IP_LEASE_TIME ) {
 		
-								curr_gw_data->gw_node->last_failure = current_time;
-								curr_gw_data->gw_node->unavail_factor++;
 								
 								disconnect = YES;
 								break;
@@ -432,10 +448,13 @@ void *client_to_gw_tun( void *arg ) {
 					iphdr = (struct iphdr *)(tp.IP_PACKET);
 		
 					if ( my_tun_addr == 0 ) {
-						debug_output( 0, "Gateway client - No vitual IP! \n" );
 						
 						curr_gw_data->gw_node->last_failure = current_time;
 						curr_gw_data->gw_node->unavail_factor++;
+						
+						debug_output( 0, "Gateway client - No vitual IP! Ignoring this GW for %d secs\n",
+								( curr_gw_data->gw_node->unavail_factor * curr_gw_data->gw_node->unavail_factor * GW_UNAVAIL_TIMEOUT )/1000 );
+						
 								
 						disconnect = YES;
 						break;
@@ -503,9 +522,11 @@ void *client_to_gw_tun( void *arg ) {
 			else
 				debug_output( 3, "Gateway client - GW seems to be a blackhole! Use --%s to disable this check!\n", NO_UNRESP_CHECK_SWITCH );
 
-			
 			curr_gw_data->gw_node->last_failure = current_time;
 			curr_gw_data->gw_node->unavail_factor++;
+			
+			debug_output( 3, "Gateway client - Ignoring this GW for %d secs\n",
+				      ( curr_gw_data->gw_node->unavail_factor * curr_gw_data->gw_node->unavail_factor * GW_UNAVAIL_TIMEOUT )/1000 );
 
 			break;
 		}
