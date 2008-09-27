@@ -18,10 +18,12 @@
  */
 
 
-
+#define _GNU_SOURCE
 #include <errno.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include <stdarg.h>
 #include <string.h>
 #include <arpa/inet.h>
 #include <sys/ioctl.h>
@@ -29,17 +31,40 @@
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <netinet/udp.h>
-#if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__Darwin__)
-#include <sys/sockio.h>
-#endif
-#include <net/if.h>
+//#include <net/if.h>
 #include <fcntl.h>        /* open(), O_RDWR */
 
 
 #include "../os.h"
 #include "../batman.h"
+#include "../control.h"
 
+int unix_tunnel_sock = 0;
 
+int debug_tunnel( int8_t dbgl, char *last, ... ) {
+	
+	if ( unix_tunnel_sock == 0 )
+		return -1;
+	
+	va_list ap;
+	char buff[MAX_UNIX_MSG_SIZE+1];
+	struct cntl_msg *cmsg = (struct cntl_msg*) buff;
+	int strlen;
+
+	cmsg->version = COMPAT_VERSION;
+	cmsg->type = REQ_DBGL_INPUT;
+	cmsg->val = dbgl;
+	cmsg->len = sizeof( struct cntl_msg );
+	
+	va_start( ap, last );
+	strlen = vsnprintf( cmsg->aux, (MAX_UNIX_MSG_SIZE-sizeof(struct cntl_msg)), last, ap );
+	va_end( ap );
+	
+	cmsg->len = strlen < (MAX_UNIX_MSG_SIZE-sizeof(struct cntl_msg))  ?   strlen+sizeof(struct cntl_msg) :  MAX_UNIX_MSG_SIZE;
+	
+	return write( unix_tunnel_sock, cmsg, cmsg->len );
+	
+}
 
 
 
@@ -54,7 +79,7 @@ uint32_t request_tun_ip( struct curr_gw_data *curr_gw_data, struct sockaddr_in *
 	addr_to_string( gw_addr->sin_addr.s_addr, gw_str, sizeof(gw_str) );
 	addr_to_string( *pref_addr, pref_str, sizeof(pref_str) );
 	
-	debug_output( 3, "send ip request to gateway: %s, preferred IP: %s \n", gw_str, pref_str );
+	debug_tunnel( 3, "send ip request to gateway: %s, preferred IP: %s \n", gw_str, pref_str );
 	
 	memset( &tp->tt, 0, sizeof(tp->tt) );
 	tp->TP_VERS = COMPAT_VERSION;
@@ -65,7 +90,7 @@ uint32_t request_tun_ip( struct curr_gw_data *curr_gw_data, struct sockaddr_in *
 	
 	if ( sendto( udp_sock, &tp->start, TX_RP_SIZE, 0, (struct sockaddr *)gw_addr, sizeof(struct sockaddr_in) ) < 0 ) {
 
-		debug_output( 0, "Error - can't send ip request to gateway: %s \n", strerror(errno) );
+		debug_tunnel( 0, "Error - can't send ip request to gateway: %s \n", strerror(errno) );
 	
 	} 
 
@@ -100,14 +125,14 @@ uint32_t handle_tun_ip_reply(
 		
 		addr_to_string( *pref_addr, pref_str, sizeof(pref_str) );
 		addr_to_string( tp->LEASE_IP, tmp_str, sizeof(tmp_str) );
-		debug_output( 3, "Gateway client - got IP %s (preferred: IP %s) from gateway: %s for %d seconds.\n", tmp_str, pref_str, gw_str, tp->LEASE_LT );
+		debug_tunnel( 3, "Gateway client - got IP %s (preferred: IP %s) from gateway: %s for %d seconds.\n", tmp_str, pref_str, gw_str, tp->LEASE_LT );
 
 		if ( tp->LEASE_LT < MIN_TUNNEL_IP_LEASE_TIME ) {
 
 			curr_gw_data->gw_node->last_failure = current_time;
 			curr_gw_data->gw_node->unavail_factor++;
 			
-			debug_output( 3, "Gateway client - unacceptable virtual IP lifetime, ignoring this GW for %d secs\n",
+			debug_tunnel( 3, "Gateway client - unacceptable virtual IP lifetime, ignoring this GW for %d secs\n",
 				      ( curr_gw_data->gw_node->unavail_factor * curr_gw_data->gw_node->unavail_factor * GW_UNAVAIL_TIMEOUT )/1000 );
 			
 			curr_gateway = NULL;
@@ -121,14 +146,14 @@ uint32_t handle_tun_ip_reply(
 				curr_gw_data->gw_node->last_failure = current_time;
 				curr_gw_data->gw_node->unavail_factor++;
 				
-				debug_output( 3, "Gateway client - could not add tun device, ignoring this GW for %d secs\n", 
+				debug_tunnel( 3, "Gateway client - could not add tun device, ignoring this GW for %d secs\n", 
 					      ( curr_gw_data->gw_node->unavail_factor * curr_gw_data->gw_node->unavail_factor * GW_UNAVAIL_TIMEOUT )/1000 );
 				
 				curr_gateway = NULL;
 				return 0;
 			}
 	
-			add_del_route( 0, 0, 0, 0, *tun_ifi, tun_if, BATMAN_RT_TABLE_TUNNEL, 0, 0 );
+			add_del_route( 0, 0, 0, 0, *tun_ifi, tun_if, BATMAN_RT_TABLE_TUNNEL, 0, 0, NO/*no track - otherwise needs mutex exclude*/ );
 			*new_ip_stamp = current_time;
 
 		} else if ( *pref_addr != tp->LEASE_IP ) {
@@ -138,7 +163,7 @@ uint32_t handle_tun_ip_reply(
 				curr_gw_data->gw_node->last_failure = current_time;
 				curr_gw_data->gw_node->unavail_factor++;
 				
-				debug_output( 3, "Gateway client - obtained strange IP, ignoring this GW for %d secs\n", 
+				debug_tunnel( 3, "Gateway client - obtained strange IP, ignoring this GW for %d secs\n", 
 					      ( curr_gw_data->gw_node->unavail_factor * curr_gw_data->gw_node->unavail_factor * GW_UNAVAIL_TIMEOUT )/1000 );
 				
 				curr_gateway = NULL;
@@ -146,7 +171,7 @@ uint32_t handle_tun_ip_reply(
 			}
 	
 			/* kernel deletes routes after resetting the interface ip */
-			add_del_route( 0, 0, 0, 0, *tun_ifi, tun_if, BATMAN_RT_TABLE_TUNNEL, 0, 0 );
+			add_del_route( 0, 0, 0, 0, *tun_ifi, tun_if, BATMAN_RT_TABLE_TUNNEL, 0, 0, NO/*no track - otherwise needs mutex exclude*/ );
 			*new_ip_stamp = current_time;
 		}
 
@@ -157,12 +182,12 @@ uint32_t handle_tun_ip_reply(
 
 	} 
 		
-	debug_output( 0, "Error - can't receive ip request: sender IP, packet type, packet size (%i) do not match \n", rcv_buff_len );
+	debug_tunnel( 0, "Error - can't receive ip request: sender IP, packet type, packet size (%i) do not match \n", rcv_buff_len );
 	
 	curr_gw_data->gw_node->last_failure = current_time;
 	curr_gw_data->gw_node->unavail_factor++;
 			
-	debug_output( 3, "Gateway client - rcvd invalid reply, ignoring this GW for %d secs\n", 
+	debug_tunnel( 3, "Gateway client - rcvd invalid reply, ignoring this GW for %d secs\n", 
 			( curr_gw_data->gw_node->unavail_factor * curr_gw_data->gw_node->unavail_factor * GW_UNAVAIL_TIMEOUT )/1000 );
 			
 	curr_gateway = NULL;
@@ -177,7 +202,6 @@ void *client_to_gw_tun( void *arg ) {
 	struct sockaddr_in gw_addr, my_addr, sender_addr;
 	struct iphdr *iphdr;
 	struct timeval tv;
-	struct list_head_first packet_list;
 	int32_t res, max_sock, udp_sock=0, tun_fd=0, tun_ifi, sock_opts;
 	uint32_t addr_len, current_time, ip_lease_stamp = 0, ip_lease_duration = 0, gw_state_stamp = 0, new_ip_stamp = 0, my_tun_addr = 0;
 	uint32_t last_invalidip_warning = 0, tun_ip_request_stamp = 0;
@@ -191,13 +215,41 @@ void *client_to_gw_tun( void *arg ) {
 	
 	current_time = get_time_msec();
 
+	// init debug connection...
+	unix_tunnel_sock = socket( AF_LOCAL, SOCK_STREAM, 0 );
+
+	struct sockaddr_un unix_addr;
+	
+	memset( &unix_addr, 0, sizeof(struct sockaddr_un) );
+	unix_addr.sun_family = AF_LOCAL;
+	strcpy( unix_addr.sun_path, unix_path );
+
+	if ( connect ( unix_tunnel_sock, (struct sockaddr *)&unix_addr, sizeof(struct sockaddr_un) ) < 0 ) {
+
+		printf( "Error - can't connect to unix socket '%s': %s ! \n", unix_path, strerror(errno) );
+		close( unix_tunnel_sock );
+		curr_gateway = NULL;
+		debugFree( arg, 1207 );
+		return NULL;
+
+	}
+
+	if ( debug_tunnel( DBGL_CHANGES, "client_to_gw_tun() started... \n" ) < 0 ) {
+
+		printf( "Error - can't write to unix_tunel_sock: %s\n", strerror(errno) );
+		close( unix_tunnel_sock );
+		curr_gateway = NULL;
+		debugFree( arg, 1207 );
+		return NULL;
+
+	}
+
+	
 	memset( &tp, 0, sizeof( tp ) );
 	
 	addr_len = sizeof (struct sockaddr_in);
 	
 	addr_to_string( curr_gw_data->orig, gw_str, sizeof(gw_str) );
-
-	INIT_LIST_HEAD_FIRST(packet_list);
 
 	memset( &gw_addr, 0, sizeof(struct sockaddr_in) );
 	memset( &my_addr, 0, sizeof(struct sockaddr_in) );
@@ -210,7 +262,7 @@ void *client_to_gw_tun( void *arg ) {
 	my_addr.sin_family = AF_INET;
 	/* the cached gw_msg stores the network byte order, so no need to transform */
 	my_addr.sin_port = curr_gw_data->gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWPORT;
-	my_addr.sin_addr.s_addr = curr_gw_data->batman_if->addr.sin_addr.s_addr;
+	my_addr.sin_addr.s_addr = curr_gw_data->outgoing_src ? curr_gw_data->outgoing_src : curr_gw_data->batman_if->addr.sin_addr.s_addr;
 
 	if ( two_way_tunnel > which_tunnel_max && (curr_gw_data->gw_node->orig_node->gw_msg->EXT_GW_FIELD_GWTYPES & TWO_WAY_TUNNEL_FLAG) ){
 		
@@ -229,7 +281,8 @@ void *client_to_gw_tun( void *arg ) {
 	/* connect to server (establish udp tunnel) */
 	if ( ( udp_sock = socket( PF_INET, SOCK_DGRAM, 0 ) ) < 0 ) {
 
-		debug_output( 0, "Error - can't create udp socket: %s\n", strerror(errno) );
+		debug_tunnel( 0, "Error - can't create udp socket: %s\n", strerror(errno) );
+		close( unix_tunnel_sock );
 		curr_gateway = NULL;
 		debugFree( arg, 1207 );
 		return NULL;
@@ -238,7 +291,8 @@ void *client_to_gw_tun( void *arg ) {
 
 	if ( bind( udp_sock, (struct sockaddr *)&my_addr, sizeof(struct sockaddr_in) ) < 0 ) {
 
-		debug_output( 0, "Error - can't bind tunnel socket: %s\n", strerror(errno) );
+		debug_tunnel( 0, "Error - can't bind tunnel socket: %s\n", strerror(errno) );
+		close( unix_tunnel_sock );
 		close( udp_sock );
 		curr_gateway = NULL;
 		debugFree( arg, 1207 );
@@ -255,16 +309,18 @@ void *client_to_gw_tun( void *arg ) {
 
 	if ( which_tunnel & ONE_WAY_TUNNEL_FLAG ) {
 		
-		if (add_dev_tun(  curr_gw_data->batman_if->addr.sin_addr.s_addr, tun_if, sizeof(tun_if), &tun_fd, &tun_ifi ) <= 0 ) {
+		if ( add_dev_tun(  curr_gw_data->outgoing_src ? curr_gw_data->outgoing_src : curr_gw_data->batman_if->addr.sin_addr.s_addr, 
+		    tun_if, sizeof(tun_if), &tun_fd, &tun_ifi ) <= 0 ) {
 		
 			curr_gw_data->gw_node->last_failure = current_time;
 			curr_gw_data->gw_node->unavail_factor++;
 			
-			debug_output( 3, "Gateway client - could not add tun device, ignoring this GW for %d secs\n",
+			debug_tunnel( 3, "Gateway client - could not add tun device, ignoring this GW for %d secs\n",
 				      ( curr_gw_data->gw_node->unavail_factor * curr_gw_data->gw_node->unavail_factor * GW_UNAVAIL_TIMEOUT )/1000 );
 			
-			curr_gateway = NULL;
+			close( unix_tunnel_sock );
 			close( udp_sock );
+			curr_gateway = NULL;
 			debugFree( arg, 1207 );
 			return NULL;
 			
@@ -273,9 +329,9 @@ void *client_to_gw_tun( void *arg ) {
 		curr_gw_data->gw_node->last_failure = current_time;
 		curr_gw_data->gw_node->unavail_factor = 0;
 
-		add_del_route( 0, 0, 0, 0, tun_ifi, tun_if, BATMAN_RT_TABLE_TUNNEL, 0, 0 );
+		add_del_route( 0, 0, 0, 0, tun_ifi, tun_if, BATMAN_RT_TABLE_TUNNEL, 0, 0, NO/*no track - otherwise needs mutex exclude*/ );
 
-		my_tun_addr = curr_gw_data->batman_if->addr.sin_addr.s_addr;
+		my_tun_addr = curr_gw_data->outgoing_src ? curr_gw_data->outgoing_src : curr_gw_data->batman_if->addr.sin_addr.s_addr;
 		tun_ip_request_stamp = 0;
 		send_tun_ip_requests = 0;
 		invalid_tun_ip = 0;
@@ -315,7 +371,7 @@ void *client_to_gw_tun( void *arg ) {
 	
 		if ( ( res < 0 ) && ( errno != EINTR ) ) {
 
-			debug_output( 0, "Error - can't select: %s\n", strerror(errno) );
+			debug_tunnel( 0, "Error - can't select: %s\n", strerror(errno) );
 			break;
 		}
 
@@ -329,7 +385,7 @@ void *client_to_gw_tun( void *arg ) {
 					if ( tp_len < TX_RP_SIZE ) {
 						
 						addr_to_string( sender_addr.sin_addr.s_addr, str2, sizeof(str2) );
-						debug_output( 0, "Client node - Received Invalid packet size (%d) via tunnel, from %s ! \n", tp_len, str2 );
+						debug_tunnel( 0, "Client node - Received Invalid packet size (%d) via tunnel, from %s ! \n", tp_len, str2 );
 						continue;
 						
 					}
@@ -337,7 +393,7 @@ void *client_to_gw_tun( void *arg ) {
 					if ( tp.TP_VERS != COMPAT_VERSION ) {
 						
 						addr_to_string( sender_addr.sin_addr.s_addr, str2, sizeof(str2) );
-						debug_output( 0, "Client node - Received Invalid compat version (%d) via tunnel, from %s ! \n", tp.TP_VERS, str2 );
+						debug_tunnel( 0, "Client node - Received Invalid compat version (%d) via tunnel, from %s ! \n", tp.TP_VERS, str2 );
 						continue;
 						
 					}
@@ -352,7 +408,7 @@ void *client_to_gw_tun( void *arg ) {
 							if ( tp_data_len >= sizeof(struct iphdr) && ((struct iphdr *)(tp.IP_PACKET))->version == 4 ) {
 		
 								if ( write( tun_fd, tp.IP_PACKET, tp_data_len ) < 0 )
-									debug_output( 0, "Error - can't write packet: %s\n", strerror(errno) );
+									debug_tunnel( 0, "Error - can't write packet: %s\n", strerror(errno) );
 		
 								if ( !no_unresponsive_check && ((struct iphdr *)(tp.IP_PACKET))->protocol != IPPROTO_ICMP  ) {
 							
@@ -364,7 +420,7 @@ void *client_to_gw_tun( void *arg ) {
 
 									
 									if( prev_gw_state != gw_state ) {
-										debug_output( 3, "changed GW state: from %d to %d, incoming IP protocol: %d\n", prev_gw_state, gw_state, ((struct iphdr *)(tp.IP_PACKET))->protocol );
+										debug_tunnel( 3, "changed GW state: from %d to %d, incoming IP protocol: %d\n", prev_gw_state, gw_state, ((struct iphdr *)(tp.IP_PACKET))->protocol );
 										prev_gw_state = gw_state;
 									}
 		
@@ -372,13 +428,13 @@ void *client_to_gw_tun( void *arg ) {
 							
 							} else {
 								
-								debug_output( 3, "only IPv4 packets supported so fare !!!\n");
+								debug_tunnel( 3, "only IPv4 packets supported so fare !!!\n");
 								
 							}
 							
 						} else if ( tp.TP_TYPE == TUNNEL_IP_REPLY ) {
 							
-							debug_output( 3, "Gateway client - gateway (%s) replyed with virtual IP \n", gw_str );
+							debug_tunnel( 3, "Gateway client - gateway (%s) replyed with virtual IP \n", gw_str );
 		
 							if ( (ip_lease_duration = handle_tun_ip_reply( curr_gw_data, &gw_addr, udp_sock, &my_tun_addr, &ip_lease_stamp, &new_ip_stamp, tun_if, &tun_fd, &tun_ifi, &tp, &sender_addr, tp_len, current_time )) < MIN_TUNNEL_IP_LEASE_TIME ) {
 		
@@ -390,14 +446,14 @@ void *client_to_gw_tun( void *arg ) {
 							invalid_tun_ip  = 0;
 							send_tun_ip_requests = 0;
 							addr_to_string( my_tun_addr,  my_str, sizeof(my_str) );
-							debug_output( 3, "Gateway client - refreshed IP %s \n", my_str);
+							debug_tunnel( 3, "Gateway client - refreshed IP %s \n", my_str);
 							
 								
 						// gateway told us that we have no valid IP
 						} else if ( tp.TP_TYPE == TUNNEL_IP_INVALID ) {
 		
 							addr_to_string( my_tun_addr, my_str, sizeof(my_str) );
-							debug_output( 3, "Gateway client - gateway (%s) says: IP (%s) is expired \n", gw_str, my_str );
+							debug_tunnel( 3, "Gateway client - gateway (%s) says: IP (%s) is expired \n", gw_str, my_str );
 		
 							request_tun_ip( curr_gw_data, &gw_addr, udp_sock, &my_tun_addr, &ip_lease_stamp, &new_ip_stamp, tun_if, &tun_fd, &tun_ifi, &tp );
 		
@@ -410,9 +466,9 @@ void *client_to_gw_tun( void *arg ) {
 					} else {
 		
 						addr_to_string( sender_addr.sin_addr.s_addr, my_str, sizeof(my_str) );
-						debug_output( 0, "Error - ignoring gateway packet from %s! Wrong GW or packet too small (%i)\n", my_str, tp_len );
+						debug_tunnel( 0, "Error - ignoring gateway packet from %s! Wrong GW or packet too small (%i)\n", my_str, tp_len );
 						if ( which_tunnel & ONE_WAY_TUNNEL_FLAG )
-							debug_output( 0, "Gateway client, being in %s mode\n", ONE_WAY_TUNNEL_SWITCH );
+							debug_tunnel( 0, "Gateway client, being in %s mode\n", ONE_WAY_TUNNEL_SWITCH );
 		
 					}
 		
@@ -423,7 +479,7 @@ void *client_to_gw_tun( void *arg ) {
 				
 				if ( errno != EWOULDBLOCK ) {
 		
-					debug_output( 0, "Error - gateway client can't receive packet: %s\n", strerror(errno) );
+					debug_tunnel( 0, "Error - gateway client can't receive packet: %s\n", strerror(errno) );
 					break;
 		
 				}
@@ -437,7 +493,7 @@ void *client_to_gw_tun( void *arg ) {
 					
 					if ( tp_data_len < sizeof(struct iphdr) || ((struct iphdr *)(tp.IP_PACKET))->version != 4 ) {
 						
-						debug_output( 0, "Gateway client - Received Invalid packet type via tunnel ! \n" );
+						debug_tunnel( 0, "Gateway client - Received Invalid packet type via tunnel ! \n" );
 						continue;
 						
 					}
@@ -452,7 +508,7 @@ void *client_to_gw_tun( void *arg ) {
 						curr_gw_data->gw_node->last_failure = current_time;
 						curr_gw_data->gw_node->unavail_factor++;
 						
-						debug_output( 0, "Gateway client - No vitual IP! Ignoring this GW for %d secs\n",
+						debug_tunnel( 0, "Gateway client - No vitual IP! Ignoring this GW for %d secs\n",
 								( curr_gw_data->gw_node->unavail_factor * curr_gw_data->gw_node->unavail_factor * GW_UNAVAIL_TIMEOUT )/1000 );
 						
 								
@@ -465,10 +521,12 @@ void *client_to_gw_tun( void *arg ) {
 					     ((which_tunnel & TWO_WAY_TUNNEL_FLAG) && !invalid_tun_ip && iphdr->saddr == my_tun_addr) ) {
 						
 						if ( sendto( udp_sock, (unsigned char*) &tp.start, tp_len, 0, (struct sockaddr *)&gw_addr, sizeof (struct sockaddr_in) ) < 0 ) {
-							debug_output( 0, "Error - can't send data to gateway: %s\n", strerror(errno) );
+							debug_tunnel( 0, "Error - can't send data to gateway: %s\n", strerror(errno) );
 							
 						}
 					
+						// debug_tunnel( DBGL_ALL, "Send data to gateway %s, len %d \n", gw_str, tp_len );
+						
 						// activate unresponsive GW check only based on TCP and DNS data
 						if ( (which_tunnel & TWO_WAY_TUNNEL_FLAG) && !no_unresponsive_check && gw_state == GW_STATE_UNKNOWN &&  gw_state_stamp == 0 ) {
 					
@@ -489,7 +547,7 @@ void *client_to_gw_tun( void *arg ) {
 							
 						addr_to_string( my_tun_addr,  my_str, sizeof(my_str) );
 						addr_to_string( iphdr->saddr, is_str, sizeof(is_str) );
-						debug_output( 3, "Gateway client - IP age: %d,  Invalid outgoing src IP: %s (should be %s)! %s Dropping packet\n", (current_time - new_ip_stamp),  is_str,  my_str, (invalid_tun_ip ? "GW said invalid IP!":"") );
+						debug_tunnel( 3, "Gateway client - IP age: %d,  Invalid outgoing src IP: %s (should be %s)! %s Dropping packet\n", (current_time - new_ip_stamp),  is_str,  my_str, (invalid_tun_ip ? "GW said invalid IP!":"") );
 						
 					}
 				}
@@ -499,7 +557,7 @@ void *client_to_gw_tun( void *arg ) {
 		
 				if ( errno != EWOULDBLOCK ) {
 		
-					debug_output( 0, "Error - gateway client can't read tun data: %s\n", strerror(errno) );
+					debug_tunnel( 0, "Error - gateway client can't read tun data: %s\n", strerror(errno) );
 					break;
 		
 				}
@@ -515,17 +573,17 @@ void *client_to_gw_tun( void *arg ) {
 				   ( gw_state_stamp != 0 ) && 
 				   LESS_U32( ( gw_state_stamp + GW_STATE_UNKNOWN_TIMEOUT ), current_time ) ) ) {
 			
-			debug_output( 3, "Gateway client - disconnecting from unresponsive gateway (%s) !\n", gw_str );
+			debug_tunnel( 3, "Gateway client - disconnecting from unresponsive gateway (%s) !\n", gw_str );
 			
 			if( send_tun_ip_requests >= MAX_TUNNEL_IP_REQUESTS )
-				debug_output( 3, "Gateway client - Maximum number of tunnel ip requests send !\n" );
+				debug_tunnel( 3, "Gateway client - Maximum number of tunnel ip requests send !\n" );
 			else
-				debug_output( 3, "Gateway client - GW seems to be a blackhole! Use --%s to disable this check!\n", NO_UNRESP_CHECK_SWITCH );
+				debug_tunnel( 3, "Gateway client - GW seems to be a blackhole! Use --%s to disable this check!\n", NO_UNRESP_CHECK_SWITCH );
 
 			curr_gw_data->gw_node->last_failure = current_time;
 			curr_gw_data->gw_node->unavail_factor++;
 			
-			debug_output( 3, "Gateway client - Ignoring this GW for %d secs\n",
+			debug_tunnel( 3, "Gateway client - Ignoring this GW for %d secs\n",
 				      ( curr_gw_data->gw_node->unavail_factor * curr_gw_data->gw_node->unavail_factor * GW_UNAVAIL_TIMEOUT )/1000 );
 
 			break;
@@ -537,19 +595,19 @@ void *client_to_gw_tun( void *arg ) {
 			gw_state = GW_STATE_UNKNOWN;
 			gw_state_stamp = 0; // the timer is not started before the next packet is send to the GW
 			if( prev_gw_state != gw_state ) 
-				debug_output( 3, "changed GW state: %d\n", prev_gw_state = gw_state );
+				debug_tunnel( 3, "changed GW state: %d\n", prev_gw_state = gw_state );
 
 		}
 		
 	}
 
-	debug_output( 3, "terminating client_to_gw_tun thread: is_aborted(): %s, curr_gateway: %ld, deleted: %d \n", (is_aborted()? "YES":"NO"), curr_gateway, curr_gw_data->gw_node->deleted );
+	debug_tunnel( 3, "terminating client_to_gw_tun thread: is_aborted(): %s, curr_gateway: %ld, deleted: %d \n", (is_aborted()? "YES":"NO"), curr_gateway, curr_gw_data->gw_node->deleted );
 	
-	// cleanup:
 	
-	add_del_route( 0, 0, 0, 0, tun_ifi, tun_if, BATMAN_RT_TABLE_TUNNEL, 0, 1 );
+	add_del_route( 0, 0, 0, 0, tun_ifi, tun_if, BATMAN_RT_TABLE_TUNNEL, 0, 1, NO/*no track - otherwise needs mutex exclude*/ );
 	del_dev_tun( tun_fd );
 
+	close( unix_tunnel_sock );
 	close( udp_sock );
 	curr_gateway = NULL;
 	debugFree( arg, 1207 );
@@ -574,7 +632,7 @@ void cleanup_leased_tun_ips( uint32_t lt, struct gw_client **gw_client_list, uin
 
 				addr_to_string( ((my_tun_ip & my_tun_netmask) | ntohl(i)), str, sizeof(str) );
 				addr_to_string( gw_client_list[i]->addr, cl_addr, sizeof(cl_addr) );
-				debug_output( 3, "Gateway - TunIP %s of client: %s timed out\n", str, cl_addr );
+				debug_tunnel( 3, "Gateway - TunIP %s of client: %s timed out\n", str, cl_addr );
 
 				debugFree( gw_client_list[i], 1216 );
 				gw_client_list[i] = NULL;
@@ -590,7 +648,7 @@ void cleanup_leased_tun_ips( uint32_t lt, struct gw_client **gw_client_list, uin
 
 uint8_t get_ip_addr(uint32_t client_addr, uint32_t *pref_addr, struct gw_client **gw_client_list, uint32_t my_tun_ip, uint32_t my_tun_netmask, uint32_t curr_time ) {
 
-	uint32_t first_free = 0, i, i_max, i_pref, i_random, trick, i_begin, i_end;
+	uint32_t first_free = 0, i, i_max, i_pref, i_random, cycle, i_begin, i_end;
 	
 	i_max = ntohl( ~my_tun_netmask );
 	
@@ -619,9 +677,9 @@ uint8_t get_ip_addr(uint32_t client_addr, uint32_t *pref_addr, struct gw_client 
 	// try to give clients always the same virtual IP
 	i_random = (ntohl(client_addr) % (i_max-1)) + 1;
 	
-	for ( trick = 0; trick <= 1; trick ++ ) {
+	for ( cycle = 0; cycle <= 1; cycle ++ ) {
 	
-		if( trick == 0 ) {
+		if( cycle == 0 ) {
 			i_begin = i_random;
 			i_end = i_max;
 		} else {
@@ -660,7 +718,7 @@ uint8_t get_ip_addr(uint32_t client_addr, uint32_t *pref_addr, struct gw_client 
 	
 	if ( first_free == 0 ) {
 
-		debug_output( 0, "Error - can't get IP for client: maximum number of clients reached\n" );
+		debug_tunnel( 0, "Error - can't get IP for client: maximum number of clients reached\n" );
 		*pref_addr = 0;
 		return NO;
 
@@ -680,7 +738,6 @@ uint8_t get_ip_addr(uint32_t client_addr, uint32_t *pref_addr, struct gw_client 
 
 void *gw_listen( void *arg ) {
 
-//	struct batman_if *batman_if = (*((struct gw_listen_arg *)arg)).batman_if;
 	struct gw_listen_arg *gw_listen_arg = ((struct gw_listen_arg *)arg);
 	
 	struct gw_client **gw_client_list = gw_listen_arg->gw_client_list;
@@ -695,7 +752,43 @@ void *gw_listen( void *arg ) {
 	fd_set wait_sockets, tmp_wait_sockets;
 	int32_t tp_data_len, tp_len;
 	struct tun_packet tp;
+	
+	
+	// init debug connection...
+	unix_tunnel_sock = socket( AF_LOCAL, SOCK_STREAM, 0 );
 
+	struct sockaddr_un unix_addr;
+	
+	memset( &unix_addr, 0, sizeof(struct sockaddr_un) );
+	unix_addr.sun_family = AF_LOCAL;
+	strcpy( unix_addr.sun_path, unix_path );
+
+	if ( connect ( unix_tunnel_sock, (struct sockaddr *)&unix_addr, sizeof(struct sockaddr_un) ) < 0 ) {
+
+		printf( "Error - can't connect to unix socket '%s': %s ! \n", unix_path, strerror(errno) );
+		close( unix_tunnel_sock );
+		debugFree( gw_client_list, 1210);
+		close( gw_listen_arg->sock );
+		gw_listen_arg->sock = 0;
+		debugFree( gw_listen_arg, 1223 );
+		return NULL;
+
+	}
+
+	if ( debug_tunnel( DBGL_CHANGES, "gw_listen() started... \n" ) < 0 ) {
+
+		printf( "Error - can't write to unix_tunel_sock: %s\n", strerror(errno) );
+		close( unix_tunnel_sock );
+		debugFree( gw_client_list, 1210);
+		close( gw_listen_arg->sock );
+		gw_listen_arg->sock = 0;
+		debugFree( gw_listen_arg, 1223 );
+		return NULL;
+
+	}
+
+
+	
 	memset( &tp, 0, sizeof( struct tun_packet ) );
 	
 	my_tun_ip = gw_listen_arg->prefix;
@@ -703,7 +796,7 @@ void *gw_listen( void *arg ) {
 	
 	addr_to_string( my_tun_ip, str, sizeof(str) );
 	addr_to_string( my_tun_netmask, str2, sizeof(str2) );
-	debug_output( 3, "gw_listen(): my_tun_ip %s, my_tun_netmask: %s \n", str, str2);
+	debug_tunnel( 3, "gw_listen(): my_tun_ip %s, my_tun_netmask: %s \n", str, str2);
 	
 	my_tun_ip_h = ntohl( my_tun_ip );
 	my_tun_suffix_mask_h = ntohl( ~my_tun_netmask );
@@ -717,6 +810,7 @@ void *gw_listen( void *arg ) {
 
 	
 	if ( add_dev_tun( my_tun_ip, tun_dev, sizeof(tun_dev), &tun_fd, &tun_ifi ) < 0 ) {
+		close( unix_tunnel_sock );
 		debugFree( gw_client_list, 1210);
 		close( gw_listen_arg->sock );
 		gw_listen_arg->sock = 0;
@@ -724,7 +818,7 @@ void *gw_listen( void *arg ) {
 		return NULL;
 	}
 
-	add_del_route( my_tun_ip, gw_listen_arg->netmask, 0, 0, tun_ifi, tun_dev, 254, 0, 0 );
+	add_del_route( my_tun_ip, gw_listen_arg->netmask, 0, 0, tun_ifi, tun_dev, 254, 0, 0, NO/*no track - otherwise needs mutex exclude*/ );
 
 	FD_ZERO(&wait_sockets);
 	FD_SET(gw_listen_arg->sock, &wait_sockets);
@@ -752,7 +846,7 @@ void *gw_listen( void *arg ) {
 					if ( tp_len < TX_RP_SIZE ) {
 						
 						addr_to_string( addr.sin_addr.s_addr, str2, sizeof(str2) );
-						debug_output( 0, "Gateway node - Received Invalid packet size (%d) via tunnel, from %s ! \n", tp_len, str2 );
+						debug_tunnel( 0, "Gateway node - Received Invalid packet size (%d) via tunnel, from %s ! \n", tp_len, str2 );
 						continue;
 						
 					}
@@ -760,7 +854,7 @@ void *gw_listen( void *arg ) {
 					if ( tp.TP_VERS != COMPAT_VERSION ) {
 						
 						addr_to_string( addr.sin_addr.s_addr, str2, sizeof(str2) );
-						debug_output( 0, "Gateway node - Received Invalid compat version (%d) via tunnel, from %s ! \n", tp.TP_VERS, str2 );
+						debug_tunnel( 0, "Gateway node - Received Invalid compat version (%d) via tunnel, from %s ! \n", tp.TP_VERS, str2 );
 						continue;
 						
 					}
@@ -771,7 +865,7 @@ void *gw_listen( void *arg ) {
 						
 						if ( !(tp_data_len >= sizeof(struct iphdr) && ((struct iphdr *)(tp.IP_PACKET))->version == 4 ) ) {
 				
-							debug_output( 0, "Gateway node - Received Invalid packet type via tunnel ! \n" );
+							debug_tunnel( 0, "Gateway node - Received Invalid packet type via tunnel ! \n" );
 							continue;
 				
 						}
@@ -784,7 +878,7 @@ void *gw_listen( void *arg ) {
 						       iphdr->saddr == addr.sin_addr.s_addr ) ) {
 							
 							if ( write( tun_fd, tp.IP_PACKET, tp_data_len ) < 0 )  
-								debug_output( 0, "Error - can't write packet: %s\n", strerror(errno) );
+								debug_tunnel( 0, "Error - can't write packet: %s\n", strerror(errno) );
 							
 							continue;
 
@@ -809,17 +903,17 @@ void *gw_listen( void *arg ) {
 								addr_to_string( addr.sin_addr.s_addr, str, sizeof(str) );
 								addr_to_string( iphdr->saddr, vstr, sizeof(vstr) );
 	
-								debug_output( 0, "Error - got packet from unknown client: %s (virtual ip %s) \n", str, vstr); 
+								debug_tunnel( 0, "Error - got packet from unknown client: %s (virtual ip %s) \n", str, vstr); 
 								
 								if ( sendto( gw_listen_arg->sock, (unsigned char*)&tp.start, TX_RP_SIZE, 0, (struct sockaddr *)&addr, sizeof(struct sockaddr_in) ) < 0 )
-									debug_output( 0, "Error - can't send invalid ip information to client (%s): %s \n", str, strerror(errno) );
+									debug_tunnel( 0, "Error - can't send invalid ip information to client (%s): %s \n", str, strerror(errno) );
 	
 								continue;
 	
 							}
 														
 							if ( write( tun_fd, tp.IP_PACKET, tp_data_len ) < 0 )  
-								debug_output( 0, "Error - can't write packet: %s\n", strerror(errno) );  
+								debug_tunnel( 0, "Error - can't write packet: %s\n", strerror(errno) );  
 							
 						}
 					
@@ -837,13 +931,13 @@ void *gw_listen( void *arg ) {
 						if ( sendto( gw_listen_arg->sock, &tp.start, TX_RP_SIZE, 0, (struct sockaddr *)&addr, sizeof(struct sockaddr_in) ) < 0 ) {
 
 							addr_to_string( addr.sin_addr.s_addr, str, sizeof (str) );
-							debug_output( 0, "Error - can't send requested ip to client (%s): %s \n", str, strerror(errno) );
+							debug_tunnel( 0, "Error - can't send requested ip to client (%s): %s \n", str, strerror(errno) );
 
 						} else {
 
 							addr_to_string( tp.LEASE_IP, vstr, sizeof(vstr) );
 							addr_to_string( addr.sin_addr.s_addr, str, sizeof(str) );
-							debug_output( 3, "Gateway - assigned %s to client: %s \n", vstr, str );
+							debug_tunnel( 3, "Gateway - assigned %s to client: %s \n", vstr, str );
 
 						}
 
@@ -853,7 +947,7 @@ void *gw_listen( void *arg ) {
 
 				if ( errno != EWOULDBLOCK ) {
 
-					debug_output( 0, "Error - gateway can't receive packet: %s\n", strerror(errno) );
+					debug_tunnel( 0, "Error - gateway can't receive packet: %s\n", strerror(errno) );
 					break;
 
 				}
@@ -867,7 +961,7 @@ void *gw_listen( void *arg ) {
 					
 					if ( !(gw_listen_arg->twt) || tp_data_len < sizeof(struct iphdr) || ((struct iphdr *)(tp.IP_PACKET))->version != 4 ) {
 					
-						debug_output( 0, "Gateway node - Received Invalid packet type for client tunnel ! \n" );
+						debug_tunnel( 0, "Gateway node - Received Invalid packet type for client tunnel ! \n" );
 						continue;
 					
 					}
@@ -884,7 +978,7 @@ void *gw_listen( void *arg ) {
 									
 						addr_to_string( iphdr->daddr, vstr, sizeof(vstr) );
 
-						debug_output( 0, "Error - got packet for unknown virtual ip %s \n", vstr); 
+						debug_tunnel( 0, "Error - got packet for unknown virtual ip %s \n", vstr); 
 								
 						continue;
 					}
@@ -896,13 +990,13 @@ void *gw_listen( void *arg ) {
 					tp.TP_TYPE = TUNNEL_DATA;
 
 					if ( sendto( gw_listen_arg->sock, &tp.start, tp_len, 0, (struct sockaddr *)&client_addr, sizeof(struct sockaddr_in) ) < 0 )
-						debug_output( 0, "Error - can't send data to client (%s): %s \n", str, strerror(errno) );
+						debug_tunnel( 0, "Error - can't send data to client (%s): %s \n", str, strerror(errno) );
 
 				}
 
 				if ( errno != EWOULDBLOCK ) {
 
-					debug_output( 0, "Error - gateway can't read tun data: %s\n", strerror(errno) );
+					debug_tunnel( 0, "Error - gateway can't read tun data: %s\n", strerror(errno) );
 					break;
 
 				}
@@ -911,7 +1005,7 @@ void *gw_listen( void *arg ) {
 
 		} else if ( ( res < 0 ) && ( errno != EINTR ) ) {
 
-			debug_output( 0, "Error - can't select: %s\n", strerror(errno) );
+			debug_tunnel( 0, "Error - can't select: %s\n", strerror(errno) );
 			break;
 
 		}
@@ -930,12 +1024,13 @@ void *gw_listen( void *arg ) {
 	}
 
 	/* delete tun device and routes on exit */
-	add_del_route( my_tun_ip, gw_listen_arg->netmask, 0, 0, tun_ifi, tun_dev, 254, 0, 1 );
+	add_del_route( my_tun_ip, gw_listen_arg->netmask, 0, 0, tun_ifi, tun_dev, 254, 0, 1, NO/*no track - otherwise needs mutex exclude*/ );
 
 	del_dev_tun( tun_fd );
 
 	cleanup_leased_tun_ips(0, gw_client_list, my_tun_ip, my_tun_netmask );
 	
+	close( unix_tunnel_sock );
 	debugFree( gw_client_list, 1210);
 	close( gw_listen_arg->sock );
 	gw_listen_arg->sock = 0;

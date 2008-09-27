@@ -17,51 +17,39 @@
 #
 
 
-# CC =		gcc
-
-CFLAGS =	-Wall -O1 -g -pg
-
-#-DDEBUG_MALLOC -DMEMORY_USAGE -DPROFILE_DATA
+CFLAGS =	-Wall -O2 -g -pg  -DDEBUG_MALLOC -DMEMORY_USAGE -DPROFILE_DATA 
+# -DEXT_DBG # WARNING: this one eats your CPU. Do NOT use it for embedded devices!
 
 LDFLAGS =	-lpthread -static -g -pg
 
 
-#STRIP=			strip
 
-
-
-CFLAGS_MIPS =	-Wall -O1 -g3 -DDEBUG_MALLOC -DMEMORY_USAGE -DPROFILE_DATA -DREVISION_VERSION=$(REVISION_VERSION)
+CFLAGS_MIPS =	-Wall -O2 -g3 -DDEBUG_MALLOC -DMEMORY_USAGE -DPROFILE_DATA -DREVISION_VERSION=$(REVISION_VERSION)
 LDFLAGS_MIPS =	-lpthread
 
 UNAME=		$(shell uname)
-POSIX_C=	posix/init.c posix/posix.c posix/tunnel.c posix/unix_socket.c
+POSIX_C=	posix/init.c posix/posix.c posix/tunnel.c
 
 ifeq ($(UNAME),Linux)
-OS_C=	 linux/route.c linux/tun.c linux/kernel.c $(POSIX_C)
+OS_C=	 linux/route.c linux/tun.c  $(POSIX_C)
 endif
 
-ifeq ($(UNAME),Darwin)
-OS_C=	bsd/route.c bsd/tun.c bsd/kernel.c bsd/compat.c $(POSIX_C)
-endif
-
-ifeq ($(UNAME),FreeBSD)
-OS_C=	bsd/route.c bsd/tun.c bsd/kernel.c bsd/compat.c $(POSIX_C)
-endif
-
-ifeq ($(UNAME),OpenBSD)
-OS_C=	bsd/route.c bsd/tun.c bsd/kernel.c bsd/compat.c $(POSIX_C)
-endif
+SBINDIR =       $(INSTALL_PREFIX)/usr/sbin
 
 LOG_BRANCH= trunk/batman-experimental
 
-SRC_FILES= "\(\.c\)\|\(\.h\)\|\(Makefile\)\|\(INSTALL\)\|\(LIESMICH\)\|\(README\)\|\(THANKS\)\|\(Doxyfile\)\|\(./posix\)\|\(./linux\)\|\(./bsd\)\|\(./man\)\|\(./doc\)"
+SRC_FILES= "\(\.c\)\|\(\.h\)\|\(Makefile\)\|\(INSTALL\)\|\(LIESMICH\)\|\(README\)\|\(THANKS\)\|\(./posix\)\|\(./linux\)\|\(./man\)\|\(./doc\)"
 
-SRC_C= batman.c originator.c schedule.c list-batman.c allocate.c bitarray.c hash.c profile.c $(OS_C)
-SRC_H= batman.h originator.h schedule.h list-batman.h os.h allocate.h bitarray.h hash.h profile.h vis-types.h
+SRC_C= batman.c originator.c dispatch.c list-batman.c allocate.c hash.c profile.c control.c metrics.c $(OS_C)
+SRC_H= batman.h originator.h dispatch.h list-batman.h allocate.h hash.h profile.h control.h metrics.h vis-types.h os.h
 
 PACKAGE_NAME=	batmand-exp
-
 BINARY_NAME=	batmand
+
+#PACKAGE_NAME=	bmx
+#BINARY_NAME=	bmxd
+
+
 SOURCE_VERSION_HEADER= batman.h
 
 IPKG_DEPENDS=		"kmod-tun libpthread"
@@ -72,9 +60,11 @@ all:	$(BINARY_NAME)
 $(BINARY_NAME):	$(SRC_C) $(SRC_H) Makefile
 	$(CC) $(CFLAGS) -o $@ $(SRC_C) $(LDFLAGS)
 
+
 install:	all
-	install -m 755 $(BINARY_NAME) $(INSTALL_DIR)/bin
-	$(STRIP) $(INSTALL_DIR)/bin/$(BINARY_NAME)
+		mkdir -p $(SBINDIR)
+		install -m 0755 $(BINARY_NAME) $(SBINDIR)/bmxd
+
 
 clean:
 		rm -f $(BINARY_NAME) *.o

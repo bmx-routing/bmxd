@@ -96,9 +96,13 @@ void hash_delete(struct hashtable_t *hash, hashdata_free_cb free_cb) {
 /* free only the hashtable and the hash itself. */
 void hash_destroy(struct hashtable_t *hash) {
 
-	debugFree( hash->table, 1302 );
-	debugFree( hash, 1303 );
-
+	if ( hash ) {
+		
+		debugFree( hash->table, 1302 );
+		debugFree( hash, 1303 );
+		hash = NULL;
+	}
+	
 }
 
 

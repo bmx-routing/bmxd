@@ -28,13 +28,17 @@
 #include <string.h>
 #include <syslog.h>
 #include <sys/socket.h>
-//#include <sys/times.h>
 #include <sys/time.h>
 #include <sys/ioctl.h>
 
 
 #include "../os.h"
 #include "../batman.h"
+#include "../originator.h"
+#include "../metrics.h"
+#include "../control.h"
+#include "../dispatch.h"
+
 
 
 
@@ -45,36 +49,11 @@
 # define timercpy(d, a) (d)->tv_sec = (a)->tv_sec; (d)->tv_usec = (a)->tv_usec; 
 
 
-extern struct vis_if vis_if;
 
 //static clock_t start_time;
 static struct timeval start_time_tv;
-static float system_tick;
 static struct timeval ret_tv, new_tv, diff_tv, acceptable_m_tv, acceptable_p_tv, max_tv = {0,(2000*MAX_SELECT_TIMEOUT_MS)};
-static uint32_t my_ms_tick;
 
-uint8_t forward_old, if_rp_filter_all_old, if_rp_filter_default_old, if_send_redirects_all_old, if_send_redirects_default_old;
-
-
-
-char* get_init_string( int begin ){
-	
-#define INIT_STRING_SIZE 500
-	
-	char *dbg_init_str = debugMalloc( INIT_STRING_SIZE, 127 );
-	int i, dbg_init_out = 0;
-	
-	for (i=0; i < g_argc; i++) {
-		
-		if ( i >= begin && INIT_STRING_SIZE > dbg_init_out) {
-			dbg_init_out = dbg_init_out + snprintf( (dbg_init_str + dbg_init_out), (INIT_STRING_SIZE - dbg_init_out), "%s ", g_argv[i] );
-		}
-		
-	}
-	
-	return dbg_init_str;
-
-}
 
 
 
@@ -83,8 +62,7 @@ void fake_start_time( int32_t fake ) {
 }
 
 
-uint32_t get_time( uint8_t msec ) {
-	//struct tms tp;
+uint32_t get_time( uint8_t msec, struct timeval *precise_tv ) {
 	
 	timeradd( &max_tv, &new_tv, &acceptable_p_tv );
 	timercpy( &acceptable_m_tv, &new_tv );
@@ -107,6 +85,11 @@ uint32_t get_time( uint8_t msec ) {
 	}
 	
 	timersub( &new_tv, &start_time_tv, &ret_tv );	
+	
+	if ( precise_tv ) {
+		precise_tv->tv_sec = ret_tv.tv_sec;
+		precise_tv->tv_usec = ret_tv.tv_usec;
+	}		
 	
 	if (  msec )
 		return ( (ret_tv.tv_sec * 1000) + (ret_tv.tv_usec / 1000) );
@@ -275,13 +258,42 @@ void handler( int32_t sig ) {
 
 }
 
+
+/* counting bits based on http://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetTable */
+
+static unsigned char BitsSetTable256[256];
+
+void init_set_bits_table256( void ) {
+	BitsSetTable256[0] = 0;
+	int i;
+	for (i = 0; i < 256; i++)
+	{
+		BitsSetTable256[i] = (i & 1) + BitsSetTable256[i / 2];
+	}
+}
+
+// count the number of true bits in v
+uint8_t get_set_bits( uint32_t v ) {
+	uint8_t c=0;
+
+	for (; v; v = v>>8 )
+		c += BitsSetTable256[v & 0xff];
+
+	return c;
+}
+
+
 void del_default_route() {
 
 	curr_gateway = NULL;
 
 	if ( curr_gateway_thread_id != 0 ) {
-		if ( pthread_join( curr_gateway_thread_id, NULL ) != 0 )
-			debug_output( 0, "Error - couldn't completely join thread, %s! \n", strerror(errno));
+		
+		if ( pthread_join( curr_gateway_thread_id, NULL ) != 0 ) {
+			
+			debug_output( 0, "ERROR - couldn't completely join thread, %s! \n", strerror(errno));
+			
+		}
 		
 		curr_gateway_thread_id = 0;
 	}
@@ -291,6 +303,7 @@ void del_default_route() {
 
 int8_t add_default_route( struct gw_node *new_curr_gw ) {
 
+	debug_output( DBGL_CHANGES, "add_default_route()... \n");
 	struct curr_gw_data *curr_gw_data;
 
 	del_default_route();
@@ -301,10 +314,11 @@ int8_t add_default_route( struct gw_node *new_curr_gw ) {
 	curr_gw_data->gw_node = new_curr_gw;
 	curr_gw_data->orig = new_curr_gw->orig_node->orig;
 	curr_gw_data->batman_if = list_entry( (&if_list)->next , struct batman_if, list );
+	curr_gw_data->outgoing_src = outgoing_src;
 
 	if ( pthread_create( &curr_gateway_thread_id, NULL, &client_to_gw_tun, curr_gw_data ) != 0 ) {
 
-		debug_output( 0, "Error - couldn't spawn thread: %s\n", strerror(errno) );
+		debug_output( 0, "ERROR - couldn't spawn thread: %s\n", strerror(errno) );
 		debugFree( curr_gw_data, 1207 );
 		curr_gateway = NULL;
 		curr_gateway_thread_id=0;
@@ -314,422 +328,34 @@ int8_t add_default_route( struct gw_node *new_curr_gw ) {
 
 }
 
-int8_t receive_packet( uint32_t timeout ) {
-	
-	prof_start( PROF_receive_packet );
-
-	static unsigned char packet_in[2001];
-	static unsigned char *pos = NULL, *check_pos;
-	static int32_t len = 0, check_len, check_done;
-	static uint32_t rcvd_neighbor = 0, rcvd_time = 0, last_get_time_result = 0;
-
-	
-	static char str[ADDR_STR_LEN];
-	static char str2[ADDR_STR_LEN];
-	
-	struct sockaddr_in addr;
-	uint32_t addr_len;
-	uint32_t return_time = *received_batman_time + timeout;
-	struct timeval tv;
-	struct list_head *if_pos;
-	static struct batman_if *batman_if = NULL;
-	int8_t res;
-	int16_t left_pos, ext_type, done_pos, ext_pos;
-	struct ext_packet *ext_array;
-	fd_set tmp_wait_set;
-	
-	
-	
-	debug_output(4, "receive_packet() remaining len %d, timeout %d \n", len, timeout );
-	
-	if( len != 0 && len < sizeof( struct bat_packet_common ) ) {
-		
-		addr_to_string( rcvd_neighbor, str, sizeof(str) );
-		debug_output(0, "Drop packet: processing strange packet buffer size. %i from: %s !!!!!!!!!!!!!!\n", len, str );
-		len = 0;
-		
-		prof_stop( PROF_receive_packet );
-		return -1;
-	}
 
 
-	while ( len < sizeof( struct bat_packet_common ) ) {
-		
-		pos = packet_in;
 
-		addr_len = sizeof(struct sockaddr_in);
-		memcpy( &tmp_wait_set, &receive_wait_set, sizeof(fd_set) );
-		
-		tv.tv_sec  =   (return_time - *received_batman_time) / 1000;
-		tv.tv_usec = ( (return_time - *received_batman_time) % 1000 ) * 1000;
-		
-		res = select( receive_max_sock + 1, &tmp_wait_set, NULL, NULL, &tv );
-		
-		s_returned_select++;
-
-		*received_batman_time = rcvd_time = get_time_msec();
-		
-		
-		
-		if ( *received_batman_time < last_get_time_result ) {
-			
-			len = 0;
-			last_get_time_result = *received_batman_time;
-			debug_output( 0, "WARNING - Detected Timeoverlap...\n" );
-			prof_stop( PROF_receive_packet );
-			return 0;
-			
-		}
-		
-		last_get_time_result = *received_batman_time;
-		
-		
-				
-		if ( res < 0 && errno != EINTR ) {
-		
-			debug_output( 0, "Error - can't select: %s\n", strerror(errno) );
-			prof_stop( PROF_receive_packet );
-			return -1;
-		}
-			
-		if ( res <= 0 ) {
-			
-			/*Often select returns just a few milliseconds before being scheduled */
-			if ( return_time < *received_batman_time + 10 ) {
-				
-				//cheating time :-)
-				*received_batman_time = rcvd_time = return_time;
-				
-				prof_stop( PROF_receive_packet );
-				return 0;
-				
-			} else {
-				
-				debug_output( 3, "Select returned %d without reason!! return_time %d, curr_time %d\n", res, return_time, *received_batman_time );
-				continue;
-			}
-		}
-		
-		
-		if ( FD_ISSET( ifevent_sk, &tmp_wait_set ) ) {
-			
-			debug_output( 3, "Select indicated changed interface status! going to check interfaces! \n" );
-			recv_ifevent_netlink_sk( );
-			check_interfaces();
-			
-		}
-		
-		
-		
-		list_for_each( if_pos, &if_list ) {
-		
-			batman_if = list_entry( if_pos, struct batman_if, list );
-		
-			if ( FD_ISSET( batman_if->udp_recv_sock, &tmp_wait_set ) ) {
-		
-				len = recvfrom( batman_if->udp_recv_sock, pos, sizeof(packet_in) - 1, 0, (struct sockaddr *)&addr, &addr_len );
-
-				if ( len < 0 ) {
-		
-					debug_output( 0, "Error - can't receive packet: %s\n", strerror(errno) );
-					
-					prof_stop( PROF_receive_packet );
-					return -1;
-				}
-				
-				(*received_if_incoming) = batman_if;
-				
-				rcvd_neighbor = addr.sin_addr.s_addr;
-		
-				break;
-			}
-		}
-		
-		if ( len > 0 && rcvd_neighbor == batman_if->addr.sin_addr.s_addr ) {
-			
-			addr_to_string( rcvd_neighbor, str, sizeof(str) );
-			debug_output( 4, "Drop packet: received my own broadcast (sender: %s) \n", str );
-
-			len = 0;
-			
-			if ( return_time > *received_batman_time ) {
-				continue;
-			} else {
-				prof_stop( PROF_receive_packet );
-				return 0;
-			}
-				
-		}
-		
-		if ( len < sizeof(struct bat_header) + sizeof(struct bat_packet_common) ) {
-			
-			len = 0;
-			
-			if ( return_time > *received_batman_time ) {
-				continue;
-			} else {
-				prof_stop( PROF_receive_packet );
-				return 0;
-			}
-		
-		}
+int8_t send_udp_packet( unsigned char *packet_buff, int32_t packet_buff_len, struct sockaddr_in *dst, int32_t send_sock ) {
 	
-		// we acceppt longer packets than specified by pos->size to allow padding for equal packet sizes
-		if ( 	len < (sizeof(struct bat_header) + sizeof(struct bat_packet_common))  ||
-			(((struct bat_header *)pos)->version) != COMPAT_VERSION  ||
-			((((struct bat_header *)pos)->size)<<2) > len )   {
-		
-			addr_to_string( rcvd_neighbor, str, sizeof(str) );
-		
-			if ( len >= (sizeof(struct bat_header) + sizeof(struct bat_packet_common)) )
-				debug_output( 0, "WARNING - Drop packet: rcvd incompatible batman version or size %i, flags? %X, size? %i, via NB %s. My version is %d \n", ((struct bat_header *)pos)->version, ((struct bat_packet_common *)(pos+sizeof(struct bat_header)))->reserved1, len, str, COMPAT_VERSION );
-				
-			else
-				debug_output( 0, "Error - Rcvd to small packet size %i, via NB %s.\n", len, str );
-			
-			len = 0;
-			
-			if ( return_time > *received_batman_time ) {
-				
-				continue;
-				
-			} else {
-			
-				prof_stop( PROF_receive_packet );
-				return 0;
-			}
-		
-		}
+	int status;
 	
-		s_received_aggregations++;
-		
-		
-		check_len = len = ((((struct bat_header *)pos)->size)<<2) - sizeof( struct bat_header );
-		check_pos = pos = pos + sizeof(struct bat_header);
-		
-		
-		/* fast plausibility check */
-		check_done = 0;
-		
-		while ( check_done < check_len ) {
-			
-			if ( check_len < sizeof( struct bat_packet_common ) ) {
-		
-				debug_output(0, "Error - Recvfrom returned with absolutely to small packet length %d !!!! \n", check_len );
-				prof_stop( PROF_receive_packet );
-				return -1;
-			}
-			
-			if ( 	(((struct bat_packet_common *)check_pos)->ext_msg) != 0 ||
-				(((struct bat_packet_common *)check_pos)->size)    == 0 ||
-				((((struct bat_packet_common *)check_pos)->size)<<2) > check_len  ) {
-
-				addr_to_string( rcvd_neighbor, str, sizeof(str) );
-		
-				if (	(((struct bat_packet_common *)check_pos)->ext_msg) == 0 &&
-					((((struct bat_packet_common *)check_pos)->size)<<2) >= sizeof( struct bat_packet ) &&
-					check_len >= sizeof( struct bat_packet )  )
-					addr_to_string( ((struct bat_packet *)check_pos)->orig, str2, sizeof(str2) );
-			
-				else
-					addr_to_string( 0, str2, sizeof(str2) );
-		
-				debug_output(0, "Error - Drop jumbo packet: rcvd incorrect size or order: ext_msg %d, reserved %X, OGM size field %d aggregated OGM size %i, via IF: %s, NB %s, Originator? %s. \n",  ((struct bat_packet_common *)check_pos)->ext_msg, ((struct bat_packet_common *)check_pos)->reserved1, ((((struct bat_packet_common *)check_pos)->size)), check_len, batman_if->dev, str, str2);
-		
-				len = 0;
-		
-				prof_stop( PROF_receive_packet );
-				return 0;
-			}
-			
-			check_done = check_done + ((((struct bat_packet_common *)check_pos)->size)<<2) ;
-			check_pos  = check_pos  + ((((struct bat_packet_common *)check_pos)->size)<<2) ;
-			
-		}
-		
-		if ( check_len != check_done ) {
-			
-			debug_output(0, "Error - Drop jumbo packet: End of packet does not match indicated size \n");
-			
-			len = 0;
-		
-			prof_stop( PROF_receive_packet );
-			return 0;
-			
-		}
-		
-		break;
-		
-	}
-	
-				
-	*received_batman_time = rcvd_time;
-		
-	
-	
-	if ( ((struct bat_packet_common *)pos)->bat_type == BAT_TYPE_OGM  ) {
-		
-		((struct bat_packet *)pos)->seqno = ntohs( ((struct bat_packet *)pos)->seqno ); /* network to host order for our 16bit seqno. */
-
-		*received_neigh = rcvd_neighbor;
-
-		*received_ogm = (struct bat_packet *)pos;
-	
-		*received_batman_time = rcvd_time;
-	
-	
-		/* process optional gateway extension messages */
-	
-		left_pos  = (len - sizeof(struct bat_packet)) / sizeof(struct ext_packet);
-		done_pos  = 0;
-	
-		*received_gw_array = NULL;
-		*received_gw_pos   = 0;
-	
-		*received_hna_array = NULL;
-		*received_hna_pos = 0;
-
-		*received_srv_array = NULL;
-		*received_srv_pos = 0;
-	
-		*received_vis_array = NULL;
-		*received_vis_pos = 0;
-	
-		*received_pip_array = NULL;
-		*received_pip_pos = 0;
-
-		ext_type = 0;
-	
-		ext_array = (struct ext_packet *) (pos + sizeof(struct bat_packet) + (done_pos * sizeof(struct ext_packet)) );
-		ext_pos = 0;
-	
-		while ( done_pos < left_pos && 
-			(done_pos * sizeof(struct ext_packet))  <  ((((struct bat_packet_common *)pos)->size)<<2) &&
-			((ext_array)[0]).EXT_FIELD_MSG == YES && 
-			ext_type <= EXT_TYPE_MAX ) {
-		
-			while( (ext_pos + done_pos) < left_pos && ((ext_array)[ext_pos]).EXT_FIELD_MSG == YES ) {
-			
-				if ( ((ext_array)[ext_pos]).EXT_FIELD_TYPE == ext_type  ) {
-				
-					(ext_pos)++;
-				
-				} else if ( ((ext_array)[ext_pos]).EXT_FIELD_TYPE > ext_type  ) {
-				
-					break;
-				
-				} else {
-				
-					debug_output( 0, "Drop packet: rcvd incompatible extension message order: size? %i, ext_type %d, via NB %s, originator? %s. \n",  
-							len, ((ext_array)[ext_pos]).EXT_FIELD_TYPE, str, str2 );
-					len = 0;
-					
-					prof_stop( PROF_receive_packet );
-					return 0;
-				}
-				
-			}
-
-			done_pos = done_pos + ext_pos;
-		
-			if ( ext_pos != 0 ) {
-			
-				if ( ext_type == EXT_TYPE_GW ) {
-				
-					*received_gw_array = ext_array;
-					*received_gw_pos = ext_pos;
-				
-				} else if ( ext_type == EXT_TYPE_HNA ) {
-				
-					*received_hna_array = ext_array;
-					*received_hna_pos = ext_pos;
-				
-				} else if ( ext_type == EXT_TYPE_SRV ) {
-				
-					*received_srv_array = ext_array;
-					*received_srv_pos = ext_pos;
-				
-				} else if ( ext_type == EXT_TYPE_VIS ) {
-				
-					*received_vis_array = ext_array;
-					*received_vis_pos = ext_pos;
-				
-				} else if ( ext_type == EXT_TYPE_PIP ) {
-				
-					*received_pip_array = ext_array;
-					*received_pip_pos = ext_pos;
-				
-				}
-			
-			}
-	
-			ext_array = (struct ext_packet *) (pos + sizeof(struct bat_packet) + (done_pos * sizeof(struct ext_packet)) );
-			ext_pos = 0;
-			ext_type++;
-	
-		}
-		
-		s_received_ogms++;
-		
-		
-		if ( (sizeof(struct bat_packet) + (done_pos * sizeof(struct ext_packet)))  !=  ((((struct bat_packet_common *)pos)->size)<<2) ) {
-			
-			len = len - ((((struct bat_packet_common *)pos)->size)<<2);
-			pos = pos + ((((struct bat_packet_common *)pos)->size)<<2);
-		
-			debug_output( 0, "WARNING - Drop packet! Received corrupted packet size: processed bytes: %d , indicated bytes %d, batman flags. %X,  gw_pos %d, hna_pos: %d, srv_pos %d, pip_pos %d, remaining bytes %d \n", (sizeof(struct bat_packet) + (done_pos * sizeof(struct ext_packet))), ((((struct bat_packet_common *)pos)->size)<<2), ((struct bat_packet *)pos)->flags, *received_gw_pos, *received_hna_pos, *received_srv_pos, *received_pip_pos, len );
-			
-			prof_stop( PROF_receive_packet );
-			return 0;
-			
-		}
-
-	
-		/* prepare for next ogm and attached extension messages */
-	
-		len = len - ((((struct bat_packet_common *)pos)->size)<<2);
-		pos = pos + ((((struct bat_packet_common *)pos)->size)<<2);
-		
-		debug_output( 4, "Received packet batman flags. %X,  gw_pos %d, hna_pos: %d, srv_pos %d, pip_pos %d, remaining bytes %d \n", ((struct bat_packet *)pos)->flags, *received_gw_pos, *received_hna_pos, *received_srv_pos, *received_pip_pos, len );
-		
-		prof_stop( PROF_receive_packet );
-		return 1;
-		
-	} else {
-		
-		
-		addr_to_string( rcvd_neighbor, str, sizeof(str) );
-		addr_to_string( ((struct bat_packet *)pos)->orig, str2, sizeof(str2) );
-		
-		debug_output( 0, "WARNING - Drop single unkown bat_type bat_type %X, size? %i, via NB %s, originator? %s. \n",  ((struct bat_packet_common *)pos)->bat_type, len, str, str2 );
-		
-		len = len - ((((struct bat_packet_common *)pos)->size)<<2) ;
-		pos = pos + ((((struct bat_packet_common *)pos)->size)<<2) ;
-	
-		prof_stop( PROF_receive_packet );
+	if ( send_sock == 0 )
 		return 0;
-	}
-
-	len = 0;
 	
-	prof_stop( PROF_receive_packet );
-	return 0;	
-
-}
-
-
-
-int8_t send_udp_packet( unsigned char *packet_buff, int32_t packet_buff_len, struct sockaddr_in *broad, int32_t send_sock, struct batman_if *batman_if ) {
+	/*	
+	static struct iovec iov;
+	iov.iov_base = packet_buff;
+	iov.iov_len  = packet_buff_len;
 	
-	if ((batman_if != NULL) && (!batman_if->if_active))
-		return 0;
-
-	if ( sendto( send_sock, packet_buff, packet_buff_len, 0, (struct sockaddr *)broad, sizeof(struct sockaddr_in) ) < 0 ) {
-
+	static struct msghdr m = { 0, sizeof( struct sockaddr_in ), &iov, 1, NULL, 0, 0 };
+	m.msg_name = dst;
+	
+	status = sendmsg( send_sock, &m, 0 );
+	*/
+	
+	status = sendto( send_sock, packet_buff, packet_buff_len, 0, (struct sockaddr *)dst, sizeof(struct sockaddr_in) );
+		
+	if ( status < 0 ) {
 		
 		if ( errno == 1 ) {
 
-			debug_output(0, "Error - can't send udp packet: %s.\nDoes your firewall allow outgoing packets on port %i ?\n", strerror(errno), ntohs(broad->sin_port));
+			debug_output(0, "Error - can't send udp packet: %s.\nDoes your firewall allow outgoing packets on port %i ?\n", strerror(errno), ntohs(dst->sin_port));
 
 		} else {
 
@@ -747,174 +373,133 @@ int8_t send_udp_packet( unsigned char *packet_buff, int32_t packet_buff_len, str
 
 
 
-void restore_defaults() {
-
-	struct list_head *if_pos, *if_pos_tmp;
-
-	stop = 1;
-
-	add_del_interface_rules( 1, (routing_class > 0 ? YES : NO), YES );
-	
-	stop_gw_service();
-
-	del_default_route();
-	
-	list_for_each_safe( if_pos, if_pos_tmp, &if_list ) {
-		
-		struct batman_if *batman_if = list_entry( if_pos, struct batman_if, list );
-		
-		deactivate_interface( batman_if );
-
-		list_del( (struct list_head *)&if_list, if_pos, &if_list );
-		debugFree( if_pos, 1214 );
-
-	}
-	
-	/* delete rule for hosts and announced interfaces */
-	if( !more_rules  &&  !no_prio_rules ) {
-	
-		add_del_rule( 0, 0, BATMAN_RT_TABLE_INTERFACES, BATMAN_RT_PRIO_INTERFACES, 0, 1, 1 );
-		add_del_rule( 0, 0, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_HOSTS, 0, 1, 1 );
-		
-	}
-
-	
-	/* delete rule for hna networks */
-	if( !no_prio_rules )
-		add_del_rule( 0, 0, BATMAN_RT_TABLE_NETWORKS,   BATMAN_RT_PRIO_NETWORKS,   0, 1, 1 );
-
-	/* delete unreachable routing table entry */
-	if ( !no_unreachable_rule )
-		add_del_route( 0, 0, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH, 2, 1 );
-
-	
-	if ( vis_if.sock )
-		close( vis_if.sock );
-
-	if ( unix_if.unix_sock )
-		close( unix_if.unix_sock );
-
-	if ( unix_if.listen_thread_id != 0 ) {
-		pthread_join( unix_if.listen_thread_id, NULL );
-		unix_if.listen_thread_id = 0;
-	}
-	
-	if ( debug_level == 0 )
-		closelog();
-	
-	set_forwarding( forward_old );
-
-	set_rp_filter( if_rp_filter_all_old, "all" );
-	set_rp_filter( if_rp_filter_default_old, "default" );
-
-	set_send_redirects( if_send_redirects_all_old, "all" );
-	set_send_redirects( if_send_redirects_default_old, "default" );
-
-
-}
-
-
-
-void restore_and_exit( uint8_t is_sigsegv ) {
-
-	struct orig_node *orig_node;
-	struct hash_it_t *hashit = NULL;
-
-	if ( !conn_client ) {
-
-		/* remove tun interface first */
-		stop = 1;
-
-		restore_defaults();
-
-		/* all rules and routes were purged in segmentation_fault() */
-		if ( !is_sigsegv ) {
-
-			while ( NULL != ( hashit = hash_iterate( orig_hash, hashit ) ) ) {
-
-				orig_node = hashit->bucket->data;
-
-				update_routes( orig_node, NULL, NULL, 0 );
-
-			}
-
-		}
-
-		//restore_defaults();
-
-	}
-
-	if ( !is_sigsegv )
-		exit(EXIT_FAILURE);
-
-}
-
-
-
 void segmentation_fault( int32_t sig ) {
 
 	signal( SIGSEGV, SIG_DFL );
 
 	debug_output( 0, "Error - SIGSEGV received, trying to clean up ... \n" );
 
-	flush_routes_rules(0 /* flush route */ );
-	
-	if ( !no_prio_rules )
-		flush_routes_rules(1 /* flush rule */);
-
-	restore_and_exit(1);
+	cleanup_all( CLEANUP_CONTINUE );
 
 	raise( SIGSEGV );
 
 }
 
+static int cleaning_up = NO;
 
-
-void cleanup() {
-
-	int8_t i;
-	struct debug_level_info *debug_level_info;
-	struct list_head *debug_pos, *debug_pos_tmp;
+void cleanup_all( int status ) {
 	
-	debugFree( todo_mutex, 1229 );
+	if ( !cleaning_up ) {
+	
+		cleaning_up = YES;
+	
+		// first, restore defaults...
 
+		stop = 1;
+		
+		stop_gw_service();
+		gateway_class = 0;
+	
+		del_default_route();
+		routing_class = 0;
+		
 
-	for ( i = 0; i < debug_level_max; i++ ) {
+		flush_tracked_rules_and_routes();
+	
+		purge_orig( 0 );
+		
+		restore_kernel_config( NULL );
 
-		if ( debug_clients.clients_num[i] > 0 ) {
-
-			list_for_each_safe( debug_pos, debug_pos_tmp, (struct list_head *)debug_clients.fd_list[i] ) {
-
-				debug_level_info = list_entry(debug_pos, struct debug_level_info, list);
-
-				list_del( (struct list_head *)debug_clients.fd_list[i], debug_pos, (struct list_head_first *)debug_clients.fd_list[i] );
-				debugFree( debug_pos, 1218 );
-
-			}
-
+		// if ever started succesfully in daemon mode...
+		if ( !client_mode && batman_time > 0 ) {
+			
+			// flush orphan rules (and do warning in case)
+			if ( !no_prio_rules )
+				flush_routes_rules(1 /* flush rule */);
+			
+			// flush orphan routes (and do warning in case)
+			flush_routes_rules(0 /* flush route */ );
+		
 		}
 
-		debugFree( debug_clients.fd_list[i], 1219 );
-		debugFree( debug_clients.mutex[i], 1220 );
+		// second, cleanup stuff which would be eliminated anyway...
+		
+		/* cleanup: gw_list,  my_hna_list,  my_srv_list 
+		
+		init_originator();
+		init_profile();
+		*/
+		
+		cleanup_dispatch();
+	
+		if ( vis_if )
+			cleanup_vis();
+	
+		cleanup_metric_table( global_mt );
+		
+		struct list_head *list_pos, *list_tmp;
+		
+		list_for_each_safe( list_pos, list_tmp, &notun_list ) {
+	
+			list_del( (struct list_head *)&notun_list, list_pos, &notun_list );
+	
+			debugFree( list_pos, 1224 );
+	
+		}
+		
+		list_for_each_safe( list_pos, list_tmp, &if_list ) {
+			
+			struct batman_if *batman_if = list_entry( list_pos, struct batman_if, list );
+			
+			if ( batman_if->if_active )
+				deactivate_interface( batman_if );
+	
+			list_del( (struct list_head *)&if_list, list_pos, &if_list );
+			debugFree( list_pos, 1214 );
+	
+		}
+	
+		add_del_own_hna( YES /*purge*/ );
+		
+		add_del_own_srv( YES /*purge*/ );
 
+		purge_empty_hna_nodes( );
+	
+		cleanup_route();
+
+		hash_destroy( hna_hash );
+
+		hash_destroy( orig_hash );
+
+		
+		// last, close debugging system and check for forgotten resources...
+		
+		cleanup_control();
+	
+		checkLeak();
+	
+	}
+		
+
+	if ( status == CLEANUP_SUCCESS ) {
+		
+		exit( EXIT_SUCCESS );
+
+	} else if ( status == CLEANUP_FAILURE ) {
+		
+		exit ( EXIT_FAILURE );
+	
+	} else if ( status == CLEANUP_CONTINUE ) {
+		return;
+	
 	}
 
-	debugFree( debug_clients.fd_list, 1221 );
-	debugFree( debug_clients.mutex, 1222 );
-	debugFree( debug_clients.clients_num, 1223 );
-
+	exit ( EXIT_FAILURE );
+	
 }
 
 
-
 int main( int argc, char *argv[] ) {
-
-	int8_t res;
-	//struct tms tp;
-	
-	g_argc = argc;
-	g_argv = argv;
-	
 
 	/* check if user is root */
 	if ( ( getuid() ) || ( getgid() ) ) {
@@ -923,101 +508,32 @@ int main( int argc, char *argv[] ) {
 		exit(EXIT_FAILURE);
 
 	}
-
-
-	INIT_LIST_HEAD_FIRST( forw_list );
-	INIT_LIST_HEAD_FIRST( gw_list );
-	INIT_LIST_HEAD_FIRST( notun_list );
-	INIT_LIST_HEAD_FIRST( if_list );
-	INIT_LIST_HEAD_FIRST( my_hna_list );
-	INIT_LIST_HEAD_FIRST( my_srv_list );
-	INIT_LIST_HEAD_FIRST( todo_list );
-	INIT_LIST_HEAD_FIRST( link_list );
-	INIT_LIST_HEAD_FIRST( pifnb_list );
-
-	/* for profiling the functions */
-	prof_init( PROF_all, "all" );
-	prof_init( PROF_choose_gw, "choose_gw" );
-	prof_init( PROF_update_routes, "update_routes" );
-	prof_init( PROF_update_gw_list, "update_gw_list" );
-	prof_init( PROF_is_duplicate, "isDuplicate" );
-	prof_init( PROF_get_orig_node, "get_orig_node" );
-	prof_init( PROF_update_originator, "update_orig" );
-	prof_init( PROF_purge_originator, "purge_orig" );
-	prof_init( PROF_schedule_forward_packet, "schedule_forward_packet" );
-	prof_init( PROF_send_outstanding_packets, "send_outstanding_packets" );
-	prof_init( PROF_receive_packet, "receive_packet" );
-	prof_init( PROF_set_dbg_rcvd_all_bits, "set_dbg_rcvd_all_bits" );
 	
-	
-	todo_mutex = debugMalloc( sizeof(pthread_mutex_t), 229 );
-	pthread_mutex_init( (pthread_mutex_t *)todo_mutex, NULL );
-
-	//start_time = times(&tp);
 	gettimeofday( &start_time_tv, NULL );
 	gettimeofday( &new_tv, NULL );
 
-	system_tick = (float)sysconf(_SC_CLK_TCK);
-	
-	my_ms_tick = (1000/sysconf(_SC_CLK_TCK));
-	
-	if ( my_ms_tick == 0 ) {
-		
-		fprintf( stderr, "Error - System SC_CLK_TCK greater than 1000! Unexpected Systemvalue! Contact a developer to fix this for your system !\n" );
-		exit(EXIT_FAILURE);
-
-	}
-
-	//printf(" some values: sizeof clock_t %d, system_tick %f %ld start_time %ld \n", sizeof(clock_t), system_tick, sysconf(_SC_CLK_TCK), start_time );
-	
 	srand( getpid() );
+
+	init_set_bits_table256();	
+	global_mt = init_metric_table( MAX_BITS_RANGE, 1015, 1000 );
+
+	init_originator();
+	init_control();
+	init_dispatch();
+	init_profile();
+	init_route();
 	
-	if( open_netlink_socket() < 0 )
-		exit(EXIT_FAILURE);
-	
-	if ( open_ifevent_netlink_sk() < 0 )
-		exit(EXIT_FAILURE);
 	
 	apply_init_args( argc, argv );
 
-	if_rp_filter_all_old = get_rp_filter( "all" );
-	if_rp_filter_default_old = get_rp_filter( "default" );
-
-	if_send_redirects_all_old = get_send_redirects( "all" );
-	if_send_redirects_default_old = get_send_redirects( "default" );
-
-	set_rp_filter( 0, "all" );
-	set_rp_filter( 0, "default" );
-
-	set_send_redirects( 0, "all" );
-	set_send_redirects( 0, "default" );
-		
-	forward_old = get_forwarding();
-	set_forwarding(1);
-
+	check_kernel_config( NULL, YES/*init*/ );
 	
-	char *init_string = get_init_string( 0 );
-	
-	debug_output(0, "Startup parameters: %s\n", init_string);
-	
-	debugFree( init_string, 1127 );
+	batman();
 
-
+	cleanup_all( CLEANUP_SUCCESS );
 	
-	res = batman();
-
-
-	restore_defaults();
-	
-	close_ifevent_netlink_sk();	
-	close_netlink_socket();
-	
-	cleanup();
-	
-	
-	checkLeak();
-	return res;
-
+	//should never reach here !!
+	return -1;
 }
 
 

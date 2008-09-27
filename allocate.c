@@ -18,12 +18,14 @@
  */
 
 
-
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <syslog.h>
 
 #include "os.h"
+#include "control.h"
 #include "allocate.h"
 
 
@@ -106,7 +108,7 @@ void removeMemory( int32_t tag, int32_t freetag ) {
 			if ( walker->counter == 0 ) {
 
 				debug_output( 0, "Freeing more memory than was allocated: malloc tag = %d, free tag = %d\n", tag, freetag );
-				restore_and_exit(0);
+				cleanup_all( CLEANUP_FAILURE );
 
 			}
 
@@ -120,7 +122,24 @@ void removeMemory( int32_t tag, int32_t freetag ) {
 	if ( walker == NULL ) {
 
 		debug_output( 0, "Freeing memory that was never allocated: malloc tag = %d, free tag = %d\n", tag, freetag );
-		restore_and_exit(0);
+		cleanup_all( CLEANUP_FAILURE );
+
+	}
+
+}
+
+
+void debugMemory( int fd ) {
+
+	struct memoryUsage *memoryWalker;
+
+	dprintf( fd, " \nMemory usage information:\n" );
+
+	for ( memoryWalker = memoryList; memoryWalker != NULL; memoryWalker = memoryWalker->next ) {
+
+		if ( memoryWalker->counter != 0 ) {
+			dprintf( fd, "   tag: %4i, num malloc: %4i, bytes per malloc: %4i, total: %6i\n", memoryWalker->tag, memoryWalker->counter, memoryWalker->length, memoryWalker->counter * memoryWalker->length );
+		}
 
 	}
 
@@ -129,36 +148,18 @@ void removeMemory( int32_t tag, int32_t freetag ) {
 #endif
 
 
-
 void checkIntegrity(void)
 {
 	struct chunkHeader *walker;
 	struct chunkTrailer *chunkTrailer;
 	unsigned char *memory;
 
-
-#if defined MEMORY_USAGE
-
-	struct memoryUsage *memoryWalker;
-
-	debug_output( 5, " \nMemory usage information:\n" );
-
-	for ( memoryWalker = memoryList; memoryWalker != NULL; memoryWalker = memoryWalker->next ) {
-
-		if ( memoryWalker->counter != 0 )
-			debug_output( 5, "   tag: %''4i, num malloc: %4i, bytes per malloc: %''4i, total: %6i\n", memoryWalker->tag, memoryWalker->counter, memoryWalker->length, memoryWalker->counter * memoryWalker->length );
-
-	}
-
-#endif
-
-
 	for (walker = chunkList; walker != NULL; walker = walker->next)
 	{
 		if (walker->magicNumber != MAGIC_NUMBER)
 		{
 			debug_output( 0, "checkIntegrity - invalid magic number in header: %08x, malloc tag = %d\n", walker->magicNumber, walker->tag );
-			restore_and_exit(0);
+			cleanup_all( CLEANUP_FAILURE );
 		}
 
 		memory = (unsigned char *)walker;
@@ -168,7 +169,7 @@ void checkIntegrity(void)
 		if (chunkTrailer->magicNumber != MAGIC_NUMBER)
 		{
 			debug_output( 0, "checkIntegrity - invalid magic number in trailer: %08x, malloc tag = %d\n", chunkTrailer->magicNumber, walker->tag );
-			restore_and_exit(0);
+			cleanup_all( CLEANUP_FAILURE );
 		}
 	}
 }
@@ -176,9 +177,23 @@ void checkIntegrity(void)
 void checkLeak(void)
 {
 	struct chunkHeader *walker;
+	
+	if ( chunkList != NULL ) {
+		
+		openlog( "bmxd", LOG_PID, LOG_DAEMON );
+		
+		
+		for (walker = chunkList; walker != NULL; walker = walker->next) {
+			syslog( LOG_ERR, "ERROR -  Memory leak detected, malloc tag = %d\n", walker->tag );
+		
+			if (debug_level >= 0)
+				fprintf( stderr, "ERROR -  Memory leak detected, malloc tag = %d \n", walker->tag );
 
-	for (walker = chunkList; walker != NULL; walker = walker->next)
-		debug_output( 0, "Memory leak detected, malloc tag = %d\n", walker->tag );
+		}
+		
+		closelog();
+
+	}
 }
 
 void *debugMalloc(uint32_t length, int32_t tag)
@@ -195,7 +210,7 @@ void *debugMalloc(uint32_t length, int32_t tag)
 	if (memory == NULL)
 	{
 		debug_output( 0, "Cannot allocate %u bytes, malloc tag = %d\n", (unsigned int)(length + sizeof(struct chunkHeader) + sizeof(struct chunkTrailer)), tag );
-		restore_and_exit(0);
+		cleanup_all( CLEANUP_FAILURE );
 	}
 
 	chunkHeader = (struct chunkHeader *)memory;
@@ -235,7 +250,7 @@ void *debugRealloc(void *memoryParameter, uint32_t length, int32_t tag)
 		if (chunkHeader->magicNumber != MAGIC_NUMBER)
 		{
 			debug_output( 0, "debugRealloc - invalid magic number in header: %08x, malloc tag = %d\n", chunkHeader->magicNumber, chunkHeader->tag );
-			restore_and_exit(0);
+			cleanup_all( CLEANUP_FAILURE );
 		}
 
 		chunkTrailer = (struct chunkTrailer *)(memory + chunkHeader->length);
@@ -243,7 +258,7 @@ void *debugRealloc(void *memoryParameter, uint32_t length, int32_t tag)
 		if (chunkTrailer->magicNumber != MAGIC_NUMBER)
 		{
 			debug_output( 0, "debugRealloc - invalid magic number in trailer: %08x, malloc tag = %d\n", chunkTrailer->magicNumber, chunkHeader->tag );
-			restore_and_exit(0);
+			cleanup_all( CLEANUP_FAILURE );
 		}
 	}
 
@@ -277,7 +292,7 @@ void debugFree(void *memoryParameter, int tag)
 	if (chunkHeader->magicNumber != MAGIC_NUMBER)
 	{
 		debug_output( 0, "debugFree - invalid magic number in header: %08x, malloc tag = %d, free tag = %d\n", chunkHeader->magicNumber, chunkHeader->tag, tag );
-		restore_and_exit(0);
+		cleanup_all( CLEANUP_FAILURE );
 	}
 
 	previous = NULL;
@@ -293,7 +308,7 @@ void debugFree(void *memoryParameter, int tag)
 	if (walker == NULL)
 	{
 		debug_output( 0, "Double free detected, malloc tag = %d, free tag = %d\n", chunkHeader->tag, tag );
-		restore_and_exit(0);
+		cleanup_all( CLEANUP_FAILURE );
 	}
 
 	if (previous == NULL)
@@ -307,7 +322,7 @@ void debugFree(void *memoryParameter, int tag)
 	if (chunkTrailer->magicNumber != MAGIC_NUMBER)
 	{
 		debug_output( 0, "debugFree - invalid magic number in trailer: %08x, malloc tag = %d, free tag = %d\n", chunkTrailer->magicNumber, chunkHeader->tag, tag );
-		restore_and_exit(0);
+		cleanup_all( CLEANUP_FAILURE );
 	}
 
 #if defined MEMORY_USAGE
@@ -339,7 +354,7 @@ void *debugMalloc(uint32_t length, int32_t tag)
 	if (result == NULL)
 	{
 		debug_output( 0, "Cannot allocate %u bytes, malloc tag = %d\n", length, tag );
-		restore_and_exit(0);
+		cleanup_all( CLEANUP_FAILURE );
 	}
 
 	return result;
@@ -354,7 +369,7 @@ void *debugRealloc(void *memory, uint32_t length, int32_t tag)
 	if (result == NULL)
 	{
 		debug_output( 0, "Cannot re-allocate %u bytes, malloc tag = %d\n", length, tag );
-		restore_and_exit(0);
+		cleanup_all( CLEANUP_FAILURE );
 	}
 
 	return result;
@@ -364,5 +379,10 @@ void debugFree(void *memory, int32_t tag)
 {
 	free(memory);
 }
+
+void debugMemory( int fd )
+{
+}
+
 
 #endif

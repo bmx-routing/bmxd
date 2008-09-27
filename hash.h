@@ -23,8 +23,8 @@ typedef int (*hashdata_choose_cb)(void *, int, int);
 typedef void (*hashdata_free_cb)(void *);
 
 struct element_t {
-	void *data;						/* pointer to the data */
-	struct element_t *next;			/* overflow bucket pointer */
+	void *data;			/* pointer to the data */
+	struct element_t *next;		/* overflow bucket pointer */
 };
 
 struct hash_it_t {
@@ -35,16 +35,16 @@ struct hash_it_t {
 };
 
 struct hashtable_t {
-	struct element_t **table;					/* the hashtable itself, with the buckets */
-	int elements;								/* number of elements registered */
-	int size;									/* size of hashtable */
+	struct element_t **table;	/* the hashtable itself, with the buckets */
+	int elements;			/* number of elements registered */
+	int size;			/* size of hashtable */
 	int key_size;
-	hashdata_compare_cb compare;			    /* callback to a compare function.
-												 * should compare 2 element datas for their keys,
-												 * return 0 if same and not 0 if not same */
-	hashdata_choose_cb choose;					/* the hashfunction, should return an index based
-												 * on the key in the data of the first argument
-												 * and the size the second */
+	hashdata_compare_cb compare;	/* callback to a compare function.
+					 * should compare 2 element datas for their keys,
+					 * return 0 if same and not 0 if not same */
+	hashdata_choose_cb choose;	/* the hashfunction, should return an index based
+					 * on the key in the data of the first argument
+					 * and the size the second */
 };
 
 int compare_key( void *data1, void *data2, int key_size );

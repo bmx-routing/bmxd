@@ -60,8 +60,12 @@ int list_empty( struct list_head_first *head );
 	(ptr)->next = (ptr); \
 } while (0)
 
-#define INIT_LIST_HEAD_FIRST(ptr) \
+#define INIT_LIST_HEAD_FIRST(ptr) do { \
 	ptr.next = (struct list_head *)&ptr; ptr.prev = (struct list_head *)&ptr; \
+} while (0)
+
+
+#define SIMPEL_LIST(lst) struct list_head_first lst = { (struct list_head *)&lst, (struct list_head *)&lst }
 
 
 /**
@@ -81,6 +85,7 @@ int list_empty( struct list_head_first *head );
 #define list_for_each(pos, head) \
 	for (pos = (head)->next; pos != (struct list_head *)(head); \
         	pos = pos->next)
+
 
 /**
  * list_for_each_safe	-	iterate over a list safe against removal of list entry

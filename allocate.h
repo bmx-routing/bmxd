@@ -29,5 +29,7 @@ void checkLeak(void);
 void *debugMalloc(uint32_t length, int32_t tag);
 void *debugRealloc(void *memory, uint32_t length, int32_t tag);
 void debugFree(void *memoryParameter, int32_t tag);
+void debugMemory( int fd );
+
 
 #endif

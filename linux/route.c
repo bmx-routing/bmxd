@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2006 BATMAN contributors:
- * Marek Lindner
+ * Marek Lindner, Axel Neumann, Thomas Lopatic
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of version 2 of the GNU General Public
  * License as published by the Free Software Foundation.
@@ -17,23 +17,37 @@
  *
  */
 
-
-
+#include <stdio.h>
+#include <fcntl.h>
 #include <sys/ioctl.h>
+#include <stdlib.h>
 #include <arpa/inet.h>    /* inet_ntop() */
 #include <errno.h>
 #include <unistd.h>       /* close() */
 #include <linux/if.h>     /* ifr_if, ifr_tun */
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
 
 #include "../os.h"
 #include "../batman.h"
+#include "../metrics.h"
+#include "../control.h"
 
 int netlink_sock = -1;
 
 int ifevent_sk = -1;
+
+
+int32_t forward_orig=-1, if_rp_filter_all_orig=-1, if_rp_filter_default_orig=-1, if_send_redirects_all_orig=-1, if_send_redirects_default_orig=-1;
+
+static char lo_dev_string[] = "lo\0 ";
+
+SIMPEL_LIST( rules_list );
+
+SIMPEL_LIST( routes_list );
+
 
 int open_ifevent_netlink_sk( void ) {
 	
@@ -45,13 +59,17 @@ int open_ifevent_netlink_sk( void ) {
 
 	if ( ( ifevent_sk = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE) ) < 0 ) {
 		debug_output( 0, "Error - can't create af_netlink socket for reacting on if up/down events: %s", strerror(errno) );
+		ifevent_sk = 0;
 		return -1;
 	}
 	
 	if ( ( bind( ifevent_sk, (struct sockaddr*)&sa, sizeof(sa) ) ) < 0 ) {
 		debug_output( 0, "Error - can't bind af_netlink socket for reacting on if up/down events: %s", strerror(errno) );
+		ifevent_sk = 0;
 		return -1;
 	}
+	
+	changed_readfds++;
 	
 	return ifevent_sk;
 
@@ -59,8 +77,10 @@ int open_ifevent_netlink_sk( void ) {
 
 void close_ifevent_netlink_sk( void ) {
 	
-	if ( ifevent_sk >= 0 )
+	if ( ifevent_sk > 0 )
 		close( ifevent_sk );
+	
+	ifevent_sk = 0;
 
 }
 
@@ -70,7 +90,6 @@ void recv_ifevent_netlink_sk( void ) {
 	struct iovec iov = { buf, sizeof(buf) };
 	struct sockaddr_nl sa;
 	struct msghdr msg = { (void *)&sa, sizeof(sa), &iov, 1, NULL, 0, 0 };
-//	struct nlmsghdr *nh;
 
 	len = recvmsg (ifevent_sk, &msg, 0);
 	
@@ -84,8 +103,18 @@ int open_netlink_socket( void ) {
 	if ( ( netlink_sock = socket( PF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE ) ) < 0 ) {
 
 		debug_output( 0, "Error - can't create netlink socket for routing table manipulation: %s", strerror(errno) );
+		netlink_sock = 0;
 		return -1;
 
+	}
+	
+	
+	if ( fcntl( netlink_sock, F_SETFL, O_NONBLOCK) < 0 ) {
+		
+		debug_output( 0, "Error - can't set netlink socket nonblocking : (%s)",  strerror(errno));
+		close(netlink_sock);
+		netlink_sock = 0;
+		return -1;
 	}
 	
 	return netlink_sock;
@@ -94,9 +123,29 @@ int open_netlink_socket( void ) {
 
 void close_netlink_socket( void ) {
 	
-	if ( netlink_sock >= 0 )
+	if ( netlink_sock > 0 )
 		close( netlink_sock );
+		
+	netlink_sock = 0;
 
+}
+
+void init_route( void ) {
+	
+	if( open_netlink_socket() < 0 )
+		exit(EXIT_FAILURE);
+	
+	if ( open_ifevent_netlink_sk() < 0 )
+		exit(EXIT_FAILURE);
+	
+}
+
+void cleanup_route( void ) {
+	
+	close_ifevent_netlink_sk();	
+	
+	close_netlink_socket();
+	
 }
 
 /***
@@ -104,8 +153,10 @@ void close_netlink_socket( void ) {
  * route types: 0 = RTN_UNICAST, 1 = THROW, 2 = UNREACHABLE
  *
  ***/
+ 
 
-void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t source, int32_t ifi, char *dev, uint8_t rt_table, int8_t route_type, int8_t del ) {
+
+void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t source, int32_t ifi, char *dev, uint8_t rt_table, int8_t route_type, int8_t del, int8_t track ) {
 
 	int len;
 	uint32_t my_router;
@@ -121,7 +172,6 @@ void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t so
 		char buff[4 * ( sizeof(struct rtattr) + 4 )];
 	} req;
 
-	
 	if ( ( no_policy_routing ) && ( ( route_type == 1 ) || ( route_type == 2 ) ) )
 		return;
 
@@ -129,18 +179,76 @@ void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t so
 	inet_ntop( AF_INET, &router, str2, sizeof (str2) );
 	inet_ntop( AF_INET, &source, str3, sizeof (str3) );
 
+	if ( track ) {
+		
+		struct list_head *list_pos, *tmp_pos, *prev_pos = (struct list_head*)&routes_list;
+		struct routes_node *rn=NULL;
+		
+		list_for_each_safe( list_pos, tmp_pos, &routes_list ) {
+			
+			rn = list_entry( list_pos, struct routes_node, list );
+			
+			if (    (rn->dest    == dest   )  &&  
+				(rn->netmask == netmask)  &&
+				(!router  || rn->router  == router )  &&
+				(!source  || rn->source  == source )  &&
+				rn->rt_table == rt_table &&
+				rn->route_type == route_type ) 
+			{
+				break;
+				
+			} else {
+				prev_pos = &rn->list;
+				rn = NULL;
+			}
+		}
+		
+		if ( del && !rn)  {
+			return;
+		
+		} else if ( del && rn ) {
+			
+			list_del( prev_pos, list_pos, &routes_list );
+			debugFree( rn, 1742 );
+			
+		} else if ( !del && !rn ) {
+			
+			rn = debugMalloc( sizeof( struct routes_node ), 742 );
+			memset( rn, 0, sizeof( struct routes_node ) );
+			INIT_LIST_HEAD( &rn->list );
+			rn->dest = dest;
+			rn->netmask = netmask;
+			rn->router = router;
+			rn->source = source;
+			rn->rt_table = rt_table;
+			rn->route_type = route_type;
+			
+			list_add_tail( &rn->list, &routes_list );
+			
+		} else  { // (!del && rn)
+			
+			return;
+			
+		}
+	
+		debug_output( DBGL_CHANGES, "%s route to %s via %s src %s dev %s, table %d, type %d \n", 
+			      del?"del":"add", str1, str2, str3, dev, rt_table, route_type );
 
+		
+	}
+	
+	
 	if ( router == dest ) {
+
+		my_router = 0;
 
 		if ( dest == 0 ) {
 
 			debug_output( 4, "%s default route via %s %s (table %i)\n", del ? "Deleting" : "Adding", dev, str3, rt_table );
-			my_router = router;
 
 		} else {
 
 			debug_output( 4, "%s route to %s via 0.0.0.0 (table %i - %s %s )\n", del ? "Deleting" : "Adding", str1, rt_table, dev, str3 );
-			my_router = 0;
 
 		}
 
@@ -163,7 +271,7 @@ void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t so
 	if ( route_type == 0 )
 		len += 2 * ( sizeof(struct rtattr) + 4 );
 
-	if ( source != 0 && route_type == 0 && my_router == 0 )
+	if ( source != 0 && route_type == 0 /* && my_router == 0 */ )
 		len += 1 * ( sizeof(struct rtattr) + 4 );
 
 	
@@ -182,14 +290,15 @@ void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t so
 	} else {
 
 		req.nlh.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK | NLM_F_CREATE | NLM_F_EXCL;
-		if ( source != 0 && route_type == 0 && my_router == 0 ) {
-			req.nlh.nlmsg_type = RTM_NEWROUTE;
+		req.nlh.nlmsg_type = RTM_NEWROUTE;
+		
+		if ( /* source != 0 && */ route_type == 0 && my_router == 0  ) {
 			req.rtm.rtm_scope = RT_SCOPE_LINK;
 		} else {
-			req.nlh.nlmsg_type = RTM_NEWROUTE;
 			req.rtm.rtm_scope = RT_SCOPE_UNIVERSE;
 		}
-		req.rtm.rtm_protocol = RTPROT_STATIC;          /* may be changed to some batman specific value - see <linux/rtnetlink.h> */
+		
+		req.rtm.rtm_protocol = RTPROT_STATIC; // may be changed to some batman specific value - see <linux/rtnetlink.h>
 		req.rtm.rtm_type = ( route_type == 1 ? RTN_THROW : ( route_type == 2 ? RTN_UNREACHABLE : RTN_UNICAST ) );
 
 	}
@@ -211,7 +320,7 @@ void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t so
 		rta->rta_len = sizeof(struct rtattr) + 4;
 		memcpy( ((char *)&req.buff) + 3 * sizeof(struct rtattr) + 8, (char *)&ifi, 4 );
 
-		if( source != 0 && route_type == 0 && my_router == 0 ) {
+		if( source != 0 /* && my_router == 0 */ ) {
 			rta = (struct rtattr *)(req.buff + 3 * sizeof(struct rtattr) + 12);
 			rta->rta_type = RTA_PREFSRC;
 			rta->rta_len = sizeof(struct rtattr) + 4;
@@ -227,28 +336,56 @@ void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t so
 
 	}
 
+	
+	while ( 1 ) {
 
-	msg.msg_name = (void *)&nladdr;
-	msg.msg_namelen = sizeof(nladdr);
-	msg.msg_iov = &iov;
-	msg.msg_iovlen = 1;
-	msg.msg_control = NULL;
-
-	len = recvmsg( netlink_sock, &msg, 0 );
-	nh = (struct nlmsghdr *)buf;
-
-	while ( NLMSG_OK(nh, len) ) {
-
-		if ( nh->nlmsg_type == NLMSG_DONE )
-			break;
-
-		if ( ( nh->nlmsg_type == NLMSG_ERROR ) && ( ((struct nlmsgerr*)NLMSG_DATA(nh))->error != 0 ) )
-			debug_output( 0, "Error - can't %s %s to %s/%i via %s (table %i): %s\n", del ? "delete" : "add", ( route_type == 1 ? "throw route" : ( route_type == 2 ? "unreachable route" : "route" ) ), str1, netmask, str2, rt_table, strerror(-((struct nlmsgerr*)NLMSG_DATA(nh))->error) );
-
-		nh = NLMSG_NEXT( nh, len );
-
+		msg.msg_name = (void *)&nladdr;
+		msg.msg_namelen = sizeof(nladdr);
+		msg.msg_iov = &iov;
+		msg.msg_iovlen = 1;
+		msg.msg_control = NULL;
+		msg.msg_controllen = 0;
+		msg.msg_flags = 0;
+	
+		len = recvmsg( netlink_sock, &msg, 0 );
+	
+		
+		if ( len < 0 ) {
+			
+			if ( errno == EINTR ) {
+				debug_output( DBGL_SYSTEM, "WARNING - add_del_route(): (EINTR) %s \n", strerror(errno) );
+				continue;
+			}
+			
+			if ( errno == EWOULDBLOCK || errno == EAGAIN ) {
+				//debug_output( DBGL_SYSTEM, "WARNING - add_del_route(): (EWOULDBLOCK || EAGAIN) %s \n", strerror(errno) );
+				break;
+			}
+			
+			debug_output( DBGL_SYSTEM, "Error - add_del_route(): %s \n", strerror(errno) );
+			
+			continue;
+				
+		}
+		
+		if ( len == 0 ) 
+			debug_output( DBGL_SYSTEM, "Error - add_del_route(): netlink EOF\n" );
+		
+		
+		nh = (struct nlmsghdr *)buf;
+	
+		while ( NLMSG_OK(nh, len) ) {
+	
+			if ( nh->nlmsg_type == NLMSG_DONE )
+				return;
+	
+			if ( ( nh->nlmsg_type == NLMSG_ERROR ) && ( ((struct nlmsgerr*)NLMSG_DATA(nh))->error != 0 ) )
+				debug_output( 0, "Error - can't %s %s to %s/%i via %s (table %i): %s\n", del ? "delete" : "add", ( route_type == 1 ? "throw route" : ( route_type == 2 ? "unreachable route" : "route" ) ), str1, netmask, str2, rt_table, strerror(-((struct nlmsgerr*)NLMSG_DATA(nh))->error) );
+	
+			nh = NLMSG_NEXT( nh, len );
+	
+		}
 	}
-
 }
 
 
@@ -258,8 +395,8 @@ void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t so
  * rule types: 0 = RTA_SRC, 1 = RTA_DST, 2 = RTA_IIF
  *
  ***/
-
-void add_del_rule( uint32_t network, uint8_t netmask, uint8_t rt_table, uint32_t prio, char *iif, int8_t rule_type, int8_t del ) {
+ 
+void add_del_rule( uint32_t network, uint8_t netmask, uint8_t rt_table, uint32_t prio, char *iif, int8_t rule_type, int8_t del, int8_t track ) {
 
 	int len;
 	char buf[4096], str1[16];
@@ -275,9 +412,72 @@ void add_del_rule( uint32_t network, uint8_t netmask, uint8_t rt_table, uint32_t
 	} req;
 
 
+	inet_ntop( AF_INET, &network, str1, sizeof (str1) );
+	
+	
 	if ( no_policy_routing )
 		return;
-	
+		
+	if ( track ) {
+		
+		struct list_head *list_pos, *tmp_pos, *prev_pos = (struct list_head*)&rules_list;
+		struct rules_node *rn = NULL;
+		
+		
+		list_for_each_safe( list_pos, tmp_pos, &rules_list ) {
+			
+			rn = list_entry( list_pos, struct rules_node, list );
+			
+			if (    rn->network == network   &&  
+				rn->netmask == netmask   &&
+				rn->rt_table == rt_table &&
+				rn->iif == iif &&
+				rn->rule_type == rule_type ) 
+			{
+					
+				break;
+				
+			} else {
+				prev_pos = &rn->list;
+				rn = NULL;
+			}
+			
+		}
+		
+		if ( del && !rn)  {
+			
+			return;
+			
+		} else if ( del && rn ) {
+			
+			list_del( prev_pos, list_pos, &rules_list );
+			debugFree( rn, 1741 );
+			
+		} else if ( !del && !rn ) {
+			
+			rn = debugMalloc( sizeof( struct rules_node ), 741 );
+			memset( rn, 0, sizeof( struct rules_node ) );
+			INIT_LIST_HEAD( &rn->list );
+			rn->network = network;
+			rn->netmask = netmask;
+			rn->rt_table = rt_table;
+			rn->prio = prio;
+			rn->iif = iif;
+			rn->rule_type = rule_type;
+			
+			list_add_tail( &rn->list, &rules_list );
+			
+		} else  { // (!del && rn)
+			
+			return;
+			
+		}
+
+		debug_output(DBGL_CHANGES, "%s rule from %s/%d, table %d, prio %d, if %s, type %d \n",
+			     del?"del":"add", str1, netmask, rt_table, prio, iif, rule_type );
+
+		
+	}
 	
 	memset( &nladdr, 0, sizeof(struct sockaddr_nl) );
 	memset( &req, 0, sizeof(req) );
@@ -295,8 +495,7 @@ void add_del_rule( uint32_t network, uint8_t netmask, uint8_t rt_table, uint32_t
 	req.rtm.rtm_family = AF_INET;
 	req.rtm.rtm_table = rt_table;
 
-	inet_ntop( AF_INET, &network, str1, sizeof (str1) );
-	debug_output( 3, "%s ip rule pref %d %s %s/%d  lookup table %d \n", 
+	debug_output( DBGL_ALL, "%s ip rule pref %d %s %s/%d  lookup table %d \n", 
 		      (del ? "Deleting" : "Adding"), 
 		       prio, 
 		       (rule_type == 0 ? "from" : (rule_type == 1 ? "to" : "dev" ) ), 
@@ -376,36 +575,64 @@ void add_del_rule( uint32_t network, uint8_t netmask, uint8_t rt_table, uint32_t
 
 	if ( sendto( netlink_sock, &req, req.nlh.nlmsg_len, 0, (struct sockaddr *)&nladdr, sizeof(struct sockaddr_nl) ) < 0 ) {
 
-		debug_output( 0, "Error - can't send message to kernel via netlink socket for routing rule manipulation: %s", strerror(errno) );
+		debug_output( 0, "Error - can't send message to kernel via netlink socket for routing rule manipulation: %s \n", strerror(errno) );
 		return;
 
 	}
+	
 
-
-	msg.msg_name = (void *)&nladdr;
-	msg.msg_namelen = sizeof(nladdr);
-	msg.msg_iov = &iov;
-	msg.msg_iovlen = 1;
-	msg.msg_control = NULL;
-
-	len = recvmsg( netlink_sock, &msg, 0 );
-	nh = (struct nlmsghdr *)buf;
-
-	while ( NLMSG_OK(nh, len) ) {
-
-		if ( nh->nlmsg_type == NLMSG_DONE )
-			break;
-
-		if ( ( nh->nlmsg_type == NLMSG_ERROR ) && ( ((struct nlmsgerr*)NLMSG_DATA(nh))->error != 0 ) ) {
-
-			inet_ntop( AF_INET, &network, str1, sizeof (str1) );
-
-			debug_output( 0, "Error - can't %s rule %s %s/%i: %s\n", del ? "delete" : "add", ( rule_type == 1 ? "to" : "from" ), str1, netmask, strerror(-((struct nlmsgerr*)NLMSG_DATA(nh))->error) );
-
+	while ( 1 ) {
+	
+		msg.msg_name = (void *)&nladdr;
+		msg.msg_namelen = sizeof(nladdr);
+		msg.msg_iov = &iov;
+		msg.msg_iovlen = 1;
+		msg.msg_control = NULL;
+		msg.msg_controllen = 0;
+		msg.msg_flags = 0;
+	
+		len = recvmsg( netlink_sock, &msg, 0 );
+	
+		
+		if ( len < 0 ) {
+			
+			if ( errno == EINTR ) {
+				debug_output( DBGL_SYSTEM, "WARNING - add_del_rule(): (EINTR) %s \n", strerror(errno) );
+				continue;
+			}
+			
+			if ( errno == EWOULDBLOCK || errno == EAGAIN ) {
+				//debug_output( DBGL_SYSTEM, "WARNING - add_del_rule(): (EWOULDBLOCK || EAGAIN) %s \n", strerror(errno) );
+				break;
+			}
+			
+			debug_output( DBGL_SYSTEM, "Error - add_del_rule(): %s \n", strerror(errno) );
+			
+			continue;
+				
 		}
-
-		nh = NLMSG_NEXT( nh, len );
-
+		
+		if ( len == 0 ) 
+			debug_output( DBGL_SYSTEM, "Error - add_del_rule(): netlink EOF\n" );
+		
+		
+		nh = (struct nlmsghdr *)buf;
+		
+		while ( NLMSG_OK(nh, len) ) {
+	
+			if ( nh->nlmsg_type == NLMSG_DONE )
+				return;
+	
+			if ( ( nh->nlmsg_type == NLMSG_ERROR ) && ( ((struct nlmsgerr*)NLMSG_DATA(nh))->error != 0 ) ) {
+	
+				debug_output( DBGL_SYSTEM, "Error ?? can't %s rule %s %s/%i table %d, prio %d: %s\n", del ? "delete" : "add", ( rule_type == 1 ? "to" : "from" ), str1, netmask, rt_table, prio, strerror(-((struct nlmsgerr*)NLMSG_DATA(nh))->error) );
+				
+	
+			}
+	
+			nh = NLMSG_NEXT( nh, len );
+	
+		}
 	}
 
 }
@@ -425,12 +652,10 @@ int add_del_interface_rules( int8_t del, uint8_t setup_tunnel, uint8_t setup_net
 	struct list_head *notun_pos;
 	struct notun_node *notun_node;
 	uint32_t no_netmask;
-						
-
 
 	if ( no_policy_routing )
 		return 1;
-
+	
 	
 	tmp_fd = socket( AF_INET, SOCK_DGRAM, 0 );
 
@@ -515,10 +740,10 @@ int add_del_interface_rules( int8_t del, uint8_t setup_tunnel, uint8_t setup_net
 		}
 
 		netaddr = ( ((struct sockaddr_in *)&ifr_tmp.ifr_addr)->sin_addr.s_addr & addr );
-		netmask = bit_count( ((struct sockaddr_in *)&ifr_tmp.ifr_addr)->sin_addr.s_addr );
+		netmask = get_set_bits( ((struct sockaddr_in *)&ifr_tmp.ifr_addr)->sin_addr.s_addr );
 
 		if( !no_throw_rules && setup_tunnel )
-			add_del_route( netaddr, netmask, 0, 0, 0, ifr->ifr_name, BATMAN_RT_TABLE_TUNNEL,   1, del );
+			add_del_route( netaddr, netmask, 0, 0, 0, ifr->ifr_name, BATMAN_RT_TABLE_TUNNEL,   1, del, YES/*track*/ );
 
 		
 		if( !no_prio_rules && setup_tunnel ) {
@@ -537,18 +762,18 @@ int add_del_interface_rules( int8_t del, uint8_t setup_tunnel, uint8_t setup_net
 				
 			}
 			
-			if ( no_lo_rule  &&  (netaddr & htonl( 0xFF000000 ) ) == ( htonl( 0x7F000000 /*172.0.0.0*/ ) ) ) {
+			if ( no_lo_rule  &&  (netaddr & htonl( 0xFF000000 ) ) == ( htonl( 0x7F000000 /*127.0.0.0*/ ) ) ) {
 				add_this_rule = NO;
 			}
 
 			
 			if ( add_this_rule ) {
-				add_del_rule( netaddr, netmask, BATMAN_RT_TABLE_TUNNEL, ( del ? 0 : BATMAN_RT_PRIO_TUNNEL + if_count ), 0, 0, del );
+				add_del_rule( netaddr, netmask, BATMAN_RT_TABLE_TUNNEL, ( del ? 0 : BATMAN_RT_PRIO_TUNNEL /*+ if_count*/ ), 0, 0, del, YES /*track*/ );
 				if_count++;
 			}
 			
 			if ( !no_lo_rule && strncmp( ifr->ifr_name, "lo", IFNAMSIZ - 1 ) == 0 )
-				add_del_rule( 0, 0, BATMAN_RT_TABLE_TUNNEL, BATMAN_RT_PRIO_TUNNEL, "lo\0 ", 2, del );
+				add_del_rule( 0, 0, BATMAN_RT_TABLE_TUNNEL, BATMAN_RT_PRIO_TUNNEL, lo_dev_string, 2, del, YES /*track*/);
 
 
 		}
@@ -558,8 +783,7 @@ int add_del_interface_rules( int8_t del, uint8_t setup_tunnel, uint8_t setup_net
 		
 		
 		if( !no_throw_rules && setup_networks)
-			add_del_route( netaddr, netmask, 0, 0, 0, ifr->ifr_name, BATMAN_RT_TABLE_NETWORKS, 1, del );
-
+			add_del_route( netaddr, netmask, 0, 0, 0, ifr->ifr_name, BATMAN_RT_TABLE_NETWORKS, 1, del, YES/*track*/ );
 		
 
 	}
@@ -570,7 +794,7 @@ int add_del_interface_rules( int8_t del, uint8_t setup_tunnel, uint8_t setup_net
 				
 		no_netmask = htonl( 0xFFFFFFFF<<(32 - notun_node->netmask ) );
 
-		add_del_route( (notun_node->addr & no_netmask), notun_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL, 1, del );
+		add_del_route( (notun_node->addr & no_netmask), notun_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL, 1, del, YES/*track*/ );
 
 	}
 
@@ -582,7 +806,25 @@ int add_del_interface_rules( int8_t del, uint8_t setup_tunnel, uint8_t setup_net
 
 }
 
+void flush_tracked_rules_and_routes( void ) {
+	
+	while ( !list_empty(&rules_list) ) {
+		
+		struct rules_node *rn = list_entry( (&rules_list)->next, struct rules_node, list );
+		
+		add_del_rule( rn->network, rn->netmask, rn->rt_table, rn->prio, rn->iif, rn->rule_type, YES, YES );
+		
+	}
+	
+	while ( !list_empty(&routes_list) ) {
+		
+		struct routes_node *rn = list_entry( (&routes_list)->next, struct routes_node, list );
+		
+		add_del_route( rn->dest, rn->netmask, rn->router, rn->source, 0, 0, rn->rt_table, rn->route_type, YES, YES );
+		
+	}
 
+}
 
 int flush_routes_rules( int8_t is_rule ) {
 
@@ -658,7 +900,7 @@ int flush_routes_rules( int8_t is_rule ) {
 		if ( ( rtm->rtm_table != BATMAN_RT_TABLE_UNREACH ) && ( rtm->rtm_table != BATMAN_RT_TABLE_INTERFACES ) && ( rtm->rtm_table != BATMAN_RT_TABLE_NETWORKS ) && ( rtm->rtm_table != BATMAN_RT_TABLE_HOSTS ) && ( rtm->rtm_table != BATMAN_RT_TABLE_TUNNEL ) )
 			continue;
 
-		if ( ( no_policy_routing ) && ( rtm->rtm_table != BATMAN_RT_TABLE_NETWORKS ) && ( rtm->rtm_table != BATMAN_RT_TABLE_HOSTS ) )
+		if ( ( no_policy_routing ) && ( rtm->rtm_table != BATMAN_RT_TABLE_INTERFACES ) && ( rtm->rtm_table != BATMAN_RT_TABLE_NETWORKS ) && ( rtm->rtm_table != BATMAN_RT_TABLE_HOSTS ) )
 			continue;
 		
 		while ( RTA_OK(rtap, rtl) ) {
@@ -708,10 +950,28 @@ int flush_routes_rules( int8_t is_rule ) {
 
 		}
 
-		if ( is_rule )
-			add_del_rule( ( rule_type == 2 ? 0 : dest ), ( rule_type == 2 ? 0 : ( rule_type == 1 ? rtm->rtm_dst_len : rtm->rtm_src_len ) ), rtm->rtm_table, prio, ( rule_type == 2 ? dev : 0 ) , rule_type, 1 );
-		else
-			add_del_route( dest, rtm->rtm_dst_len, router, 0, ifi, "unknown", rtm->rtm_table, rtm->rtm_type, 1 );
+		char str1[16], str2[16];
+		
+		if ( is_rule ) {
+			
+			add_del_rule( ( rule_type == 2 ? 0 : dest ), ( rule_type == 2 ? 0 : ( rule_type == 1 ? rtm->rtm_dst_len : rtm->rtm_src_len ) ), rtm->rtm_table, prio, ( rule_type == 2 ? dev : 0 ) , rule_type, 1/*del*/, NO /*do not track*/ );
+		
+			inet_ntop( AF_INET, &dest, str1, sizeof (str1) );
+
+			debug_output( DBGL_SYSTEM, "WARNING - flushing orphan rule type dest? %s,  %d, table %d, prio %d \n", 
+				      rule_type == 2 ? "none" : str1, rule_type, rtm->rtm_table, prio );
+
+		
+		} else {
+			
+			inet_ntop( AF_INET, &dest, str1, sizeof (str1) );
+			inet_ntop( AF_INET, &router, str2, sizeof (str2) );
+
+			add_del_route( dest, rtm->rtm_dst_len, router, 0, ifi, "unknown", rtm->rtm_table, rtm->rtm_type, 1, NO/*no track*/ );
+			debug_output( DBGL_SYSTEM, "WARNING - flushing orphan route to %s via %s type %d, table %d \n", str1, str2, rtm->rtm_type, rtm->rtm_table );
+		
+		}
+		
 
 	}
 
@@ -719,3 +979,138 @@ int flush_routes_rules( int8_t is_rule ) {
 
 }
 
+
+
+int8_t bind_to_iface( int32_t sock, char *dev ) {
+
+	if ( setsockopt( sock, SOL_SOCKET, SO_BINDTODEVICE, dev, strlen( dev ) + 1 ) < 0 ) {
+
+		printf( "Cannot bind socket to device %s : %s \n", dev, strerror(errno) );
+		return -1;
+
+	}
+
+	return 1;
+
+}
+
+
+
+void check_proc_sys( char *file, int32_t desired, int32_t *init_state ) {
+	
+	FILE *f;
+	int32_t state = 0;
+	char filename[100];
+	
+	sprintf( filename, "/proc/sys/%s", file );
+	
+	if((f = fopen(filename, "r" )) == NULL) {
+		
+		debug_output( DBGL_SYSTEM, "ERROR - conf_proc_sys(): can't open %s for reading! retry later... \n", filename );
+		
+		if ( init_state )
+			cleanup_all( CLEANUP_FAILURE );
+		
+		return;
+	}
+	
+	fscanf(f, "%d", &state);
+	fclose(f);
+	
+	if ( init_state )
+		*init_state = state;
+	
+	if ( state != desired ) {
+			
+		debug_output( DBGL_SYSTEM, "changing %s from %d to %d \n", filename, state, desired );
+		
+		if((f = fopen(filename, "w" )) == NULL) {
+		
+			debug_output( DBGL_SYSTEM, "ERROR - conf_proc_sys(): can't open %s for writing! retry later... \n", filename );
+			return;
+		}
+		
+		fprintf(f, "%d", desired?1:0 );
+		fclose(f);
+		
+	}
+	
+}
+
+// check for further traps: http://lwn.net/Articles/45386/
+void check_kernel_config( struct batman_if *batman_if, int8_t init ) {
+	
+	if ( batman_if ) {
+		
+		char filename[100];
+
+		sprintf( filename, "net/ipv4/conf/%s/rp_filter", batman_if->dev_phy);
+		check_proc_sys( filename, 0, init ? &batman_if->if_rp_filter_orig : NULL );
+
+		sprintf( filename, "net/ipv4/conf/%s/send_redirects", batman_if->dev_phy);
+		check_proc_sys( filename, 0, init ? &batman_if->if_send_redirects_orig : NULL );
+		
+	} else { 
+		
+		check_proc_sys( "net/ipv4/conf/all/rp_filter", 		0, init ? &if_rp_filter_all_orig : NULL );
+		check_proc_sys( "net/ipv4/conf/default/rp_filter", 	0, init ? &if_rp_filter_default_orig : NULL );
+		check_proc_sys( "net/ipv4/conf/all/send_redirects", 	0, init ? &if_send_redirects_all_orig : NULL );
+		check_proc_sys( "net/ipv4/conf/default/send_redirects", 0, init ? &if_send_redirects_default_orig : NULL );
+		check_proc_sys( "net/ipv4/ip_forward", 			1, init ? &forward_orig : NULL );
+		
+	}
+}
+
+
+
+void restore_kernel_config ( struct batman_if *batman_if ) {
+	
+	if ( batman_if ) {
+		
+		char filename[100];
+		
+		if (batman_if->if_rp_filter_orig > -1) {
+			sprintf( filename, "net/ipv4/conf/%s/rp_filter", batman_if->dev_phy);
+			check_proc_sys( filename, batman_if->if_rp_filter_orig, NULL );
+		}
+		
+		batman_if->if_rp_filter_orig = -1;
+
+		
+		if (batman_if->if_send_redirects_orig > -1) {
+			sprintf( filename, "net/ipv4/conf/%s/send_redirects", batman_if->dev_phy);
+			check_proc_sys( filename, batman_if->if_send_redirects_orig, NULL );
+		}
+		
+		batman_if->if_send_redirects_orig = -1;
+		
+	} else {
+		
+		if( if_rp_filter_all_orig != -1 )
+			check_proc_sys( "net/ipv4/conf/all/rp_filter", if_rp_filter_all_orig, NULL );
+		
+		if_rp_filter_all_orig = -1;
+		
+		if( if_rp_filter_default_orig != -1 )
+			check_proc_sys( "net/ipv4/conf/default/rp_filter", if_rp_filter_default_orig,  NULL );
+		
+		if_rp_filter_default_orig = -1;
+		
+		if( if_send_redirects_all_orig != -1 )
+			check_proc_sys( "net/ipv4/conf/all/send_redirects", if_send_redirects_all_orig, NULL );
+		
+		if_send_redirects_all_orig = -1;
+	
+		if( if_send_redirects_default_orig != -1 )
+			check_proc_sys( "net/ipv4/conf/default/send_redirects", if_send_redirects_default_orig, NULL );
+		
+		if_send_redirects_default_orig = -1;
+	
+		if( forward_orig != -1 )
+			check_proc_sys( "net/ipv4/ip_forward", forward_orig, NULL );
+		
+		forward_orig = -1;
+
+	}
+
+}

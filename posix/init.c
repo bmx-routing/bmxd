@@ -18,7 +18,7 @@
  */
 
 
-
+#define _GNU_SOURCE
 #include <stdlib.h>
 #include <unistd.h>
 #include <getopt.h>
@@ -30,12 +30,15 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
-#include <net/if.h>
+//#include <net/if.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
 
 #include "../os.h"
 #include "../originator.h"
+#include "../metrics.h"
+#include "../control.h"
+
 #include "../batman.h"
 
 #define IOCSETDEV 1
@@ -47,7 +50,60 @@
 
 int8_t stop;
 
+int32_t loop_mode = NO, info_output = 0;
 
+
+static struct option long_options[] = {
+ {ADVANCED_SWITCH,            0, 0, 0},
+ {PURGE_SWITCH,               0, 0, 0},
+ {GENIII_DEFAULTS_SWITCH,     0, 0, 0},
+ {BMX_DEFAULTS_SWITCH,        0, 0, 0},
+ {GRAZ07_DEFAULTS_SWITCH,     0, 0, 0},
+ {ADD_SRV_SWITCH,             1, 0, 0},
+ {DEL_SRV_SWITCH,             1, 0, 0},
+ {AGGREGATIONS_PER_OGI_SWITCH,1, 0, 0},
+ {BIDIRECT_TIMEOUT_SWITCH,    1, 0, 0},
+ {NBRFSIZE_SWITCH,            1, 0, 0},
+ {INITIAL_SEQNO_SWITCH,       1, 0, 0},
+ {FAKE_UPTIME_SWITCH,         1, 0, 0},
+ {DAD_TIMEOUT_SWITCH,         1, 0, 0},
+ {GW_CHANGE_HYSTERESIS_SWITCH,1, 0, 0},
+ {GW_TUNNEL_NETW_SWITCH,      1, 0, 0},
+ {TUNNEL_IP_LEASE_TIME_SWITCH,1, 0, 0},
+ {TWO_WAY_TUNNEL_SWITCH,      1, 0, 0},
+ {ONE_WAY_TUNNEL_SWITCH,      1, 0, 0},
+ {TTL_SWITCH,                 1, 0, 0},
+ {NONPRIMARY_HNA_SWITCH,      1, 0, 0},
+ {ASOCIAL_SWITCH,             0, 0, 0},
+ {NO_TUNPERSIST_SWITCH,       0, 0, 0},
+ {MAGIC_SWITCH,               1, 0, 0},
+ {RT_PRIO_OFFSET_SWITCH,      1, 0, 0},
+ {MORE_RULES_SWITCH,          0, 0, 0},
+ {NO_PRIO_RULES_SWITCH,       0, 0, 0},
+ {NO_LO_RULE_SWITCH,          0, 0, 0},
+ {NO_TUNNEL_RULE_SWITCH,      1, 0, 0},
+ {SRC_ADDR_SWITCH,	      1, 0, 0},
+ {NO_THROW_RULES_SWITCH,      0, 0, 0},
+ {NO_UNREACHABLE_RULE_SWITCH, 0, 0, 0},
+ {NO_UNRESP_CHECK_SWITCH,     0, 0, 0},
+ {RT_TABLE_OFFSET_SWITCH,     1, 0, 0},
+ {BASE_PORT_SWITCH,           1, 0, 0},
+ {DUP_TTL_LIMIT_SWITCH,       1, 0, 0},
+ {DUP_RATE_SWITCH,	      1, 0, 0},
+ {TTL_DEGRADE_SWITCH,	      1, 0, 0},
+ {WL_CLONES_SWITCH,           1, 0, 0},
+ {ASYMMETRIC_WEIGHT_SWITCH,   1, 0, 0},
+ {ASYMMETRIC_EXP_SWITCH,      1, 0, 0},
+ {UNI_PROBES_N_SWITCH,        1, 0, 0},
+ {UNI_PROBES_IVAL_SWITCH,     1, 0, 0},
+ {UNI_PROBES_SIZE_SWITCH,     1, 0, 0},
+ {UNI_PROBES_WS_SWITCH,       1, 0, 0},
+ {PARALLEL_BAT_NETA_SWITCH,   0, 0, 0},
+ {PARALLEL_BAT_NETB_SWITCH,   0, 0, 0},
+ {PARALLEL_BAT_NETC_SWITCH,   0, 0, 0},
+ {PARALLEL_BAT_24C3_SWITCH,   0, 0, 0},
+ {0, 0, 0, 0}
+};
 
 int my_daemon() {
 
@@ -90,27 +146,115 @@ int my_daemon() {
 
 }
 
-void set_init_arg( char* switch_name, char* switch_arg, int min, int max, int32_t *target_value ) {
-	errno = 0;
-	int32_t tmp = strtol (switch_arg, NULL , 10);
-
-	/*
-	printf ("--%s", switch_name );
-	if (switch_arg)
-		printf (" %d", tmp );
-	printf (" \\ \n");
-	*/
 	
-	if ( tmp < min || tmp > max ) {
+void set_init_addr( char* switch_name, char* switch_arg, uint32_t *ip, uint32_t *netmask, int creq ) {
+	struct in_addr tmp_ip_holder;
+	char *slashptr = NULL;
+	
+	if ( netmask ) {
+	
+		if ( ( slashptr = strchr( switch_arg, '/' ) ) == NULL ) {
 
-		printf( "Invalid --%s value specified: %i ! Value must be %i <= <value> <= %i !\n", switch_name, tmp, min, max );
+			debug_output( DBGL_SYSTEM, "Invalid %s argument (netmask is missing): %s\n", switch_name, switch_arg );
+			exit(EXIT_FAILURE);
+	
+		}
 
-		exit(EXIT_FAILURE);
+		*slashptr = '\0';
+
+		errno = 0;
+		
+		*netmask = strtol( slashptr + 1, NULL, 10 );
+	
+		if ( ( errno == ERANGE ) || *netmask > 32 ) {
+	
+			debug_output( DBGL_SYSTEM, "Invalid %s argument (netmask is invalid): %s %s \n", switch_name, switch_arg, strerror( errno ) );
+			exit(EXIT_FAILURE);
+	
+		}
+		
 	}
+	
+	errno = 0;
+	
+	if ( inet_pton( AF_INET, switch_arg, &tmp_ip_holder ) < 1 ) {
 
-	*target_value = tmp;
+		debug_output( DBGL_SYSTEM, "Invalid (-)-%s value specified %s: %s\n", switch_name, switch_arg, strerror(errno) );
+		exit(EXIT_FAILURE);
+
+	}
+	
+	*ip = tmp_ip_holder.s_addr;
+			
+	if ( slashptr )
+		*slashptr = '/';
+
+	if ( client_mode && creq ) {
+		
+		struct cmsg_node *cn=debugMalloc( sizeof( struct cmsg_node ), 701 );
+		memset( cn, 0, sizeof( struct cmsg_node ) );
+		INIT_LIST_HEAD( &cn->list );
+		
+		cn->cmsg.version = COMPAT_VERSION;
+		cn->cmsg.len = sizeof( struct cntl_msg );
+		
+		cn->cmsg.type = creq;
+		cn->cmsg.ip = tmp_ip_holder.s_addr;
+		cn->cmsg.val = netmask?*netmask:0;
+		
+		list_add_tail( &cn->list, &cmsg_list );
+
+	}
+	
 	return;
 }
+
+
+void set_init_val( char* switch_name, int32_t switch_val, int32_t min, int32_t max, int32_t *target_value, int creq ) {
+	
+	if ( switch_val < min || switch_val > max ) {
+
+		debug_output( DBGL_SYSTEM, "Invalid (-)-%s value specified: %i ! Value must be %i <= <value> <= %i !\n", switch_name, switch_val, min, max );
+
+		// if invalid values are applied during startup we exit immediately
+		if ( batman_time == 0 )
+			exit(EXIT_FAILURE);
+		
+		return;
+	}
+	
+	if ( target_value )
+		*target_value = switch_val;
+	
+	if ( client_mode && creq ) {
+		
+		struct cmsg_node *cn=debugMalloc( sizeof( struct cmsg_node ), 702 );
+		memset( cn, 0, sizeof( struct cmsg_node ) );
+		INIT_LIST_HEAD( &cn->list );
+		
+		cn->cmsg.version = COMPAT_VERSION;
+		cn->cmsg.len = sizeof( struct cntl_msg );
+		
+		cn->cmsg.type = creq;
+		cn->cmsg.val = switch_val;
+		
+		list_add_tail( &cn->list, &cmsg_list );
+
+	}
+	
+	return;
+}
+
+
+void set_init_arg( char* switch_name, char* switch_arg, int32_t min, int32_t max, int32_t *target_value, int creq ) {
+	
+	
+	int32_t switch_val = switch_arg ? strtol(switch_arg, NULL , 10) : 0;
+	
+	set_init_val( switch_name, switch_val, min, max, target_value, creq );
+	
+}
+
 
 
 void set_gw_network ( char *optarg_p ) {
@@ -170,80 +314,104 @@ void set_gw_network ( char *optarg_p ) {
 }
 
 
-void prepare_add_del_own_hna ( char *optarg_str, int8_t del, uint8_t atype ) {
+void prepare_add_del_own_hna ( char *optarg_str, uint32_t addr, uint16_t netmask, int8_t del, uint8_t atype, int creq ) {
 	
 	struct hna_node *hna_node;
 	struct in_addr tmp_ip_holder;
-	uint16_t netmask;
 	char *slash_ptr;
 	struct list_head *hna_list_pos;
 	char str[16];
 	uint8_t found = NO;
-			
 	
 	// check if number of HNAs fit into max packet size
-	if ( !del  &&  sizeof(struct bat_header) + sizeof(struct bat_packet) + 
+	if ( !del  &&  sizeof(struct bat_header) + sizeof(struct bat_packet_ogm) + 
 		     ( ( 2 /*placeholder for the new hna-ext and one gw-ext packet*/ +  
 		     my_srv_ext_array_len + my_hna_list_enabled) * sizeof(struct ext_packet)) > MAX_PACKET_OUT_SIZE ) {
 		
-		debug_output(3, "HNAs do not fit into max packet size \n");
-		exit(EXIT_FAILURE);
+		debug_output( DBGL_SYSTEM, "HNAs do not fit into max packet size \n");
 		
+		if ( batman_time == 0 )
+			exit(EXIT_FAILURE);
+		
+		return;
 
 	}
 
+	if ( optarg_str ) {
 	
-	if ( ( slash_ptr = strchr( optarg_str, '/' ) ) == NULL ) {
+		if ( (slash_ptr = strchr( optarg_str, '/' )) == NULL ) {
+	
+			printf( "Invalid announced network (netmask is missing): %s\n", optarg_str );
+			
+			if ( batman_time == 0 )
+				exit(EXIT_FAILURE);
+		
+			return;
+	
+		}
+	
+		*slash_ptr = '\0';
+	
+		if ( inet_pton( AF_INET, optarg_str, &tmp_ip_holder ) < 1 ) {
+	
+			*slash_ptr = '/';
+			printf( "Invalid announced network (IP is invalid): %s\n", optarg_str );
+			
+			if ( batman_time == 0 )
+				exit(EXIT_FAILURE);
+		
+			return;
 
-		printf( "Invalid announced network (netmask is missing): %s\n", optarg_str );
-		exit(EXIT_FAILURE);
-
-	}
-
-	*slash_ptr = '\0';
-
-	if ( inet_pton( AF_INET, optarg_str, &tmp_ip_holder ) < 1 ) {
-
+		}
+		
+		addr = tmp_ip_holder.s_addr;
+		
 		*slash_ptr = '/';
-		printf( "Invalid announced network (IP is invalid): %s\n", optarg_str );
-		exit(EXIT_FAILURE);
+	
+		errno = 0;
+	
+		netmask = strtol( slash_ptr + 1, NULL, 10 );
+	
+		if ( ( errno == ERANGE ) || ( errno != 0 && netmask == 0 ) ) {
+	
+			perror("strtol");
+	
+			if ( batman_time == 0 )
+				exit(EXIT_FAILURE);
+		
+			return;
 
+		}
 	}
-
-	errno = 0;
-
-	netmask = strtol( slash_ptr + 1, NULL, 10 );
-
-	if ( ( errno == ERANGE ) || ( errno != 0 && netmask == 0 ) ) {
-
-		perror("strtol");
-		exit(EXIT_FAILURE);
-
-	}
-
+	
 	if ( netmask < 1 || netmask > 32 ) {
 
-		*slash_ptr = '/';
 		printf( "Invalid announced network (netmask is invalid): %s\n", optarg_str );
-		exit(EXIT_FAILURE);
+
+		if ( batman_time == 0 )
+			exit(EXIT_FAILURE);
+		
+		return;
 
 	}
 	
-	tmp_ip_holder.s_addr = ( tmp_ip_holder.s_addr & htonl(0xFFFFFFFF<<(32-netmask)) );
+	
+	//tmp_ip_holder.s_addr = ( addr & htonl(0xFFFFFFFF<<(32-netmask)) );
+	addr = ( addr & htonl(0xFFFFFFFF<<(32-netmask)) );
 		
 	
 	list_for_each( hna_list_pos, &my_hna_list ) {
 
 		hna_node = list_entry( hna_list_pos, struct hna_node, list );
 
-		if ( hna_node->key.addr == tmp_ip_holder.s_addr && 
+		if ( hna_node->key.addr == addr && 
 				   hna_node->key.KEY_FIELD_ANETMASK == netmask && 
 				   hna_node->key.KEY_FIELD_ATYPE == atype ) {
 				
 			found = YES;
 			
 			if ( del && hna_node->enabled ) {
-			//printf( "removing HNA %s/%i, atype %d \n", str, netmask, atype );
+				
 				hna_node->enabled = NO;
 				my_hna_list_enabled--;
 		
@@ -267,14 +435,13 @@ void prepare_add_del_own_hna ( char *optarg_str, int8_t del, uint8_t atype ) {
 		memset( hna_node, 0, sizeof(struct hna_node) );
 		INIT_LIST_HEAD( &hna_node->list );
 	
-		hna_node->key.addr = tmp_ip_holder.s_addr;
+		hna_node->key.addr = addr;
 		hna_node->key.KEY_FIELD_ANETMASK = netmask;
 		hna_node->key.KEY_FIELD_ATYPE = atype;
-		hna_node->enabled = ( del ? NO : YES ) ;
+		hna_node->enabled = ( del ? NO : YES );
 		
 		
 		addr_to_string( hna_node->key.addr, str, sizeof (str) );
-		//printf( "adding HNA %s/%i, atype %d \n", str, netmask, atype );
 	
 		list_add_tail( &hna_node->list, &my_hna_list );
 		
@@ -283,7 +450,26 @@ void prepare_add_del_own_hna ( char *optarg_str, int8_t del, uint8_t atype ) {
 
 	}
 	
-	*slash_ptr = '/';
+	if ( client_mode && creq == REQ_HNA) {
+		
+		struct cmsg_node *cn=debugMalloc( sizeof( struct cmsg_node ), 703 );
+		memset( cn, 0, sizeof( struct cmsg_node ) );
+		INIT_LIST_HEAD( &cn->list );
+		
+		cn->cmsg.version = COMPAT_VERSION;
+		cn->cmsg.len = sizeof( struct cntl_msg );
+		
+		cn->cmsg.type = creq;
+		cn->cmsg.val = netmask;
+		cn->cmsg.ip = addr;
+		cn->cmsg.val1 = del;
+		cn->cmsg.val2 = atype;
+		
+		list_add_tail( &cn->list, &cmsg_list );
+
+	}
+
+	return;
 	
 }
 
@@ -337,102 +523,130 @@ void prepare_add_no_tunnel (  char *optarg_str ) {
 
 	
 	
-void prepare_add_del_own_srv ( char *optarg_str, int8_t del ) {
+void prepare_add_del_own_srv ( char *optarg_str, uint32_t addr, uint16_t port, uint8_t seqno, int8_t del ) {
 	
 	struct srv_node *srv_node;
 	struct in_addr tmp_ip_holder;
-	uint16_t port;
-	uint8_t seqno = 0;
 	char *delimiter1_ptr, *delimiter2_ptr;
 	struct list_head *srv_list_pos;
 	char str[16];
 	uint8_t found = NO;
 	
-	int opt_len = strlen( optarg_str );
+	if ( optarg_str ) {
 	
-	// check if number of SRVs fit into max packet size
-	if ( !del  &&  sizeof(struct bat_header) + sizeof(struct bat_packet) + 
-		     ( ( 2 /*placeholder for the new hna-ext and one gw-ext packet*/ +  
-		     my_srv_list_enabled + my_hna_list_enabled) * sizeof(struct ext_packet)) > MAX_PACKET_OUT_SIZE ) {
+		int opt_len = strlen( optarg_str );
+		seqno = 0;
 		
-		debug_output(3, "SRV announcements do not fit into max packet size \n");
-		exit(EXIT_FAILURE);
+		// check if number of SRVs fit into max packet size
+		if ( !del  &&  sizeof(struct bat_header) + sizeof(struct bat_packet_ogm) + 
+			( ( 2 /*placeholder for the new hna-ext and one gw-ext packet*/ +  
+			my_srv_list_enabled + my_hna_list_enabled) * sizeof(struct ext_packet)) > MAX_PACKET_OUT_SIZE ) {
+			
+			debug_output(3, "SRV announcements do not fit into max packet size \n");
+			
+			if ( batman_time == 0 )
+				exit(EXIT_FAILURE);
+			
+			return;
+			
+		}
+	
+	
+		if ( ( delimiter1_ptr = strchr( optarg_str, ':' ) ) == NULL ) {
+	
+			printf( "Invalid SRV announcement (first : is missing): %s\n", optarg_str );
+	
+			if ( batman_time == 0 )
+				exit(EXIT_FAILURE);
+			
+			return;
+
+		}
+	
+		*delimiter1_ptr = '\0';
+	
+		if ( inet_pton( AF_INET, optarg_str, &tmp_ip_holder ) < 1 ) {
+	
+			*delimiter1_ptr = ':';
+			printf( "Invalid SRV announcement (IP is invalid): %s\n", optarg_str );
+	
+			if ( batman_time == 0 )
+				exit(EXIT_FAILURE);
+			
+			return;
+
+		}
 		
-	}
-
-
-	if ( ( delimiter1_ptr = strchr( optarg_str, ':' ) ) == NULL ) {
-
-		printf( "Invalid SRV announcement (first : is missing): %s\n", optarg_str );
-		exit(EXIT_FAILURE);
-
-	}
-
-	*delimiter1_ptr = '\0';
-
-	if ( inet_pton( AF_INET, optarg_str, &tmp_ip_holder ) < 1 ) {
-
+		addr = tmp_ip_holder.s_addr;
+		
 		*delimiter1_ptr = ':';
-		printf( "Invalid SRV announcement (IP is invalid): %s\n", optarg_str );
-		exit(EXIT_FAILURE);
-
-	}
 	
-	*delimiter1_ptr = ':';
-
-	
-	errno = 0;
-	port = strtol( delimiter1_ptr + 1, NULL, 10 );
-	
-	if ( ( errno == ERANGE ) ) {
-	
-		//*delimiter2_ptr = ':';
-		printf( "Invalid SRV announcement (port is invalid): %s\n", optarg_str );
-		perror("strtol");
-		exit(EXIT_FAILURE);
-	
-	}
-	
-	if( !del ) {
-	
-		if ( ( ((delimiter1_ptr + 2) - optarg_str) > opt_len ) || ( delimiter2_ptr = strchr( (delimiter1_ptr + 1), ':' ) ) == NULL ) {
-	
-			printf( "Invalid SRV announcement (second : is missing): %s\n", optarg_str );
-			exit(EXIT_FAILURE);
-	
-		}
-		
-	
-		//*delimiter2_ptr = ':';
-	
-		
-		
-		if (  ((delimiter2_ptr + 2) - optarg_str) > opt_len  ) {
-	
-			printf( "Invalid SRV announcement (seqno is missing): %s\n", optarg_str );
-			exit(EXIT_FAILURE);
-	
-		}
 		
 		errno = 0;
-		seqno = strtol( delimiter2_ptr + 1, NULL, 10 );
-	
+		port = strtol( delimiter1_ptr + 1, NULL, 10 );
+		
 		if ( ( errno == ERANGE ) ) {
-	
-			printf( "Invalid SRV announcement (seqno is invalid): %s\n", optarg_str );
+		
+			printf( "Invalid SRV announcement (port is invalid): %s\n", optarg_str );
 			perror("strtol");
-			exit(EXIT_FAILURE);
-	
+			
+			if ( batman_time == 0 )
+				exit(EXIT_FAILURE);
+			
+			return;
+		
 		}
-	
-	}	
-	
+		
+		if( !del ) {
+		
+			if ( ( ((delimiter1_ptr + 2) - optarg_str) > opt_len ) || ( delimiter2_ptr = strchr( (delimiter1_ptr + 1), ':' ) ) == NULL ) {
+		
+				printf( "Invalid SRV announcement (2. : is missing): %s\n", optarg_str );
+		
+				if ( batman_time == 0 )
+					exit(EXIT_FAILURE);
+			
+				return;
 
+			}
+			
+			
+			
+			if (  ((delimiter2_ptr + 2) - optarg_str) > opt_len  ) {
+		
+				printf( "Invalid SRV announcement (seqno is missing): %s\n", optarg_str );
+		
+				if ( batman_time == 0 )
+					exit(EXIT_FAILURE);
+			
+				return;
+
+			}
+			
+			errno = 0;
+			seqno = strtol( delimiter2_ptr + 1, NULL, 10 );
+		
+			if ( ( errno == ERANGE ) ) {
+		
+				printf( "Invalid SRV announcement (seqno is invalid): %s\n", optarg_str );
+				perror("strtol");
+		
+				if ( batman_time == 0 )
+					exit(EXIT_FAILURE);
+			
+				return;
+
+			}
+		
+		}	
+	
+	}
+	
 	list_for_each( srv_list_pos, &my_srv_list ) {
 
 		srv_node = list_entry( srv_list_pos, struct srv_node, list );
 
-		if ( srv_node->srv_addr == tmp_ip_holder.s_addr && srv_node->srv_port == port ) {
+		if ( srv_node->srv_addr == addr && srv_node->srv_port == port ) {
 		
 			found = YES;
 	
@@ -453,7 +667,6 @@ void prepare_add_del_own_srv ( char *optarg_str, int8_t del ) {
 			
 			}
 	
-	
 			break;
 	
 		}
@@ -467,7 +680,7 @@ void prepare_add_del_own_srv ( char *optarg_str, int8_t del ) {
 		memset( srv_node, 0, sizeof(struct srv_node) );
 		INIT_LIST_HEAD( &srv_node->list );
 
-		srv_node->srv_addr = tmp_ip_holder.s_addr;
+		srv_node->srv_addr = addr;
 		srv_node->srv_port = port;
 		srv_node->srv_seqno = ( !del ? seqno : 0 );
 		srv_node->enabled = ( del ? NO : YES ) ;
@@ -483,753 +696,81 @@ void prepare_add_del_own_srv ( char *optarg_str, int8_t del ) {
 
 	}
 	
+
+	if ( client_mode ) {
+		
+		struct cmsg_node *cn=debugMalloc( sizeof( struct cmsg_node ), 704 );
+		memset( cn, 0, sizeof( struct cmsg_node ) );
+		INIT_LIST_HEAD( &cn->list );
+		
+		cn->cmsg.version = COMPAT_VERSION;
+		cn->cmsg.len = sizeof( struct cntl_msg );
+		
+		cn->cmsg.type = REQ_SRV;
+		cn->cmsg.ip = addr;
+		cn->cmsg.val = port;
+		cn->cmsg.val1 = seqno;
+		cn->cmsg.val2 = del;
+		
+		list_add_tail( &cn->list, &cmsg_list );
+
+	}
+
 }
 
 
-
-void apply_init_args( int argc, char *argv[] ) {
-
-	struct in_addr tmp_ip_holder;
-	struct batman_if *batman_if;
-	struct debug_level_info *debug_level_info;
-	uint8_t found_args = 1, batch_mode = 0, info_output = 0;
-	int8_t res;
-	struct hna_node *hna_node;
-	struct srv_node *srv_node;
-	char  ifaddr_str[ADDR_STR_LEN];
-
-
-	int32_t optchar, recv_buff_len, bytes_written, download_speed = 0, upload_speed = 0;
-	char str1[16], str2[16], *slash_ptr, *unix_buff, *buff_ptr, *cr_ptr;
-	char req_opt = 0;
-	struct ext_type_hna hna_type_request;
-	uint32_t vis_server = 0;
-
-	memset( &hna_type_request, 0, sizeof( hna_type_request ) );
+void set_gw_speeds( char *optarg ) {
 	
-	memset( &tmp_ip_holder, 0, sizeof (struct in_addr) );
-	stop = 0;
-	prog_name = argv[0];
+	int32_t download_speed = 0, upload_speed = 0;
+	char *slash_ptr;
 	
-	inet_pton( AF_INET, DEF_GW_TUNNEL_PREFIX_STR, &gw_tunnel_prefix );
+	if ( ( slash_ptr = strchr( optarg, '/' ) ) != NULL )
+		*slash_ptr = '\0';
 
-	
-	printf( "WARNING: You are using BatMan-eXp %s%s (compatibility version %d) !\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
+	errno = 0;
 
-	while ( 1 ) {
+	download_speed = strtol( optarg, NULL, 10 );
 
-		int32_t option_index = 0;
-		static struct option long_options[] =
-		{
-   {ADVANCED_SWITCH,            0, 0, 0},
-   {GENIII_DEFAULTS_SWITCH,     0, 0, 0},
-   {BMX_DEFAULTS_SWITCH,        0, 0, 0},
-   {GRAZ07_DEFAULTS_SWITCH,     0, 0, 0},
-   {ADD_SRV_SWITCH,             1, 0, 0},
-   {DEL_SRV_SWITCH,             1, 0, 0},
-   {AGGREGATIONS_PO_SWITCH,     1, 0, 0},
-   {NO_AGGREGATIONS_SWITCH,     0, 0, 0},
-   {AGGREGATIONS_SWITCH,        0, 0, 0},
-   {BIDIRECT_TIMEOUT_SWITCH,    1, 0, 0},
-   {NBRFSIZE_SWITCH,            1, 0, 0},
-   {INITIAL_SEQNO_SWITCH,       1, 0, 0},
-   {FAKE_UPTIME_SWITCH,         1, 0, 0},
-   {DAD_TIMEOUT_SWITCH,         1, 0, 0},
-   {GW_CHANGE_HYSTERESIS_SWITCH,1, 0, 0},
-   {GW_TUNNEL_NETW_SWITCH,      1, 0, 0},
-   {TUNNEL_IP_LEASE_TIME_SWITCH,1, 0, 0},
-   {TWO_WAY_TUNNEL_SWITCH,      1, 0, 0},
-   {ONE_WAY_TUNNEL_SWITCH,      1, 0, 0},
-   {TTL_SWITCH,                 1, 0, 0},
-   {ASOCIAL_SWITCH,             0, 0, 0},
-   {NO_UNREACHABLE_RULE_SWITCH, 0, 0, 0},
-   {NO_TUNPERSIST_SWITCH,       0, 0, 0},
-   {RT_PRIO_OFFSET_SWITCH,      1, 0, 0},
-   {MORE_RULES_SWITCH,          0, 0, 0},
-   {NO_PRIO_RULES_SWITCH,       0, 0, 0},
-   {NO_LO_RULE_SWITCH,          0, 0, 0},
-   {NO_TUNNEL_RULE_SWITCH,      1, 0, 0},
-   {NO_THROW_RULES_SWITCH,      0, 0, 0},
-   {NO_UNRESP_CHECK_SWITCH,     0, 0, 0},
-   {RESIST_BLOCKED_SEND_SWITCH, 0, 0, 0},
-   {RT_TABLE_OFFSET_SWITCH,     1, 0, 0},
-   {BASE_PORT_SWITCH,           1, 0, 0},
-   {DUP_TTL_LIMIT_SWITCH,       1, 0, 0},
-   {DUP_RATE_SWITCH,	        1, 0, 0},
-   {DUP_DEGRAD_SWITCH,	        1, 0, 0},
-   {WL_CLONES_SWITCH,           1, 0, 0},
-   {ASYMMETRIC_WEIGHT_SWITCH,   1, 0, 0},
-   {ASYMMETRIC_EXP_SWITCH,      1, 0, 0},
-   {REBRC_DELAY_SWITCH,         1, 0, 0},
-   {PARALLEL_BAT_NETA_SWITCH,   0, 0, 0},
-   {PARALLEL_BAT_NETB_SWITCH,   0, 0, 0},
-   {PARALLEL_BAT_NETC_SWITCH,   0, 0, 0},
-   {PARALLEL_BAT_24C3_SWITCH,   0, 0, 0},
-   {0, 0, 0, 0}
-		};
+	if ( ( errno == ERANGE ) || ( errno != 0 && download_speed == 0 ) ) {
 
-		
-		if ( ( optchar = getopt_long ( argc, argv, "a:A:bcmd:hHio:l:q:g:p:r:s:vV", long_options, &option_index ) ) == -1 ) {
-			break;
-		}
-		
-//		printf(" found_args: %i, optchar %c \n", found_args, optchar );
-		
-
-		switch ( optchar ) {
-
-			case 0: {
-				
-				if( strcmp( ADVANCED_SWITCH, long_options[option_index].name ) == 0 ) {
-	
-					errno = 0;
-					
-					verbose_usage();
-					print_advanced_opts( YES /*verbose*/ );
-					exit(EXIT_SUCCESS);
-
-				} else if ( strcmp( BMX_DEFAULTS_SWITCH, long_options[option_index].name ) == 0 ) {
-
-	
-					errno = 0;
-	
-					if ( found_args == 1 ) {
-						default_para_set = PARA_SET_BMX;
-	
-					} else {
-						printf( "Error - Parametrization set can only be specified once and must be the first given argument !\n" );
-						exit(EXIT_FAILURE);
-					}
-
-
-					found_args += 1;
-					break;
-
-				} else if ( strcmp( GENIII_DEFAULTS_SWITCH, long_options[option_index].name ) == 0 ) {
-
-	
-					errno = 0;
-	
-					printf( "Error - Sorry, %s is not supported anymore... !\n", GENIII_DEFAULTS_SWITCH );
-					exit(EXIT_FAILURE);
-
-				} else if ( strcmp( GRAZ07_DEFAULTS_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					errno = 0;
-	
-					if ( found_args == 1  ) {
-						default_para_set = PARA_SET_GRAZ07;
-					} else {
-						printf( "Error - Parametrization set can only be specified once !\n" );
-						exit(EXIT_FAILURE);
-					}
-					
-	
-					my_ogi = 1500;
-	
-					set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "20", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
-	
-					set_init_arg( NBRFSIZE_SWITCH, "100", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &my_ws );
-					//num_words = ( my_ws / WORD_BIT_SIZE ) + ( ( my_ws % WORD_BIT_SIZE > 0)? 1 : 0 );
-	
-					set_init_arg( GW_CHANGE_HYSTERESIS_SWITCH, "2", MIN_GW_CHANGE_HYSTERESIS, MAX_GW_CHANGE_HYSTERESIS, &gw_change_hysteresis ); 
-					
-					set_init_arg( DUP_TTL_LIMIT_SWITCH, "2", MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT, &dup_ttl_limit );
-	
-					set_init_arg( DUP_RATE_SWITCH, "99", MIN_DUP_RATE, MAX_DUP_RATE, &dup_rate );
-	
-					set_init_arg( DUP_DEGRAD_SWITCH, "2", MIN_DUP_DEGRAD, MAX_DUP_DEGRAD, &dup_degrad );
-	
-					set_init_arg( WL_CLONES_SWITCH, "200", MIN_WL_CLONES, MAX_WL_CLONES, &wl_clones );
-					
-					set_init_arg( ASYMMETRIC_WEIGHT_SWITCH, "100", MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT, &asymmetric_weight );
-	
-					set_init_arg( ASYMMETRIC_EXP_SWITCH, "1", MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP, &asymmetric_exp );
-	
-					set_init_arg( REBRC_DELAY_SWITCH, "35", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
-	
-					set_init_arg( AGGREGATIONS_PO_SWITCH, "0", MIN_AGGREGATIONS_PO, MAX_AGGREGATIONS_PO, &aggregations_po );
-					
-					found_args += 1;
-					break;
-
-				} else if ( strcmp( BIDIRECT_TIMEOUT_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					set_init_arg( BIDIRECT_TIMEOUT_SWITCH, optarg, MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
-					
-					//blt_opt = YES; /* for changing the link-window size on the fly */
-					req_opt = REQ_LWS;
-					
-					found_args += 2;
-					break;
-
-				} else if ( strcmp( NBRFSIZE_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					set_init_arg( NBRFSIZE_SWITCH, optarg, MIN_SEQ_RANGE, MAX_SEQ_RANGE, &my_ws );
-					//num_words = ( my_ws / WORD_BIT_SIZE ) + ( ( my_ws % WORD_BIT_SIZE > 0)? 1 : 0 );
-					
-					//ws_opt = YES; /* for changing the window-size on-the fly */
-					req_opt = REQ_PWS;
-					
-					found_args += 2;
-					break;
-
-				} else if ( strcmp( DAD_TIMEOUT_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					set_init_arg( DAD_TIMEOUT_SWITCH, optarg, MIN_DAD_TIMEOUT, MAX_DAD_TIMEOUT, &dad_timeout );
-					
-					found_args += 2;
-					break;
-
-				} else if ( strcmp( INITIAL_SEQNO_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					set_init_arg( INITIAL_SEQNO_SWITCH, optarg, MIN_INITIAL_SEQNO, MAX_INITIAL_SEQNO, &initial_seqno );
-					found_args += 2;
-					break;
-				
-				} else if ( strcmp( FAKE_UPTIME_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					set_init_arg( FAKE_UPTIME_SWITCH, optarg, MIN_FAKE_UPTIME, MAX_FAKE_UPTIME, &fake_uptime );
-					
-					req_opt = REQ_FAKE_TIME;
-					
-					fake_start_time( fake_uptime );
-					
-					found_args += 2;
-					break;
-				
-				} else if ( strcmp( GW_CHANGE_HYSTERESIS_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					set_init_arg( GW_CHANGE_HYSTERESIS_SWITCH, optarg, MIN_GW_CHANGE_HYSTERESIS, MAX_GW_CHANGE_HYSTERESIS, &gw_change_hysteresis );
-					found_args += 2;
-					break;
-
-				} else if ( strcmp( GW_TUNNEL_NETW_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					set_gw_network( optarg );
-
-					found_args += 2;
-					break;
-					
-					
-				} else if ( strcmp( TUNNEL_IP_LEASE_TIME_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					set_init_arg( TUNNEL_IP_LEASE_TIME_SWITCH, optarg, MIN_TUNNEL_IP_LEASE_TIME, MAX_TUNNEL_IP_LEASE_TIME, &tunnel_ip_lease_time );
-					found_args += 2;
-					break;
-							
-				} else if ( strcmp( TWO_WAY_TUNNEL_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					set_init_arg( TWO_WAY_TUNNEL_SWITCH, optarg, MIN_TWO_WAY_TUNNEL, MAX_TWO_WAY_TUNNEL, &two_way_tunnel );
-					req_opt = REQ_2WT;
-					found_args += 2;
-					break;
-				
-				} else if ( strcmp( ONE_WAY_TUNNEL_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					set_init_arg( ONE_WAY_TUNNEL_SWITCH, optarg, MIN_ONE_WAY_TUNNEL, MAX_ONE_WAY_TUNNEL, &one_way_tunnel );
-					req_opt = REQ_1WT;
-					found_args += 2;
-					break;
-				
-				} else if ( strcmp( TTL_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					set_init_arg( TTL_SWITCH, optarg, MIN_TTL, MAX_TTL, &ttl );
-					found_args += 2;
-					break;
-
-				} else if ( strcmp( DUP_TTL_LIMIT_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					set_init_arg( DUP_TTL_LIMIT_SWITCH, optarg, MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT, &dup_ttl_limit );
-					found_args += 2;
-					break;
-				
-				} else if ( strcmp( DUP_RATE_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					set_init_arg( DUP_RATE_SWITCH, optarg, MIN_DUP_RATE, MAX_DUP_RATE, &dup_rate );
-					found_args += 2;
-					break;
-
-				} else if ( strcmp( DUP_DEGRAD_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					set_init_arg( DUP_DEGRAD_SWITCH, optarg, MIN_DUP_DEGRAD, MAX_DUP_DEGRAD, &dup_degrad );
-					
-					req_opt = REQ_DTD;
-					found_args += 2;
-					break;
-				
-				} else if ( strcmp( WL_CLONES_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					set_init_arg( WL_CLONES_SWITCH, optarg, MIN_WL_CLONES, MAX_WL_CLONES, &wl_clones );
-					
-					//if( send_clones > DEF_SEND_CLONES )
-					//compat_version = DEF_COMPAT_VERSION + 1;
-
-					found_args += 2;
-					break;
-
-				} else if ( strcmp( ASYMMETRIC_WEIGHT_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					set_init_arg( ASYMMETRIC_WEIGHT_SWITCH, optarg, MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT, &asymmetric_weight );
-					found_args += 2;
-					break;
-
-				} else if ( strcmp( ASYMMETRIC_EXP_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					set_init_arg( ASYMMETRIC_EXP_SWITCH, optarg, MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP, &asymmetric_exp );
-					found_args += 2;
-					break;
-					
-				} else if ( strcmp( REBRC_DELAY_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					set_init_arg( REBRC_DELAY_SWITCH, optarg, MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
-					found_args += 2;
-					break;
-							
-				} else if ( strcmp( RT_PRIO_OFFSET_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					set_init_arg( RT_PRIO_OFFSET_SWITCH, optarg, MIN_RT_PRIO_OFFSET, MAX_RT_PRIO_OFFSET, &rt_prio_offset );
-					found_args += 2;
-					break;
-					
-				} else if ( strcmp( BASE_PORT_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					set_init_arg( BASE_PORT_SWITCH, optarg, MIN_BASE_PORT, MAX_BASE_PORT, &ogm_port );
-					found_args += 2;
-					break;
-				
-				} else if ( strcmp( RT_TABLE_OFFSET_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					set_init_arg( RT_TABLE_OFFSET_SWITCH, optarg, MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset );
-					found_args += 2;
-					break;
-					
-				} else if ( strcmp( AGGREGATIONS_PO_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					set_init_arg( AGGREGATIONS_PO_SWITCH, optarg, MIN_AGGREGATIONS_PO, MAX_AGGREGATIONS_PO, &aggregations_po );
-					set_init_arg( REBRC_DELAY_SWITCH, "0", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
-					found_args += 2;
-					break;
-				
-				} else if ( strcmp( ADD_SRV_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					prepare_add_del_own_srv( optarg, NO /* do not delete */ );
-			
-					//tout_opt = YES; /* for activating the add request */
-					req_opt = REQ_CHANGE_SRV;
-
-					found_args += 2;
-					break;
-				
-				} else if ( strcmp( DEL_SRV_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					prepare_add_del_own_srv( optarg, YES /*delete*/ );
-				
-					//tout_opt = YES; /* for activating the del request */
-					req_opt = REQ_CHANGE_SRV;
-				
-					found_args += 2;
-					break;
-					
-				} else if ( strcmp( NO_TUNNEL_RULE_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					prepare_add_no_tunnel( optarg );
-					
-					found_args += 2;
-					break;
-				
-				/*	this is just a template:
-				} else if ( strcmp( _SWITCH, long_options[option_index].name ) == 0 ) {
-
-					set_init_arg( _SWITCH, optarg, MIN_, MAX_, & );
-					found_args += 2;
-					break;
-				*/
-						
-				} else if ( strcmp( NO_AGGREGATIONS_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					aggregations_po = 0;
-					set_init_arg( REBRC_DELAY_SWITCH, "35", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
-					found_args += 1;
-					break;
-					
-				} else if ( strcmp( AGGREGATIONS_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					aggregations_po = DEF_AGGREGATIONS_PO;
-					set_init_arg( REBRC_DELAY_SWITCH, "0", MIN_REBRC_DELAY, MAX_REBRC_DELAY, &rebrc_delay );
-					found_args += 1;
-					break;
-					
-				
-				} else if ( strcmp( ASOCIAL_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					printf ("--%s \\ \n", long_options[option_index].name);
-					errno = 0;
-					mobile_device = YES;
-					found_args += 1;
-					break;
-
-				} else if ( strcmp( NO_UNREACHABLE_RULE_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					printf ("--%s \\ \n", long_options[option_index].name);
-					errno = 0;
-					no_unreachable_rule = YES;
-					found_args += 1;
-					break;
-				
-				} else if ( strcmp( NO_TUNPERSIST_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					printf ("--%s \\ \n", long_options[option_index].name);
-					errno = 0;
-					no_tun_persist = YES;
-					found_args += 1;
-					break;
-				
-				} else if ( strcmp( MORE_RULES_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					printf ("--%s \\ \n", long_options[option_index].name);
-					errno = 0;
-					more_rules = YES;
-					found_args += 1;
-					break;
-
-				} else if ( strcmp( NO_PRIO_RULES_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					printf ("--%s \\ \n", long_options[option_index].name);
-					errno = 0;
-					no_prio_rules = YES;
-					found_args += 1;
-					break;
-
-				} else if ( strcmp( NO_LO_RULE_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					printf ("--%s \\ \n", long_options[option_index].name);
-					errno = 0;
-					no_lo_rule = YES;
-					found_args += 1;
-					break;
-
-				} else if ( strcmp( NO_THROW_RULES_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					printf ("--%s \\ \n", long_options[option_index].name);
-					errno = 0;
-					no_throw_rules = YES;
-					found_args += 1;
-					break;
-
-				} else if ( strcmp( NO_UNRESP_CHECK_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					printf ("--%s \\ \n", long_options[option_index].name);
-					errno = 0;
-					no_unresponsive_check = YES;
-					found_args += 1;
-					break;
-					
-				} else if ( strcmp( RESIST_BLOCKED_SEND_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					printf ("WARNING: --%s is deprecated, it is activated by default now! \\ \n", long_options[option_index].name);
-					errno = 0;
-					resist_blocked_send = YES;
-					found_args += 1;
-					break;
-							
-				} else if ( strcmp( PARALLEL_BAT_NETA_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					errno = 0;
-					
-					set_init_arg( BASE_PORT_SWITCH,       "14305", MIN_BASE_PORT,       MAX_BASE_PORT,       &ogm_port ); 
-					set_init_arg( RT_TABLE_OFFSET_SWITCH, "144",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset ); 
-					set_init_arg( RT_PRIO_OFFSET_SWITCH,  "14500", MIN_RT_PRIO_OFFSET, MAX_RT_PRIO_OFFSET, &rt_prio_offset ); 
-					set_gw_network( "169.254.128.0/22" );
-					
-					found_args += 1;
-					break;
-					
-				} else if ( strcmp( PARALLEL_BAT_NETB_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					errno = 0;
-					
-					set_init_arg( BASE_PORT_SWITCH,       "16305", MIN_BASE_PORT,       MAX_BASE_PORT,       &ogm_port ); 
-					set_init_arg( RT_TABLE_OFFSET_SWITCH, "40",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset ); 
-					set_init_arg( RT_PRIO_OFFSET_SWITCH,  "4000", MIN_RT_PRIO_OFFSET, MAX_RT_PRIO_OFFSET, &rt_prio_offset ); 
-					set_gw_network( "169.254.160.0/22" );
-					
-					found_args += 1;
-					break;
-					
-				} else if ( strcmp( PARALLEL_BAT_NETC_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					errno = 0;
-					
-					set_init_arg( BASE_PORT_SWITCH,       "18305", MIN_BASE_PORT,       MAX_BASE_PORT,       &ogm_port ); 
-					set_init_arg( RT_TABLE_OFFSET_SWITCH, "184",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset ); 
-					set_init_arg( RT_PRIO_OFFSET_SWITCH,  "18500", MIN_RT_PRIO_OFFSET, MAX_RT_PRIO_OFFSET, &rt_prio_offset ); 
-					set_gw_network( "169.254.192.0/22" );
-					
-					set_init_arg( NBRFSIZE_SWITCH, "10", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &my_ws );
-					//num_words = ( my_ws / WORD_BIT_SIZE ) + ( ( my_ws % WORD_BIT_SIZE > 0)? 1 : 0 );
-
-					found_args += 1;
-					break;
-					
-				} else if ( strcmp( PARALLEL_BAT_24C3_SWITCH, long_options[option_index].name ) == 0 ) {
-
-					errno = 0;
-					
-					set_init_arg( BASE_PORT_SWITCH,       "4308", MIN_BASE_PORT,       MAX_BASE_PORT,       &ogm_port ); 
-					set_init_arg( RT_TABLE_OFFSET_SWITCH, "76",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset ); 
-					set_init_arg( RT_PRIO_OFFSET_SWITCH,  "7600", MIN_RT_PRIO_OFFSET, MAX_RT_PRIO_OFFSET, &rt_prio_offset ); 
-					set_gw_network( "0.0.0.0/30" );
-					
-					set_init_arg( TWO_WAY_TUNNEL_SWITCH, "0", MIN_TWO_WAY_TUNNEL, MAX_TWO_WAY_TUNNEL, &two_way_tunnel );
-					set_init_arg( ONE_WAY_TUNNEL_SWITCH, "3", MIN_TWO_WAY_TUNNEL, MAX_TWO_WAY_TUNNEL, &two_way_tunnel );
-
-					set_init_arg( NBRFSIZE_SWITCH, "100", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &my_ws );
-					set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "30", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &bidirect_link_to );
-					no_lo_rule = YES;
-
-					found_args += 1;
-					break;
-				
-				/* this is just a template:
-				} else if ( strcmp( _SWITCH, long_options[option_index].name ) == 0 ) {
-
-					errno = 0;
-					= YES;
-					found_args += 1;
-					break;
-				*/	
-				
-//				}
-
-				}
-
-				usage();
-				exit(EXIT_FAILURE);
-
-
-			}
-
-			case 'a':
-
-				prepare_add_del_own_hna( optarg, NO, A_TYPE_NETWORK );
-				
-				//hna_opt = YES; /* for activating the add request */
-				req_opt = REQ_CHANGE_HNA;
-				
-				
-				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
-				break;
-
-			case 'A':
-
-				prepare_add_del_own_hna( optarg, YES, A_TYPE_NETWORK );
-				
-				//hna_opt = YES; /* for activating the del request */
-				req_opt = REQ_CHANGE_HNA;
-				
-				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
-				break;
-			
-			case 'b':
-				batch_mode = YES;
-				found_args += 1;
-				break;
-
-			case 'c':
-				conn_client = YES;
-				req_opt = REQ_RESET;
-				found_args += 1;
-				break;
-
-			case 'd':
-
-				errno = 0;
-
-				debug_level = strtol( optarg, NULL, 10 );
-
-				if ( ( errno == ERANGE ) || ( errno != 0 && debug_level == 0 ) ) {
-
-					perror("strtol");
-					exit(EXIT_FAILURE);
-
-				}
-
-				if ( debug_level > debug_level_max ) {
-
-					printf( "Invalid debug level: %i\nDebug level has to be between 0 and %i.\n", debug_level, debug_level_max );
-					exit(EXIT_FAILURE);
-
-				}
-
-				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
-				break;
-
-			case 'g':
-
-				if ( ( slash_ptr = strchr( optarg, '/' ) ) != NULL )
-					*slash_ptr = '\0';
-
-				errno = 0;
-
-				download_speed = strtol( optarg, NULL, 10 );
-
-				if ( ( errno == ERANGE ) || ( errno != 0 && download_speed == 0 ) ) {
-
-					perror("strtol");
-					exit(EXIT_FAILURE);
-
-				}
-
-				if ( ( strlen( optarg ) > 4 ) && ( ( strncmp( optarg + strlen( optarg ) - 4, "MBit", 4 ) == 0 ) || ( strncmp( optarg + strlen( optarg ) - 4, "mbit", 4 ) == 0 ) || ( strncmp( optarg + strlen( optarg ) - 4, "Mbit", 4 ) == 0 ) ) )
-					download_speed *= 1024;
-
-				if ( slash_ptr != NULL ) {
-
-					errno = 0;
-
-					upload_speed = strtol( slash_ptr + 1, NULL, 10 );
-
-					if ( ( errno == ERANGE ) || ( errno != 0 && upload_speed == 0 ) ) {
-						perror("strtol");
-						exit(EXIT_FAILURE);
-					}
-
-					if ( ( strlen( slash_ptr + 1 ) > 4 ) && ( ( strncmp( slash_ptr + 1 + strlen( slash_ptr + 1 ) - 4, "MBit", 4 ) == 0 ) || ( strncmp( slash_ptr + 1 + strlen( slash_ptr + 1 ) - 4, "mbit", 4 ) == 0 ) || ( strncmp( slash_ptr + 1 + strlen( slash_ptr + 1 ) - 4, "Mbit", 4 ) == 0 ) ) )
-						upload_speed *= 1024;
-
-					*slash_ptr = '/';
-
-				}
-				
-				//gateway_class_opt = 1;
-				req_opt = REQ_GW_CLASS;
-				
-				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
-				break;
-
-			case 'H':
-				verbose_usage();
-				exit(EXIT_SUCCESS);
-				
-			case 'i':
-				info_output++;
-				break;
-
-			case 'n':
-				no_policy_routing = 1;
-				found_args++;
-				break;
-
-			case 'o':
-
-				errno = 0;
-				my_ogi = strtol (optarg, NULL , 10 );
-
-				if ( my_ogi < MIN_ORIGINATOR_INTERVAL || my_ogi > MAX_ORIGINATOR_INTERVAL ) {
-
-					printf( "Invalid originator interval specified: %i.\n The value must be >= %i and <= %i.\n", my_ogi, MIN_ORIGINATOR_INTERVAL, MAX_ORIGINATOR_INTERVAL );
-
-					exit(EXIT_FAILURE);
-				}
-				
-				//ogi_opt = 1;
-				req_opt = REQ_OGI;
-
-				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
-				break;
-
-			case 'p':
-
-				errno = 0;
-
-				if ( inet_pton( AF_INET, optarg, &tmp_ip_holder ) < 1 ) {
-
-					printf( "Invalid preferred gateway IP specified: %s\n", optarg );
-					exit(EXIT_FAILURE);
-
-				}
-
-				pref_gateway = tmp_ip_holder.s_addr;
-				
-				//pref_gw_opt = 1;
-				req_opt = REQ_PREF_GW;
-
-
-				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
-				break;
-
-			case 'r':
-
-				errno = 0;
-
-				routing_class = strtol( optarg, NULL, 10 );
-
-				if ( routing_class > 3 ) {
-
-					printf( "Invalid routing class specified: %i.\nThe class is a value between 0 and 3.\n", routing_class );
-					exit(EXIT_FAILURE);
-
-				}
-				
-				//routing_class_opt = 1;
-				req_opt = REQ_RT_CLASS;
-
-				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
-				break;
-
-			case 's':
-
-				errno = 0;
-				if ( inet_pton( AF_INET, optarg, &tmp_ip_holder ) < 1 ) {
-
-					printf( "Invalid preferred visualation server IP specified: %s\n", optarg );
-					exit(EXIT_FAILURE);
-
-				}
-
-				vis_server = tmp_ip_holder.s_addr;
-
-
-				found_args += ( ( *((char*)( optarg - 1)) == optchar ) ? 1 : 2 );
-				break;
-			
-			case 'v':
-
-				printf( "BatMan-eXp %s%s (compatibility version %i)\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
-				exit(EXIT_SUCCESS);
-
-			case 'V':
-
-				print_animation();
-
-				printf( "\x1B[0;0HBatMan-eXp %s%s (compatibility version %i)\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
-				printf( "\x1B[9;0H \t May the bat guide your path ...\n\n\n" );
-
-				exit(EXIT_SUCCESS);
-
-			case 'h':
-				usage();
-				exit(EXIT_SUCCESS);
-
-			default:
-				usage();
-				exit(EXIT_FAILURE);
-
-		}
-
-		if ( conn_client && req_opt )
-			break;
-		
-	}
-	
-	if (!conn_client && info_output) {
-
-		internal_output(1);
-		exit(EXIT_SUCCESS);
+		perror("strtol");
+		exit(EXIT_FAILURE);
 
 	}
 
+	if ( strlen( optarg ) > 4  && 
+		( ( strncmp( optarg + strlen( optarg ) - 4, "MBit", 4 ) == 0 ) || 
+		  ( strncmp( optarg + strlen( optarg ) - 4, "mbit", 4 ) == 0 ) || 
+		  ( strncmp( optarg + strlen( optarg ) - 4, "Mbit", 4 ) == 0 ) ) ) {
+		
+		download_speed *= 1024;
+		
+		  }
+
+	if ( slash_ptr != NULL ) {
+
+		errno = 0;
+
+		upload_speed = strtol( slash_ptr + 1, NULL, 10 );
+
+		if ( ( errno == ERANGE ) || ( errno != 0 && upload_speed == 0 ) ) {
+			perror("strtol");
+			exit(EXIT_FAILURE);
+		}
+
+		if ( strlen( slash_ptr + 1 ) > 4  && 
+			( ( strncmp( slash_ptr + 1 + strlen( slash_ptr + 1 ) - 4, "MBit", 4 ) == 0 ) || 
+			  ( strncmp( slash_ptr + 1 + strlen( slash_ptr + 1 ) - 4, "mbit", 4 ) == 0 ) || 
+			  ( strncmp( slash_ptr + 1 + strlen( slash_ptr + 1 ) - 4, "Mbit", 4 ) == 0 ) ) ) {
+			
+			upload_speed *= 1024;
+			
+			  }
+
+		*slash_ptr = '/';
+
+	}
+	
 	if ( ( download_speed > 0 ) && ( upload_speed == 0 ) )
 		upload_speed = download_speed / 5;
 
@@ -1240,38 +781,623 @@ void apply_init_args( int argc, char *argv[] ) {
 
 	}
 
+	debug_output( DBGL_SYSTEM, "gateway class: %i -> propagating: %i%s/%i%s\n", gateway_class, ( download_speed > 2048 ? download_speed / 1024 : download_speed ), ( download_speed > 2048 ? "MBit" : "KBit" ), ( upload_speed > 2048 ? upload_speed / 1024 : upload_speed ), ( upload_speed > 2048 ? "MBit" : "KBit" ) );
 
-	if ( ( gateway_class != 0 ) && ( routing_class != 0 ) ) {
+	if ( client_mode ) {
+		
+		struct cmsg_node *cn=debugMalloc( sizeof( struct cmsg_node ), 705 );
+		memset( cn, 0, sizeof( struct cmsg_node ) );
+		INIT_LIST_HEAD( &cn->list );
+		
+		cn->cmsg.version = COMPAT_VERSION;
+		cn->cmsg.len = sizeof( struct cntl_msg );
+		
+		cn->cmsg.type = REQ_GW_CLASS;
+		cn->cmsg.val = gateway_class;
+		
+		list_add_tail( &cn->list, &cmsg_list );
+
+	}
+
+		
+}
+
+
+
+void apply_long_opt( int32_t option_index ) {
+	
+	do {
+		if( strcmp( ADVANCED_SWITCH, long_options[option_index].name ) == 0 ) {
+	
+			errno = 0;
+					
+			verbose_usage();
+			print_advanced_opts( YES /*verbose*/ );
+			exit(EXIT_SUCCESS);
+
+		} else if( strcmp( PURGE_SWITCH, long_options[option_index].name ) == 0 ) {
+			
+			set_init_val( PURGE_SWITCH, 0, 0, 0, NULL, REQ_PURGE );
+			break;
+		
+		} else if ( strcmp( BMX_DEFAULTS_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			break;
+
+		} else if ( strcmp( GENIII_DEFAULTS_SWITCH, long_options[option_index].name ) == 0 ) {
+
+	
+			errno = 0;
+	
+			printf( "Error - Sorry, %s is not supported anymore... !\n", GENIII_DEFAULTS_SWITCH );
+			exit(EXIT_FAILURE);
+
+		} else if ( strcmp( GRAZ07_DEFAULTS_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			errno = 0;
+	
+			printf( "Error - Sorry, %s is not supported anymore... !\n", GENIII_DEFAULTS_SWITCH );
+			exit(EXIT_FAILURE);
+					
+
+		} else if ( strcmp( BIDIRECT_TIMEOUT_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			set_init_arg( BIDIRECT_TIMEOUT_SWITCH, optarg, MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &my_lws, REQ_LWS );
+			break;
+
+		} else if ( strcmp( NBRFSIZE_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			set_init_arg( NBRFSIZE_SWITCH, optarg, MIN_SEQ_RANGE, MAX_SEQ_RANGE, &my_pws, REQ_PWS );
+			break;
+
+		} else if ( strcmp( DAD_TIMEOUT_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			set_init_arg( DAD_TIMEOUT_SWITCH, optarg, MIN_DAD_TIMEOUT, MAX_DAD_TIMEOUT, &dad_timeout, REQ_NONE );
+			break;
+
+		} else if ( strcmp( INITIAL_SEQNO_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			set_init_arg( INITIAL_SEQNO_SWITCH, optarg, MIN_INITIAL_SEQNO, MAX_INITIAL_SEQNO, &initial_seqno, REQ_NONE );
+			break;
+				
+		} else if ( strcmp( FAKE_UPTIME_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			set_init_arg( FAKE_UPTIME_SWITCH, optarg, MIN_FAKE_UPTIME, MAX_FAKE_UPTIME, &fake_uptime, REQ_FAKE_TIME );
+			fake_start_time( fake_uptime );
+			break;
+				
+		} else if ( strcmp( GW_CHANGE_HYSTERESIS_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			set_init_arg( GW_CHANGE_HYSTERESIS_SWITCH, optarg, MIN_GW_CHANGE_HYSTERESIS, MAX_GW_CHANGE_HYSTERESIS, &gw_change_hysteresis, REQ_GW_CHANGE_HYSTERESIS );
+			break;
+
+		} else if ( strcmp( GW_TUNNEL_NETW_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			set_gw_network( optarg );
+			break;
+					
+					
+		} else if ( strcmp( TUNNEL_IP_LEASE_TIME_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			set_init_arg( TUNNEL_IP_LEASE_TIME_SWITCH, optarg, MIN_TUNNEL_IP_LEASE_TIME, MAX_TUNNEL_IP_LEASE_TIME, &tunnel_ip_lease_time, REQ_NONE );
+			break;
+							
+		} else if ( strcmp( TWO_WAY_TUNNEL_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			set_init_arg( TWO_WAY_TUNNEL_SWITCH, optarg, MIN_TWO_WAY_TUNNEL, MAX_TWO_WAY_TUNNEL, &two_way_tunnel, REQ_2WT );
+			break;
+				
+		} else if ( strcmp( ONE_WAY_TUNNEL_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			set_init_arg( ONE_WAY_TUNNEL_SWITCH, optarg, MIN_ONE_WAY_TUNNEL, MAX_ONE_WAY_TUNNEL, &one_way_tunnel, REQ_1WT );
+			break;
+				
+		} else if ( strcmp( TTL_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			set_init_arg( TTL_SWITCH, optarg, MIN_TTL, MAX_TTL, &ttl, REQ_TTL );
+			break;
+
+		} else if ( strcmp( DUP_TTL_LIMIT_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			set_init_arg( DUP_TTL_LIMIT_SWITCH, optarg, MIN_DUP_TTL_LIMIT, MAX_DUP_TTL_LIMIT, &dup_ttl_limit, REQ_NONE );
+			break;
+				
+		} else if ( strcmp( DUP_RATE_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			set_init_arg( DUP_RATE_SWITCH, optarg, MIN_DUP_RATE, MAX_DUP_RATE, &dup_rate, REQ_NONE );
+			break;
+
+		} else if ( strcmp( TTL_DEGRADE_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			set_init_arg( TTL_DEGRADE_SWITCH, optarg, MIN_TTL_DEGRADE, MAX_TTL_DEGRADE, &ttl_degrade, REQ_TTL_DEGRADE );
+			break;
+				
+		} else if ( strcmp( WL_CLONES_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			set_init_arg( WL_CLONES_SWITCH, optarg, MIN_WL_CLONES, MAX_WL_CLONES, &wl_clones, REQ_NONE );
+			break;
+
+		} else if ( strcmp( ASYMMETRIC_WEIGHT_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			set_init_arg( ASYMMETRIC_WEIGHT_SWITCH, optarg, MIN_ASYMMETRIC_WEIGHT, MAX_ASYMMETRIC_WEIGHT, &asymmetric_weight, REQ_NONE );
+			break;
+
+		} else if ( strcmp( ASYMMETRIC_EXP_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			set_init_arg( ASYMMETRIC_EXP_SWITCH, optarg, MIN_ASYMMETRIC_EXP, MAX_ASYMMETRIC_EXP, &asymmetric_exp, REQ_NONE );
+			break;
+					
+		} else if ( strcmp( UNI_PROBES_N_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			set_init_arg( UNI_PROBES_N_SWITCH, optarg, MIN_UNI_PROBES_N, MAX_UNI_PROBES_N, &unicast_probes_num, REQ_UNI_PROBES_N );
+			break;
+				
+		} else if ( strcmp( UNI_PROBES_IVAL_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			set_init_arg( UNI_PROBES_IVAL_SWITCH, optarg, MIN_UNI_PROBES_IVAL, MAX_UNI_PROBES_IVAL, &unicast_probes_ival, REQ_UNI_PROBES_IVAL );
+			break;
+				
+		} else if ( strcmp( UNI_PROBES_SIZE_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			set_init_arg( UNI_PROBES_SIZE_SWITCH, optarg, MIN_UNI_PROBES_SIZE, MAX_UNI_PROBES_SIZE, &unicast_probes_size, REQ_UNI_PROBES_SIZE );
+			break;
+				
+		} else if ( strcmp( UNI_PROBES_WS_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			set_init_arg( UNI_PROBES_WS_SWITCH, optarg, MIN_UNI_PROBES_WS, MAX_UNI_PROBES_WS, &unicast_probes_ws, REQ_UNI_PROBES_WS );
+			break;
+				
+		} else if ( strcmp( RT_PRIO_OFFSET_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			set_init_arg( RT_PRIO_OFFSET_SWITCH, optarg, MIN_RT_PRIO_OFFSET, MAX_RT_PRIO_OFFSET, &rt_prio_offset, REQ_NONE );
+			break;
+					
+		} else if ( strcmp( BASE_PORT_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			set_init_arg( BASE_PORT_SWITCH, optarg, MIN_BASE_PORT, MAX_BASE_PORT, &ogm_port, REQ_NONE );
+			break;
+				
+		} else if ( strcmp( RT_TABLE_OFFSET_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			set_init_arg( RT_TABLE_OFFSET_SWITCH, optarg, MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset, REQ_NONE );
+			break;
+					
+		} else if ( strcmp( AGGREGATIONS_PER_OGI_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			set_init_arg( AGGREGATIONS_PER_OGI_SWITCH, optarg, MIN_AGGREGATIONS_PER_OGI, MAX_AGGREGATIONS_PER_OGI, &aggregations_per_ogi, REQ_NONE );
+			break;
+				
+		} else if ( strcmp( ADD_SRV_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			prepare_add_del_own_srv( optarg, 0,0,0, NO /* do not delete */ );
+			break;
+				
+		} else if ( strcmp( DEL_SRV_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			prepare_add_del_own_srv( optarg, 0,0,0, YES /*delete*/ );
+			break;
+					
+		} else if ( strcmp( NO_TUNNEL_RULE_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			prepare_add_no_tunnel( optarg );
+			break;
+				
+		} else if ( strcmp( SRC_ADDR_SWITCH, long_options[option_index].name ) == 0 ) {
+					
+			if ( outgoing_src == 0  &&  !client_mode ) {
+						
+				errno = 0;
+				if ( inet_pton( AF_INET, optarg, &outgoing_src ) < 1 ) {
+	
+					printf( "Error - Invalid announced network (IP is invalid): %s,  %s\n", optarg, strerror( errno ) );
+			
+					exit(EXIT_FAILURE);
+		
+				}
+				prepare_add_del_own_hna( NULL, outgoing_src, 32, NO, A_TYPE_INTERFACE, REQ_NONE );
+					
+			} else {
+				printf( "Error - %s can only be specified once and only at startup!\n", SRC_ADDR_SWITCH );
+				exit(EXIT_FAILURE);
+
+			}
+			break;
+					
+		} else if ( strcmp( NONPRIMARY_HNA_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			set_init_arg( NONPRIMARY_HNA_SWITCH, optarg, MIN_NONPRIMARY_HNA, MAX_NONPRIMARY_HNA, &nonprimary_hna, REQ_NONE );
+			break;
+		
+		} else if ( strcmp( MAGIC_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			set_init_arg( MAGIC_SWITCH, optarg, MIN_MAGIC, MAX_MAGIC, &magic_switch, REQ_MAGIC );
+			break;
+					
+					
+				/*	this is just a template:
+		} else if ( strcmp( _SWITCH, long_options[option_index].name ) == 0 ) {
+
+			set_init_arg( _SWITCH, optarg, MIN_, MAX_, & );
+			break;
+				*/
+						
+		} else if ( strcmp( ASOCIAL_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			mobile_device = YES;
+			break;
+
+				
+		} else if ( strcmp( NO_TUNPERSIST_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			no_tun_persist = YES;
+			break;
+				
+		} else if ( strcmp( MORE_RULES_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			debug_output( DBGL_SYSTEM, "WARNING --%s is not supported anymore... !\n", MORE_RULES_SWITCH );
+			break;
+
+		} else if ( strcmp( NO_PRIO_RULES_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			no_prio_rules = YES;
+			break;
+
+		} else if ( strcmp( NO_LO_RULE_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			no_lo_rule = YES;
+			break;
+
+		} else if ( strcmp( NO_THROW_RULES_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			no_throw_rules = YES;
+			break;
+			
+		} else if ( strcmp( NO_UNREACHABLE_RULE_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			debug_output( DBGL_SYSTEM, "WARNING --%s is now deprecated and unreachable rules are disabled by default !\n", NO_UNREACHABLE_RULE_SWITCH );
+			break;
+			
+		} else if ( strcmp( NO_UNRESP_CHECK_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			no_unresponsive_check = YES;
+			break;
+					
+		} else if ( strcmp( PARALLEL_BAT_NETA_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			errno = 0;
+					
+			set_init_arg( BASE_PORT_SWITCH,       "14305", MIN_BASE_PORT,       MAX_BASE_PORT,       &ogm_port,        REQ_NONE ); 
+			set_init_arg( RT_TABLE_OFFSET_SWITCH, "144",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset, REQ_NONE ); 
+			set_init_arg( RT_PRIO_OFFSET_SWITCH,  "14500", MIN_RT_PRIO_OFFSET,  MAX_RT_PRIO_OFFSET,  &rt_prio_offset,  REQ_NONE ); 
+			set_gw_network( "169.254.128.0/22" );
+					
+			break;
+					
+		} else if ( strcmp( PARALLEL_BAT_NETB_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			errno = 0;
+					
+			set_init_arg( BASE_PORT_SWITCH,       "16305", MIN_BASE_PORT,       MAX_BASE_PORT,       &ogm_port,        REQ_NONE ); 
+			set_init_arg( RT_TABLE_OFFSET_SWITCH, "40",    MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset, REQ_NONE ); 
+			set_init_arg( RT_PRIO_OFFSET_SWITCH,  "4000",  MIN_RT_PRIO_OFFSET,  MAX_RT_PRIO_OFFSET,  &rt_prio_offset,  REQ_NONE ); 
+			set_gw_network( "169.254.160.0/22" );
+					
+			break;
+					
+		} else if ( strcmp( PARALLEL_BAT_NETC_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			errno = 0;
+					
+			set_init_arg( BASE_PORT_SWITCH,       "18305", MIN_BASE_PORT,       MAX_BASE_PORT,       &ogm_port,        REQ_NONE ); 
+			set_init_arg( RT_TABLE_OFFSET_SWITCH, "184",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset, REQ_NONE ); 
+			set_init_arg( RT_PRIO_OFFSET_SWITCH,  "18500", MIN_RT_PRIO_OFFSET,  MAX_RT_PRIO_OFFSET,  &rt_prio_offset,  REQ_NONE ); 
+			set_gw_network( "169.254.192.0/22" );
+					
+			set_init_arg( NBRFSIZE_SWITCH, "10", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &my_pws, REQ_NONE );
+
+			break;
+					
+		} else if ( strcmp( PARALLEL_BAT_24C3_SWITCH, long_options[option_index].name ) == 0 ) {
+
+			errno = 0;
+					
+			set_init_arg( BASE_PORT_SWITCH,       "4308", MIN_BASE_PORT,       MAX_BASE_PORT,       &ogm_port,        REQ_NONE ); 
+			set_init_arg( RT_TABLE_OFFSET_SWITCH, "76",   MIN_RT_TABLE_OFFSET, MAX_RT_TABLE_OFFSET, &rt_table_offset, REQ_NONE ); 
+			set_init_arg( RT_PRIO_OFFSET_SWITCH,  "7600", MIN_RT_PRIO_OFFSET,  MAX_RT_PRIO_OFFSET,  &rt_prio_offset,  REQ_NONE ); 
+			set_gw_network( "0.0.0.0/30" );
+					
+			set_init_arg( TWO_WAY_TUNNEL_SWITCH, "0", MIN_TWO_WAY_TUNNEL, MAX_TWO_WAY_TUNNEL, &two_way_tunnel, REQ_NONE );
+			set_init_arg( ONE_WAY_TUNNEL_SWITCH, "3", MIN_TWO_WAY_TUNNEL, MAX_TWO_WAY_TUNNEL, &two_way_tunnel, REQ_NONE );
+
+			set_init_arg( NBRFSIZE_SWITCH, "100", MIN_SEQ_RANGE, MAX_SEQ_RANGE, &my_pws, REQ_NONE );
+			set_init_arg( BIDIRECT_TIMEOUT_SWITCH, "30", MIN_BIDIRECT_TIMEOUT, MAX_BIDIRECT_TIMEOUT, &my_lws, REQ_NONE );
+			no_lo_rule = YES;
+
+			break;
+				
+				/* this is just a template:
+		} else if ( strcmp( _SWITCH, long_options[option_index].name ) == 0 ) {
+
+			errno = 0;
+			= YES;
+			break;
+				*/	
+				
+
+		}
+
+		usage();
+		exit(EXIT_FAILURE);
+
+	} while ( 0 );
+		
+}
+
+void apply_short_opt( int32_t optchar ) {
+	
+	struct in_addr tmp_ip_holder;
+	memset( &tmp_ip_holder, 0, sizeof (struct in_addr) );
+
+	switch ( optchar ) {
+		
+		case 'a':
+
+			prepare_add_del_own_hna( optarg,0,0, NO /*no del*/, A_TYPE_NETWORK, REQ_HNA );
+			break;
+
+		case 'A':
+
+			prepare_add_del_own_hna( optarg,0,0, YES /*del */, A_TYPE_NETWORK, REQ_HNA );
+			break;
+	
+		case 'b':
+			loop_mode = NO;
+			break;
+
+		case 'l':
+			loop_mode = YES;
+			break;
+	
+		case 'c':
+			client_mode = YES;
+			break;
+
+		case 'd':
+
+			set_init_arg( "d", optarg, DBGL_MIN, DBGL_MAX, &debug_level, REQ_DBGL ); 
+			break;
+
+		case 'g':
+
+			set_gw_speeds( optarg );
+			break;
+
+		case 'H':
+			verbose_usage();
+			exit(EXIT_SUCCESS);
+		
+		case 'i':
+			set_init_arg( "i", "1", 1, 1, &info_output, REQ_INFO ); 
+			break;
+
+		case 'n':
+			no_policy_routing = 1;
+			break;
+
+		case 'o':
+
+			set_init_arg( "o", optarg, MIN_ORIGINATOR_INTERVAL, MAX_ORIGINATOR_INTERVAL, &my_ogi, REQ_OGI );
+			break;
+
+		case 'p':
+
+			set_init_addr( "p", optarg, &pref_gateway, NULL, REQ_PREF_GW );
+			break;
+
+		case 'r':
+
+		
+			set_init_arg( "r", optarg, MIN_RT_CLASS, MAX_RT_CLASS, &routing_class, REQ_RT_CLASS );
+			break;
+
+		case 's':
+
+			errno = 0;
+			if ( inet_pton( AF_INET, optarg, &tmp_ip_holder ) < 1 ) {
+
+				printf( "Invalid preferred visualsation server IP specified: %s\n", optarg );
+				exit(EXIT_FAILURE);
+
+			}
+
+			init_vis( tmp_ip_holder.s_addr );
+			break;
+	
+		case 'v':
+
+			printf( "BatMan-eXp %s%s (compatibility version %i)\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
+			exit(EXIT_SUCCESS);
+
+		case 'V':
+
+			print_animation();
+
+			printf( "\x1B[0;0HBatMan-eXp %s%s (compatibility version %i)\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
+			printf( "\x1B[9;0H \t May the bat guide your path ...\n\n\n" );
+
+			exit(EXIT_SUCCESS);
+
+		case 'h':
+			usage();
+			exit(EXIT_SUCCESS);
+
+		default:
+			usage();
+			exit(EXIT_FAILURE);
+
+	}
+	
+}
+	
+char* get_init_string( int g_argc, char **g_argv ){
+	
+#define INIT_STRING_SIZE 500
+	
+	char *dbg_init_str = debugMalloc( INIT_STRING_SIZE, 127 );
+	int i, dbg_init_out = 0;
+	
+	for (i=0; i < g_argc; i++) {
+		
+		if ( i >= 0 && INIT_STRING_SIZE > dbg_init_out) {
+			dbg_init_out = dbg_init_out + snprintf( (dbg_init_str + dbg_init_out), (INIT_STRING_SIZE - dbg_init_out), "%s ", g_argv[i] );
+		}
+		
+	}
+	
+	return dbg_init_str;
+
+}
+
+
+	
+	
+void apply_init_args( int argc, char *argv[] ) {
+
+	struct batman_if *batman_if;
+	char  ifaddr_str[ADDR_STR_LEN];
+
+	int32_t optchar, recv_buff_len, found_args;
+	struct ext_type_hna hna_type_request;
+
+	memset( &hna_type_request, 0, sizeof( hna_type_request ) );
+	
+	stop = 0;
+	prog_name = argv[0];
+	
+	inet_pton( AF_INET, DEF_GW_TUNNEL_PREFIX_STR, &gw_tunnel_prefix );
+
+	
+	printf( "BatMan-eXp %s%s (compatibility version %d) !\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
+
+	while ( 1 ) {
+
+		int32_t option_index = 0;
+
+		
+		if ( ( optchar = getopt_long ( argc, argv, "a:A:bclhHid:o:q:g:p:r:s:vV", long_options, &option_index ) ) == -1 ) {
+			break;
+		}
+		
+		if ( optchar == 0) {
+			
+			apply_long_opt( option_index );
+			
+		} else {
+			
+			apply_short_opt( optchar );
+
+		}
+
+	}
+	
+	found_args = optind;
+
+	if ( !client_mode  &&  info_output ) {
+
+		debug_config(1);
+		print_metric_table( 1, global_mt );
+
+		cleanup_all( CLEANUP_SUCCESS );
+
+	}
+
+	if ( gateway_class  &&  routing_class ) {
 		fprintf( stderr, "Error - routing class can't be set while gateway class is in use !\n" );
 		usage();
 		exit(EXIT_FAILURE);
 	}
 
-	if ( ( gateway_class != 0 ) && ( pref_gateway != 0 ) ) {
+	if ( gateway_class  &&  pref_gateway ) {
 		fprintf( stderr, "Error - preferred gateway can't be set while gateway class is in use !\n" );
 		usage();
 		exit(EXIT_FAILURE);
 	}
 
 	/* use routing class 1 if none specified */
-	if ( ( routing_class == 0 ) && ( pref_gateway != 0 ) )
-		routing_class = 1;
+	if ( !routing_class  &&  pref_gateway )
+		routing_class = 3;
 
-	if ( ( ( routing_class != 0 ) || ( gateway_class != 0 ) ) && ( !probe_tun(1) ) )
+	if ( ( routing_class  ||  gateway_class )  &&  !probe_tun(1) )
 		exit(EXIT_FAILURE);
 
 	/* this must be set for unix_clients and non-unix_clients */ 
 	sprintf( unix_path, "%s.%d", DEF_UNIX_PATH, ogm_port);
 
+	struct sockaddr_un unix_addr;
 	
-	if ( !conn_client ) {
+	memset( &unix_addr, 0, sizeof(struct sockaddr_un) );
+	unix_addr.sun_family = AF_LOCAL;
+	strcpy( unix_addr.sun_path, unix_path );
+	
 
+	
+	if ( !client_mode ) {
+		
+		if ( debug_level != -1 ) {
+			
+			struct client_node *client_node = debugMalloc( sizeof(struct client_node), 205 );
+			INIT_LIST_HEAD( &client_node->list );
+			client_node->fd = STDOUT_FILENO;
+			list_add( &client_node->list, (struct list_head_first *)&dbgl_clients[ debug_level ] );
+				
+		}
+		
+		char *init_string = get_init_string( argc, argv );
+	
+		debug_output(DBGL_SYSTEM, "Startup parameters: %s\n", init_string);
+	
+		debugFree( init_string, 1127 );
+
+
+		
+		// Testing for open and used unix socket
+		
+		unix_sock = socket( AF_LOCAL, SOCK_STREAM, 0 );
+
+		if ( connect ( unix_sock, (struct sockaddr *)&unix_addr, sizeof(struct sockaddr_un) ) < 0 ) {
+
+			close( unix_sock );
+			unlink( unix_path );
+			unix_sock = socket( AF_LOCAL, SOCK_STREAM, 0 );
+
+		} else {
+			
+			printf( "Error - there is already a batmand running on unix socket %s ?\n", unix_path );
+			cleanup_all( CLEANUP_FAILURE );
+		
+		}
+		
+
+		if ( bind ( unix_sock, (struct sockaddr *)&unix_addr, sizeof (struct sockaddr_un) ) < 0 ) {
+
+			printf( "Error - can't bind unix socket '%s': %s\n", unix_path, strerror(errno) );
+			cleanup_all( CLEANUP_FAILURE );
+
+		}
+
+		if ( listen( unix_sock, 10 ) < 0 ) {
+
+			printf( "Error - can't listen unix socket '%s': %s\n", unix_path, strerror(errno) );
+			cleanup_all( CLEANUP_FAILURE );
+
+		}
+		
+		
 		if ( argc <= found_args ) {
 
 			fprintf( stderr, "\nError - no interface specified !\n\n" );
 			usage();
-//			restore_defaults();
-			exit(EXIT_FAILURE);
+			cleanup_all( CLEANUP_FAILURE );
 
 		}
 
@@ -1279,49 +1405,28 @@ void apply_init_args( int argc, char *argv[] ) {
 		signal( SIGTERM, handler );
 		signal( SIGPIPE, SIG_IGN );
 		signal( SIGSEGV, segmentation_fault );
-
-		debug_clients.fd_list = debugMalloc( sizeof(struct list_head_first *) * debug_level_max, 203 );
-		debug_clients.mutex = debugMalloc( sizeof(pthread_mutex_t *) * debug_level_max, 209 );
-		debug_clients.clients_num = debugMalloc( sizeof(int16_t) * debug_level_max, 209 );
-
-		for ( res = 0; res < debug_level_max; res++ ) {
-
-			debug_clients.fd_list[res] = debugMalloc( sizeof(struct list_head_first), 204 );
-			((struct list_head_first *)debug_clients.fd_list[res])->next = debug_clients.fd_list[res];
-			((struct list_head_first *)debug_clients.fd_list[res])->prev = debug_clients.fd_list[res];
-
-			debug_clients.mutex[res] = debugMalloc( sizeof(pthread_mutex_t), 209 );
-			pthread_mutex_init( (pthread_mutex_t *)debug_clients.mutex[res], NULL );
-
-			debug_clients.clients_num[res] = 0;
-
-		}
-
+		
 		if ( flush_routes_rules(0 /* flush routes */) < 0 ) {
 
-			restore_defaults();
-			exit(EXIT_FAILURE);
+			cleanup_all( CLEANUP_FAILURE );
 
 		}
 
 		if ( !no_prio_rules ) {
 			if ( flush_routes_rules(1 /* flush rules */) < 0 ) {
 	
-				restore_defaults();
-				exit(EXIT_FAILURE);
+				cleanup_all( CLEANUP_FAILURE );
 	
 			}
 		}
 
-		printf ("Causing duplicate-address-detection timeout %ds, purge timeout %ds, my originator interval %dms, my window size %d \n",
-		  (((DEFAULT_ORIGINATOR_INTERVAL)*(my_ws)*(dad_timeout))/100000), MY_PURGE_TIMEOUT, my_ogi, my_ws );
+		debug_output( DBGL_SYSTEM, "   duplicate-address-detection timeout %ds, purge timeout %ds, originator interval %dms, window size %d \n",
+		  dad_timeout, PURGE_TIMEOUT/1000, my_ogi, my_pws );
 
-		
 		
 		if ( initial_seqno == 0 )
-			initial_seqno = rand_num( FULL_SEQ_RANGE - (10*my_ws) );
+			initial_seqno = rand_num( FULL_SEQ_RANGE - (10*my_pws) );
 	
-
 
 		while ( argc > found_args ) {
 
@@ -1332,20 +1437,21 @@ void apply_init_args( int argc, char *argv[] ) {
 			list_add_tail( &batman_if->list, &if_list );
 			
 			batman_if->dev = argv[found_args];
-			batman_if->if_num = found_ifs;
+			batman_if->if_num = found_ifs++;
 			
 			batman_if->out.ext_msg = NO;
 			batman_if->out.bat_type = BAT_TYPE_OGM;
 			batman_if->out.flags = 0x00;
 			batman_if->out.size = 0x00;
-			batman_if->out.ws     = my_ws;
+			batman_if->out.pws     = my_pws;
 			batman_if->out.seqno    = initial_seqno;
 
+			// some configurable interface values - initialized to unspecified:
 			batman_if->if_ttl_conf  = -1;
 			batman_if->if_send_clones_conf  = -1;
-			batman_if->send_ogm_only_via_owning_if_conf  = -1;
-			batman_if->make_ip_hna_if_conf = -1;
-			batman_if->dont_make_ip_hna_if_conf = -1;
+			//batman_if->dont_make_ip_hna_if_conf = -1;
+			batman_if->hna_if_conf = -1;
+			batman_if->send_ogm_only_via_owning_if_conf = -1;
 					
 			while ( argc > found_args && strlen( argv[found_args] ) >= 2 && *argv[found_args] == '/') {
 
@@ -1353,13 +1459,12 @@ void apply_init_args( int argc, char *argv[] ) {
 
 					errno = 0;
 					uint8_t tmp = strtol ( argv[ found_args+1 ], NULL , 10 );
-					//printf ("Interface %s specific option: /%c %d \n", batman_if->dev, ((argv[found_args])[1]), tmp );
 
 					if ( tmp < MIN_TTL || tmp > MAX_TTL ) {
 
 						printf( "Invalid ttl specified: %i.\nThe ttl must be >= %i and <= %i.\n", tmp, MIN_TTL, MAX_TTL );
 
-						exit(EXIT_FAILURE);
+						cleanup_all( CLEANUP_FAILURE );
 					}
 
 					batman_if->if_ttl_conf = tmp;
@@ -1377,7 +1482,7 @@ void apply_init_args( int argc, char *argv[] ) {
 						printf( "Invalid /%c specified: %i.\n Value must be %i <= value <= %i.\n", 
 								CLONES_IF_SWITCH, tmp, MIN_WL_CLONES, MAX_WL_CLONES );
 
-						exit(EXIT_FAILURE);
+						cleanup_all( CLEANUP_FAILURE );
 					}
 
 					batman_if->if_send_clones_conf = tmp;
@@ -1385,22 +1490,9 @@ void apply_init_args( int argc, char *argv[] ) {
 					found_args += 2;
 
 				
-				} else if ( (argv[found_args])[1] == OGM_ONLY_VIA_OWNING_IF_SWITCH && argc > (found_args) ) {
-
-					errno = 0;
-					//printf ("Interface %s specific option: /%c  \n", batman_if->dev, ((argv[found_args])[1]) );
-
-					batman_if->send_ogm_only_via_owning_if_conf = YES;
-					batman_if->if_ttl_conf = 1;
-
-					found_args += 1;
-
-				
 				} else if ( (argv[found_args])[1] == WLAN_IF_SWITCH && argc > (found_args) ) {
 
 					errno = 0;
-					//printf ("Interface %s specific option: /%c  \n", batman_if->dev, ((argv[found_args])[1]) );
-					//printf (" applying %s specific option: /%c %d \n", batman_if->dev, SEND_CLONES_IF_SWITCH, DEF_WLAN_IF_CLONES );
 
 					batman_if->if_send_clones_conf = wl_clones;
 
@@ -1410,41 +1502,39 @@ void apply_init_args( int argc, char *argv[] ) {
 				} else if ( (argv[found_args])[1] == LAN_IF_SWITCH && argc > (found_args) ) {
 
 					errno = 0;
-					//printf ("Interface %s specific option: /%c  \n", batman_if->dev, ((argv[found_args])[1]) );
-					//printf (" applying %s specific option: /%c %d \n", batman_if->dev, SEND_CLONES_IF_SWITCH, DEF_LAN_IF_CLONES );
 
 					batman_if->if_send_clones_conf = DEF_LAN_CLONES;
 
 					found_args += 1;
 
 				
-				} else if ( (argv[found_args])[1] == MAKE_IP_HNA_IF_SWITCH && argc > (found_args) ) {
+							
+				} else if ( (argv[found_args])[1] == OGM_ONLY_VIA_OWNING_IF_SWITCH && argc > (found_args) ) {
 
-					//printf ("Interface %s specific option: /%c  \n", batman_if->dev, ((argv[found_args])[1]) );
-					
-					if ( batman_if->if_num > 0 ) {
-					
-						errno = 0;
-						
-						batman_if->make_ip_hna_if_conf = YES;
+					errno = 0;
 
-					} else {
-						
-						printf( "Never ever add the IP address of the first interface to the HNA list !!! \n" );
-						exit(EXIT_FAILURE);
-	
-					}
+					batman_if->send_ogm_only_via_owning_if_conf = YES;
+					batman_if->if_ttl_conf = 1;
+
+					found_args += 1;
+
+				
+				} else if ( (argv[found_args])[1] == NO_HNA_IF_SWITCH && argc > (found_args) ) {
+
+					errno = 0;
 					
+					//batman_if->dont_make_ip_hna_if_conf = YES;
+					batman_if->hna_if_conf = NO;
+						
 					found_args += 1;
 
 							
-				} else if ( (argv[found_args])[1] == UNDO_IP_HNA_IF_SWITCH && argc > (found_args) ) {
+				} else if ( (argv[found_args])[1] == HNA_IF_SWITCH && argc > (found_args) ) {
 
-					//printf ("Interface %s specific option: /%c  \n", batman_if->dev, ((argv[found_args])[1]) );
-					
 					errno = 0;
 					
-					batman_if->dont_make_ip_hna_if_conf = YES;
+					//batman_if->dont_make_ip_hna_if_conf = YES;
+					batman_if->hna_if_conf = YES;
 						
 					found_args += 1;
 
@@ -1452,7 +1542,7 @@ void apply_init_args( int argc, char *argv[] ) {
 				} else {
 					
 					printf( "Invalid interface specific option specified! \n" );
-					exit(EXIT_FAILURE);
+					cleanup_all( CLEANUP_FAILURE );
 				
 				}
 			
@@ -1462,25 +1552,17 @@ void apply_init_args( int argc, char *argv[] ) {
 			init_interface ( batman_if );
 						
 			found_args++;
-		
-			
-			if (batman_if->if_active) {
-
-				addr_to_string(batman_if->addr.sin_addr.s_addr, str1, sizeof (str1));
-				addr_to_string(batman_if->broad.sin_addr.s_addr, str2, sizeof (str2));
-
-				printf("Using interface %s with address %s and broadcast address %s\n", batman_if->dev, str1, str2);
-
-			} else {
-
-				printf("Not using interface %s (retrying later): interface not active\n", batman_if->dev);
-
-			}
-			
-			found_ifs++;
-			
+					
 		}
 		
+		if ( found_ifs == 0 ) {
+			
+			fprintf( stderr, "\nError - no valid interface specified !\n\n" );
+			usage();
+			cleanup_all( CLEANUP_FAILURE );
+
+		}
+			
 		
 		memset( my_pip_ext_array, 0, sizeof(struct ext_packet) );
 		my_pip_ext_array->EXT_FIELD_MSG = YES;
@@ -1492,81 +1574,26 @@ void apply_init_args( int argc, char *argv[] ) {
 		else
 			my_pip_ext_array_len = 0;
 
-		
-		unlink( unix_path );
-		unix_if.unix_sock = socket( AF_LOCAL, SOCK_STREAM, 0 );
 
-		memset( &unix_if.addr, 0, sizeof(struct sockaddr_un) );
-		unix_if.addr.sun_family = AF_LOCAL;
-		strcpy( unix_if.addr.sun_path, unix_path );
+		/* old daemonize */
 
-		if ( bind ( unix_if.unix_sock, (struct sockaddr *)&unix_if.addr, sizeof (struct sockaddr_un) ) < 0 ) {
-
-			printf( "Error - can't bind unix socket '%s': %s\n", unix_path, strerror(errno) );
-			restore_defaults();
-			exit(EXIT_FAILURE);
-
-		}
-
-		if ( listen( unix_if.unix_sock, 10 ) < 0 ) {
-
-			printf( "Error - can't listen unix socket '%s': %s\n", unix_path, strerror(errno) );
-			restore_defaults();
-			exit(EXIT_FAILURE);
-
-		}
-
-		/* daemonize */
-		if ( debug_level == 0 ) {
-
-			if ( my_daemon() < 0 ) {
-
-				printf( "Error - can't fork to background: %s\n", strerror(errno) );
-				restore_defaults();
-				exit(EXIT_FAILURE);
-
-			}
-
-			openlog( "bmxd", LOG_PID, LOG_DAEMON );
-
-		} else {
-			printf( "BatMan-eXp %s%s (compatibility version %i)\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
-
-			debug_clients.clients_num[ debug_level - 1 ]++;
-			debug_level_info = debugMalloc( sizeof(struct debug_level_info), 205 );
-			INIT_LIST_HEAD( &debug_level_info->list );
-			debug_level_info->fd = 1;
-			list_add( &debug_level_info->list, (struct list_head_first *)debug_clients.fd_list[debug_level - 1] );
-
-		}
-
-		pthread_create( &unix_if.listen_thread_id, NULL, &unix_listen, NULL );
-
-		log_facility_active = YES;
-		
-		
 		/* add rule for hosts and announced interfaces */
-		if( !more_rules  &&  !no_prio_rules ) { 
+		if( !no_prio_rules ) { 
 		
-			add_del_rule( 0, 0, BATMAN_RT_TABLE_INTERFACES, BATMAN_RT_PRIO_INTERFACES, 0, 1, 0 );
-			add_del_rule( 0, 0, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_HOSTS, 0, 1, 0 );
+			add_del_rule( 0, 0, BATMAN_RT_TABLE_INTERFACES, BATMAN_RT_PRIO_INTERFACES, 0, 1, 0, YES /*track*/ );
+			add_del_rule( 0, 0, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_HOSTS, 0, 1, 0, YES /*track*/ );
 
 		}
 
 		/* add rule for hna networks */
 		if( !no_prio_rules )
-			add_del_rule( 0, 0, BATMAN_RT_TABLE_NETWORKS,   BATMAN_RT_PRIO_NETWORKS,   0, 1, 0 );
-
-		/* add unreachable routing table entry */
-		if( !no_unreachable_rule )
-			add_del_route( 0, 0, 0, 0, 0, "unknown", BATMAN_RT_TABLE_UNREACH, 2, 0 );
+			add_del_rule( 0, 0, BATMAN_RT_TABLE_NETWORKS,   BATMAN_RT_PRIO_NETWORKS,   0, 1, 0, YES /*track*/ );
 
 		
 		
 		if ( add_del_interface_rules( 0, (routing_class > 0 ? YES : NO), YES ) < 0 ) {
 
-			restore_defaults();
-			exit(EXIT_FAILURE);
+			cleanup_all( CLEANUP_FAILURE );
 
 		}
 
@@ -1586,230 +1613,141 @@ void apply_init_args( int argc, char *argv[] ) {
 			}
 		}		
 
-		
-		memset( &vis_if, 0, sizeof(vis_if) );
-
-		if ( vis_server ) {
-
-			vis_if.addr.sin_family = AF_INET;
-			vis_if.addr.sin_port = htons( vis_port );
-			vis_if.addr.sin_addr.s_addr = vis_server;
-			vis_if.sock = socket( PF_INET, SOCK_DGRAM, 0 );
-
-		}
 
 		if ( gateway_class != 0 )
 			start_gw_service( );
+		
+		/* daemonize */
+		if ( debug_level == -1 ) {
 
+			if ( my_daemon() < 0 ) {
 
-		if ( debug_level > 0 ) {
+				debug_output( DBGL_SYSTEM, "Error - can't fork to background: %s\n", strerror(errno) );
+				cleanup_all( CLEANUP_FAILURE );
 
-			printf( "debug level: %i\n", debug_level );
-
-			if ( my_ogi != DEFAULT_ORIGINATOR_INTERVAL )
-				printf( "originator interval: %i\n", my_ogi );
-
-			if ( gateway_class > 0 )
-				printf( "gateway class: %i -> propagating: %i%s/%i%s\n", gateway_class, ( download_speed > 2048 ? download_speed / 1024 : download_speed ), ( download_speed > 2048 ? "MBit" : "KBit" ), ( upload_speed > 2048 ? upload_speed / 1024 : upload_speed ), ( upload_speed > 2048 ? "MBit" : "KBit" ) );
-
-			if ( routing_class > 0 )
-				printf( "routing class: %i\n", routing_class );
-
-			if ( pref_gateway > 0 ) {
-				addr_to_string( pref_gateway, str1, sizeof(str1) );
-				printf( "preferred gateway: %s\n", str1 );
-			}
-
-			if ( vis_server > 0 ) {
-				addr_to_string( vis_server, str1, sizeof(str1) );
-				printf( "visualisation server: %s\n", str1 );
 			}
 
 		}
+
+		activate_debug_system( );
+		
+
 
 	/* connect to running batmand via unix socket */
 	} else {
 
-		unix_if.unix_sock = socket( AF_LOCAL, SOCK_STREAM, 0 );
+		struct list_head *list_pos, *list_tmp;
+		struct cntl_msg cmsg;
+		int send_req_end = YES;
 
-		memset( &unix_if.addr, 0, sizeof(struct sockaddr_un) );
-		unix_if.addr.sun_family = AF_LOCAL;
-		strcpy( unix_if.addr.sun_path, unix_path );
+		if ( list_empty( &cmsg_list ) ) {
 
-		if ( connect ( unix_if.unix_sock, (struct sockaddr *)&unix_if.addr, sizeof(struct sockaddr_un) ) < 0 ) {
+			set_init_arg( "", "1", 1, 1, &info_output, REQ_DEFAULT ); 
 
-			printf( "Error - can't connect to unix socket '%s': %s ! Is batmand running on this host ?\n", unix_path, strerror(errno) );
-			close( unix_if.unix_sock );
-			exit(EXIT_FAILURE);
-
-		}
-
-		unix_buff = debugMalloc( MAX_UNIX_RCV_SIZE, 5001 );
-
-		if ( debug_level > 0 ) {
-
-			if ( debug_level <= debug_level_max ) {
-
-				snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%c", REQ_DEBUG, debug_level );
-
-				if ( ( batch_mode ) && ( debug_level == DBGL_CHANGES || debug_level == DBGL_ALL || debug_level == DBGL_PROFILE ) )
-					printf( "WARNING: Your chosen debug level (%i) does not support batch mode !\n", debug_level );
-
+		} 
+		
+		do {
+			unix_sock = socket( AF_LOCAL, SOCK_STREAM, 0 );
+		
+			if ( connect ( unix_sock, (struct sockaddr *)&unix_addr, sizeof(struct sockaddr_un) ) < 0 ) {
+	
+				printf( "Error - can't connect to unix socket '%s': %s ! Is batmand running on this host ?\n", unix_path, strerror(errno) );
+				close( unix_sock );
+				exit(EXIT_FAILURE);
+	
 			}
-
-		} else if ( req_opt == REQ_RT_CLASS ) {
-
-			batch_mode = 1;
-			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%c", REQ_RT_CLASS, routing_class );
-
-		} else if ( req_opt == REQ_PREF_GW ) {
-
-			batch_mode = 1;
-			addr_to_string( pref_gateway, str1, sizeof(str1) );
-			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%s", REQ_PREF_GW, str1 );
-
-		} else if ( req_opt == REQ_GW_CLASS ) {
-
-			batch_mode = 1;
-			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%c", REQ_GW_CLASS, gateway_class );
-
-		} else if ( req_opt == REQ_PWS ) {
-
-			batch_mode = 1;
-			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%c", REQ_PWS, my_ws );
-		
-		} else if ( req_opt == REQ_LWS ) {
-
-			batch_mode = 1;
-			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%c", REQ_LWS, bidirect_link_to );
-		
-		} else if ( req_opt == REQ_DTD ) {
-
-			batch_mode = 1;
-			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%c", REQ_DTD, dup_degrad );
-		
-		} else if ( req_opt == REQ_OGI ) {
-
-			batch_mode = 1;
-			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%d", REQ_OGI, my_ogi );
-		
-		} else if ( req_opt == REQ_1WT ) {
-
-			batch_mode = 1;
-			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%c", REQ_1WT, one_way_tunnel );
-		
-		} else if ( req_opt == REQ_2WT ) {
-
-			batch_mode = 1;
-			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%c", REQ_2WT, two_way_tunnel );
-		
-		} else if ( req_opt == REQ_FAKE_TIME ) {
-
-			batch_mode = 1;
-			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%d", REQ_FAKE_TIME, fake_uptime );
-		
-		} else if ( req_opt ==  REQ_CHANGE_HNA ) {
-
-			hna_node = list_entry( (&my_hna_list)->next, struct hna_node, list );
 			
-			addr_to_string( hna_node->key.addr, str1, sizeof(str1) );
-			printf(" sending %d:%d %-3d %u %s\n", REQ_CHANGE_HNA, hna_node->enabled, hna_node->key.KEY_FIELD_ANETMASK, hna_node->key.addr, str1 );
-			
-			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%d %-3d %u", REQ_CHANGE_HNA, hna_node->enabled, hna_node->key.KEY_FIELD_ANETMASK, hna_node->key.addr );
-			
-			batch_mode = 1;
-			
-			
-		} else if ( req_opt == REQ_CHANGE_SRV ) {
-
-			srv_node = list_entry( (&my_srv_list)->next, struct srv_node, list );
-			
-			addr_to_string( srv_node->srv_addr, str1, sizeof(str1) );
-			printf(" sending %d:%d %-5d %-3d %u (%s)\n", REQ_CHANGE_SRV, srv_node->enabled, srv_node->srv_port, srv_node->srv_seqno, srv_node->srv_addr, str1 );
-			
-			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c:%d %-5d %-3d %u", REQ_CHANGE_SRV, srv_node->enabled, srv_node->srv_port, srv_node->srv_seqno, srv_node->srv_addr );
-			
-			batch_mode = 1;
-			
-
-		} else if ( info_output ) {
-
-			batch_mode = 1;
-			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c", REQ_INFO );
-
-		} else {
-
-			batch_mode = 1;
-			snprintf( unix_buff, MAX_UNIX_REQ_SIZE, "%c", REQ_DEFAULT );
-
-		}
-
-
-		if ( write( unix_if.unix_sock, unix_buff, MAX_UNIX_REQ_SIZE ) < 0 ) {
-
-			printf( "Error - can't write to unix socket: %s\n", strerror(errno) );
-			close( unix_if.unix_sock );
-			debugFree( unix_buff, 5101 );
-			exit(EXIT_FAILURE);
-
-		}
-
-		while ( ( recv_buff_len = read( unix_if.unix_sock, unix_buff, 1500 ) ) > 0 ) {
-
-			unix_buff[recv_buff_len] = '\0';
-
-			buff_ptr = unix_buff;
-			bytes_written = 0;
-
-			while ( ( cr_ptr = strchr( buff_ptr, '\n' ) ) != NULL ) {
-
-				*cr_ptr = '\0';
-
-				if ( strncmp( buff_ptr, "EOD", 3 ) == 0 ) {
-
-					if ( batch_mode ) {
-
-						close( unix_if.unix_sock );
-						debugFree( unix_buff, 5102 );
-						exit(EXIT_SUCCESS);
-
+			/* for all pending control messages */
+			list_for_each( list_pos, &cmsg_list ) {
+	
+				struct cmsg_node *cmsg_node = list_entry(list_pos, struct cmsg_node, list);
+	
+				memcpy( &cmsg, &cmsg_node->cmsg, sizeof( struct cntl_msg ) );
+				
+				if ( cmsg.type != REQ_DBGL && cmsg.type != REQ_END )
+					loop_mode = NO;
+					
+				if ( cmsg.type == REQ_DBGL  &&  (cmsg.val == DBGL_SYSTEM || cmsg.val == DBGL_CHANGES || cmsg.val == DBGL_ALL) ) {
+					
+					// if this is the only element in the list...
+					if ( cmsg_list.next == (struct list_head*)cmsg_node && 
+						cmsg_node->list.next == (struct list_head *)&cmsg_list ) {
+						
+						send_req_end = NO;
+						
+					} else {
+						
+						continue;
+						
 					}
-
-				} else if ( strncmp( buff_ptr, "BOD", 3 ) == 0 ) {
-
-					if ( !batch_mode )
-						system( "clear" );
-
-				} else {
-
-					printf( "%s\n", buff_ptr );
-
+				}			
+	
+				if ( write( unix_sock, &cmsg, sizeof( struct cntl_msg ) ) < 0 ) {
+	
+					printf( "Error - can't write to unix socket: %s\n", strerror(errno) );
+					close( unix_sock );
+					exit(EXIT_FAILURE);
+	
 				}
-
-				bytes_written += strlen( buff_ptr ) + 1;
-				buff_ptr = cr_ptr + 1;
-
+	
+	
 			}
-
-			if ( bytes_written != recv_buff_len )
-				printf( "%s", buff_ptr );
-
-		}
-
-		close( unix_if.unix_sock );
-		debugFree( unix_buff, 5103 );
-
-		if ( recv_buff_len < 0 ) {
-
-			printf( "Error - can't read from unix socket: %s\n", strerror(errno) );
-			exit(EXIT_FAILURE);
-
-		} else {
-
-			printf( "Connection terminated by remote host\n" );
-
-		}
-
+			
+			if ( send_req_end ) {
+				memset( &cmsg, 0, sizeof( struct cntl_msg ) );
+				cmsg.version = COMPAT_VERSION;
+				cmsg.len = sizeof( struct cntl_msg );
+				cmsg.type = REQ_END;
+				
+				if ( write( unix_sock, &cmsg, sizeof( struct cntl_msg ) ) < 0 ) {
+		
+					printf( "Error - can't write to unix socket: %s\n", strerror(errno) );
+					close( unix_sock );
+					exit(EXIT_FAILURE);
+			
+				}
+			}
+		
+			char unix_buff[MAX_UNIX_MSG_SIZE+1];
+			
+			if ( loop_mode )
+				system( "clear" );
+				
+			while ( ( recv_buff_len = read( unix_sock, unix_buff, MAX_UNIX_MSG_SIZE ) ) > 0 ) {
+		
+				unix_buff[recv_buff_len] = '\0';
+		
+				printf( "%s", unix_buff );
+		
+			}
+		
+			if ( recv_buff_len < 0 ) {
+		
+				printf( "Error - can't read from unix socket: %s\n", strerror(errno) );
+				exit(EXIT_FAILURE);
+		
+			}
+		
+			close( unix_sock );
+			unix_sock = 0;
+			
+			if ( loop_mode ) {
+				
+ 				sleep ( 1 );
+				
+			} else {
+				
+				/* purge all control messages */
+				list_for_each_safe( list_pos, list_tmp, &cmsg_list ) {
+					struct cmsg_node *cmsg_node = list_entry(list_pos, struct cmsg_node, list);
+					list_del( (struct list_head *)&cmsg_list, list_pos, &cmsg_list );
+					debugFree( cmsg_node, 1700 );
+				}
+				
+			}
+			
+		} while ( loop_mode );
+			
 		exit(EXIT_SUCCESS);
 
 	}
@@ -1817,25 +1755,70 @@ void apply_init_args( int argc, char *argv[] ) {
 }
 
 
-void interface_listen_sockets()
+void set_readfds()
 {
 	struct list_head *list_pos;
 	struct batman_if *batman_if;
+	struct client_node *client;
+	int i;
 
+	debug_output( DBGL_ALL, "set_readfds():... \n");
+	
 	FD_ZERO(&receive_wait_set);
 	receive_max_sock = 0;
 	
 	receive_max_sock = ifevent_sk;
 	FD_SET(ifevent_sk, &receive_wait_set);
 	
+	if ( receive_max_sock < unix_sock )
+		receive_max_sock = unix_sock;
+	
+	FD_SET(unix_sock,  &receive_wait_set);
+	
+	list_for_each( list_pos, &unix_clients ) {
+		
+		client = list_entry( list_pos, struct client_node, list );
+
+		if ( receive_max_sock < client->fd )
+			receive_max_sock = client->fd;
+		
+		FD_SET( client->fd, &receive_wait_set );
+	
+	}
+	
+	for ( i = DBGL_MIN; i <= DBGL_MAX; i++ ) {
+		
+		list_for_each( list_pos, &dbgl_clients[i] ) {
+			
+			client = list_entry( list_pos, struct client_node, list );
+	
+			if ( client->fd == STDOUT_FILENO )
+				continue;
+			
+			if ( receive_max_sock < client->fd )
+				receive_max_sock = client->fd;
+			
+			FD_SET( client->fd, &receive_wait_set );
+		
+		}
+	}
+	
 	list_for_each(list_pos, &if_list) {
+		
 		batman_if = list_entry(list_pos, struct batman_if, list);
 
-		if (batman_if->if_active) {
+		if (batman_if->if_active && !batman_if->is_lo ) {
+			
 			if (batman_if->udp_recv_sock > receive_max_sock)
 				receive_max_sock = batman_if->udp_recv_sock;
 
 			FD_SET(batman_if->udp_recv_sock, &receive_wait_set);
+			
+			if (batman_if->udp_send_sock > receive_max_sock)
+				receive_max_sock = batman_if->udp_send_sock;
+
+			FD_SET(batman_if->udp_send_sock, &receive_wait_set);
+			
 		}
 	}
 }
@@ -1872,316 +1855,326 @@ failure:
 
 void deactivate_interface( struct batman_if *batman_if ) {
 
-	debug_output(3, "1 Deactivating interface: %s\n", batman_if->dev);
+	debug_output(DBGL_SYSTEM, "deactivating interface: %s\n", batman_if->dev);
+	
+	if ( batman_if->if_num != 0 ) {
+				
+		prepare_add_del_own_hna( NULL, batman_if->addr.sin_addr.s_addr, 32, YES, A_TYPE_INTERFACE, REQ_NONE );
+				
+		add_del_own_hna( NO );	
+		
+	}
 	
 	if (batman_if->udp_recv_sock != 0)
 		close(batman_if->udp_recv_sock);
+	
+	batman_if->udp_recv_sock = 0;
 
 	if (batman_if->udp_send_sock != 0)
 		close(batman_if->udp_send_sock);
 
-	batman_if->udp_recv_sock = 0;
 	batman_if->udp_send_sock = 0;
 
-	if ( more_rules ) {
-
-		if ( ( batman_if->netaddr > 0 ) && ( batman_if->netmask > 0 ) ) {
-
-			if( !no_prio_rules ) {
-			
-				add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_INTERFACES, BATMAN_RT_PRIO_INTERFACES + batman_if->if_num, 0, 1, 1 );
-				add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_HOSTS + batman_if->if_num, 0, 1, 1 );
-				
-			}
-			
-			if ( !no_unreachable_rule )
-				add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_UNREACH, BATMAN_RT_PRIO_UNREACH + batman_if->if_num, 0, 1, 1 );
-		
-		}
-		
-	}
-	
-	
 	
 	batman_if->if_active = 0;
 	active_ifs--;
 
-	if (batman_if->if_rp_filter_old > -1)
-		set_rp_filter(batman_if->if_rp_filter_old, batman_if->dev);
+	restore_kernel_config ( batman_if );
 
-	if (batman_if->if_send_redirects_old > -1)
-		set_send_redirects(batman_if->if_send_redirects_old, batman_if->dev);
-
-	batman_if->if_rp_filter_old = -1;
-	batman_if->if_send_redirects_old = -1;
-
-	
-	interface_listen_sockets();
-	debug_output(3, "Interface deactivated: %s\n", batman_if->dev);
+	changed_readfds++;
 }
 
-void activate_interface(struct batman_if *batman_if)
+void activate_interface(struct batman_if *bif)
 {
 	struct ifreq int_req;
-	int on = 1, sock_opts;
-	char fake_arg[ADDR_STR_LEN + 4], ifaddr_str[ADDR_STR_LEN];
+	int set_on = 1, sock_opts;
+	char ifaddr_str[ADDR_STR_LEN], str2[ADDR_STR_LEN]; 
+	//char fake_arg[ADDR_STR_LEN + 4]
+	
+	bif->is_lo =  strcmp( "lo", bif->dev_phy ) == 0 ? YES : NO;
 
+	if ( ( bif->udp_send_sock = socket( PF_INET, SOCK_DGRAM, 0 ) ) < 0 ) {
 
-	if ( ( batman_if->udp_recv_sock = socket( PF_INET, SOCK_DGRAM, 0 ) ) < 0 ) {
-
-		debug_output(3, "Error - can't create receive socket: %s\n", strerror(errno) );
+		debug_output(DBGL_SYSTEM, "Error - can't create send socket: %s\n", strerror(errno) );
+		
+		if ( bif->is_lo )
+			cleanup_all( CLEANUP_FAILURE );
+		
 		goto error;
 
 	}
-
+	
+	
 	memset( &int_req, 0, sizeof (struct ifreq) );
-	strncpy( int_req.ifr_name, batman_if->dev, IFNAMSIZ - 1 );
+	strncpy( int_req.ifr_name, bif->dev, IFNAMSIZ - 1 );
 
-	if ( ioctl( batman_if->udp_recv_sock, SIOCGIFADDR, &int_req ) < 0 ) {
+	if ( ioctl( bif->udp_send_sock, SIOCGIFADDR, &int_req ) < 0 ) {
 
-		debug_output(3, "Error - can't get IP address of interface %s: %s\n", batman_if->dev, strerror(errno) );
+		debug_output(DBGL_SYSTEM, "Error - can't get IP address of interface %s: %s\n", bif->dev, strerror(errno) );
+		
+		if ( bif->is_lo )
+			cleanup_all( CLEANUP_FAILURE );
+		
 		goto error;
 
 	}
 
-	batman_if->addr.sin_family = AF_INET;
-	batman_if->addr.sin_port = htons(ogm_port);
-	batman_if->addr.sin_addr.s_addr = ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr;
+	bif->addr.sin_family = AF_INET;
+	bif->addr.sin_port = htons(ogm_port);
+	bif->addr.sin_addr.s_addr = ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr;
 
-	if (batman_if->addr.sin_addr.s_addr == 0) {
+	if (bif->addr.sin_addr.s_addr == 0) {
 
-		debug_output(3, "Error - invalid ip address detected (0.0.0.0): %s\n", batman_if->dev);
+		debug_output(DBGL_SYSTEM, "Error - invalid ip address detected (0.0.0.0): %s\n", bif->dev);
+		
+		if ( bif->is_lo )
+			cleanup_all( CLEANUP_FAILURE );
+		
 		goto error;
 
 	}
 
-	if ( ioctl( batman_if->udp_recv_sock, SIOCGIFBRDADDR, &int_req ) < 0 ) {
+	if ( ioctl( bif->udp_send_sock, SIOCGIFBRDADDR, &int_req ) < 0 ) {
 
-		debug_output(3, "Error - can't get broadcast IP address of interface %s: %s\n", batman_if->dev, strerror(errno) );
+		debug_output(DBGL_SYSTEM, "Error - can't get broadcast IP address of interface %s: %s\n", bif->dev, strerror(errno) );
+		
+		if ( bif->is_lo )
+			cleanup_all( CLEANUP_FAILURE );
+		
 		goto error;
 
 	}
 
-	batman_if->broad.sin_family = AF_INET;
-	batman_if->broad.sin_port = htons(ogm_port);
-	batman_if->broad.sin_addr.s_addr = ((struct sockaddr_in *)&int_req.ifr_broadaddr)->sin_addr.s_addr;
+	bif->broad.sin_family = AF_INET;
+	bif->broad.sin_port = htons(ogm_port);
+	bif->broad.sin_addr.s_addr = ((struct sockaddr_in *)&int_req.ifr_broadaddr)->sin_addr.s_addr;
 
-	if ( batman_if->broad.sin_addr.s_addr == 0 ) {
+	if ( bif->broad.sin_addr.s_addr == 0 ) {
 
-		debug_output(3, "Error - invalid broadcast address detected (0.0.0.0): %s\n", batman_if->dev );
+		debug_output(DBGL_SYSTEM, "Error - invalid broadcast address detected (0.0.0.0): %s\n", bif->dev );
+		
+		if ( bif->is_lo )
+			cleanup_all( CLEANUP_FAILURE );
+		
 		goto error;
 
 	}
 
-
-#ifdef __linux__
-	/* The SIOCGIFINDEX ioctl is Linux specific, but I am not yet sure if the
-	* equivalent exists on *BSD. There is a function called if_nametoindex()
-	* on both Linux and BSD.
-	* Maybe it does the same as this code and we can simply call it instead?
-	* --stsp
-	*/
-	if ( ioctl( batman_if->udp_recv_sock, SIOCGIFINDEX, &int_req ) < 0 ) {
-
-		debug_output(3, "Error - can't get index of interface %s: %s\n", batman_if->dev, strerror(errno) );
-		goto error;
-
-	}
-
-	batman_if->if_index = int_req.ifr_ifindex;
-#else
-	batman_if->if_index = 0;
-#endif
-
-	if ( ioctl( batman_if->udp_recv_sock, SIOCGIFNETMASK, &int_req ) < 0 ) {
-
-		debug_output(3, "Error - can't get netmask address of interface %s: %s\n", batman_if->dev, strerror(errno) );
-		goto error;
-
-	}
-
-	batman_if->netaddr = ( ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr & batman_if->addr.sin_addr.s_addr );
-	batman_if->netmask = bit_count( ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr );
-
-	/* check if interface is a wireless interface */
-
-	if (  (batman_if->is_wlan = (ioctl( batman_if->udp_recv_sock, SIOCGIWNAME, &int_req ) < 0 ? NO : YES ))  )
-		printf( "Detected wireless interface %s  (use %s /l to correct this assumption) !\n", batman_if->dev, batman_if->dev);
-	else 
-		printf( "Detected non-wireless interface %s  (use %s /w to correct this assumption) !\n", batman_if->dev, batman_if->dev);
 	
-	
-	if ( more_rules ) {
+	if ( ioctl( bif->udp_send_sock, SIOCGIFINDEX, &int_req ) < 0 ) {
 
-		if( !no_prio_rules ) {
+		debug_output(DBGL_SYSTEM, "Error - can't get index of interface %s: %s\n", bif->dev, strerror(errno) );
+		
+		if ( bif->is_lo )
+			cleanup_all( CLEANUP_FAILURE );
+		
+		goto error;
+
+	}
+
+	bif->if_index = int_req.ifr_ifindex;
+
+	if ( ioctl( bif->udp_send_sock, SIOCGIFNETMASK, &int_req ) < 0 ) {
+
+		debug_output(DBGL_SYSTEM, "Error - can't get netmask address of interface %s: %s\n", bif->dev, strerror(errno) );
+		
+		if ( bif->is_lo )
+			cleanup_all( CLEANUP_FAILURE );
+		
+		goto error;
+
+	}
+
+	bif->netaddr = ( ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr & bif->addr.sin_addr.s_addr );
+	bif->netmask = get_set_bits( ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr );
+
+	if ( bif->is_lo ) {
+		
+		if ( bif->if_num != 0 || bif->netmask != 32 || bif->addr.sin_addr.s_addr != bif->broad.sin_addr.s_addr ) {
 			
-			// use 0,0 instead of batman_if->netaddr, batman_if->netmask to find also batman nodes with different netmasks
-			add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_INTERFACES, BATMAN_RT_PRIO_INTERFACES + batman_if->if_num, 0, 1, 0 );
-			add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_HOSTS, BATMAN_RT_PRIO_HOSTS + batman_if->if_num, 0, 1, 0 );
+			debug_output( DBGL_SYSTEM, "ERROR - loopback interface MUST BE primary interface\n");
+			debug_output( DBGL_SYSTEM, "ERROR - netmask of loopback interface MUST BE 32\n");
+			debug_output( DBGL_SYSTEM, "ERROR - ip address and broadcast address of loopback interface MUST BE the same\n");
+			
+			cleanup_all( CLEANUP_FAILURE );
 		}
 		
-		if ( !no_unreachable_rule )
-			add_del_rule( batman_if->netaddr, batman_if->netmask, BATMAN_RT_TABLE_UNREACH, BATMAN_RT_PRIO_UNREACH + batman_if->if_num, 0, 1, 0 );
-			
+		debug_output( DBGL_SYSTEM, "detected loopback interface %s as primary interface\n", bif->dev, bif->dev);
+
+	} else {
+	
+		/* check if interface is a wireless interface */
+	
+		if (  (bif->is_wlan = (ioctl( bif->udp_send_sock, SIOCGIWNAME, &int_req ) < 0 ? NO : YES ))  )
+			debug_output( DBGL_SYSTEM, "detected wireless interface %s  (use %s /l to correct this assumption)\n", bif->dev, bif->dev);
+		else 
+			debug_output( DBGL_SYSTEM, "detected non-wireless interface %s  (use %s /w to correct this assumption)\n", bif->dev, bif->dev);
+	
 	}
+	
+	
+	if ( setsockopt( bif->udp_send_sock, SOL_SOCKET, SO_BROADCAST, &set_on, sizeof(set_on) ) < 0 ) {
 
-
-
-	if ( ( batman_if->udp_send_sock = socket( PF_INET, SOCK_DGRAM, 0 ) ) < 0 ) {
-
-		debug_output(3, "Error - can't create send socket: %s\n", strerror(errno) );
-		goto error;
-
-	}
-
-	if ( setsockopt( batman_if->udp_send_sock, SOL_SOCKET, SO_BROADCAST, &on, sizeof(on) ) < 0 ) {
-
-		debug_output(3, "Error - can't enable broadcasts: %s\n", strerror(errno) );
+		debug_output(DBGL_SYSTEM, "Error - can't enable broadcasts: %s\n", strerror(errno) );
 		goto error;
 
 	}
 
 	// bind send socket to interface name
-	if ( bind_to_iface( batman_if->udp_send_sock, batman_if->dev ) < 0 ) {
+	if ( bind_to_iface( bif->udp_send_sock, bif->dev_phy ) < 0 ) {
 
-		debug_output(3, "Cannot bind socket to device %s : %s \n", batman_if->dev, strerror(errno));
+		debug_output(DBGL_SYSTEM, "Cannot bind socket to device %s : %s \n", bif->dev, strerror(errno));
 		goto error;
 
 	}
 	
 	// bind send socket to address 
-	if ( bind( batman_if->udp_send_sock, (struct sockaddr *)&batman_if->addr, sizeof(struct sockaddr_in) ) < 0 ) {
+	if ( bind( bif->udp_send_sock, (struct sockaddr *)&bif->addr, sizeof(struct sockaddr_in) ) < 0 ) {
 
-		debug_output(3, "Error - can't bind send socket: %s\n", strerror(errno) );
+		debug_output(DBGL_SYSTEM, "Error - can't bind send socket: %s\n", strerror(errno) );
 		goto error;
 
 	}
 
 	// make udp send socket non blocking
-	sock_opts = fcntl(batman_if->udp_send_sock, F_GETFL, 0);
-	fcntl(batman_if->udp_send_sock, F_SETFL, sock_opts | O_NONBLOCK);
+	sock_opts = fcntl(bif->udp_send_sock, F_GETFL, 0);
+	fcntl(bif->udp_send_sock, F_SETFL, sock_opts | O_NONBLOCK);
 
 	
-	// bind recv socket to interface name
-	if ( bind_to_iface( batman_if->udp_recv_sock, batman_if->dev ) < 0 ) {
+#ifdef SO_TIMESTAMP
+	if (setsockopt(bif->udp_send_sock, SOL_SOCKET, SO_TIMESTAMP, &set_on, sizeof(set_on)))
+		debug_output(DBGL_SYSTEM, "Warning: No SO_TIMESTAMP support, despite being defined, falling back to SIOCGSTAMP\n");
+#else
+	debug_output(DBGL_SYSTEM, "Warning: No SO_TIMESTAMP support, falling back to SIOCGSTAMP\n");
+#endif
 
-		debug_output(3, "Cannot bind socket to device %s : %s \n", batman_if->dev, strerror(errno));
-		goto error;
+	if ( !bif->is_lo ) {
 
-	}
-
-	// bind recv socket to address 
-	if ( bind( batman_if->udp_recv_sock, (struct sockaddr *)&batman_if->broad, sizeof(struct sockaddr_in) ) < 0 ) {
-
-		debug_output(3, "Error - can't bind receive socket: %s\n", strerror(errno));
-		goto error;
-
-	}
-
+		// get recv socket
+		if ( ( bif->udp_recv_sock = socket( PF_INET, SOCK_DGRAM, 0 ) ) < 0 ) {
 	
-	batman_if->if_rp_filter_old = get_rp_filter(batman_if->dev);
-	set_rp_filter(0, batman_if->dev);
-
-	batman_if->if_send_redirects_old = get_send_redirects(batman_if->dev);
-	set_send_redirects(0, batman_if->dev);
-
+			debug_output(3, "Error - can't create receive socket: %s\n", strerror(errno) );
+			goto error;
+	
+		}
+		
+		// bind recv socket to interface name
+		if ( bind_to_iface( bif->udp_recv_sock, bif->dev_phy ) < 0 ) {
+	
+			debug_output(3, "Cannot bind socket to device %s : %s \n", bif->dev, strerror(errno));
+			goto error;
+	
+		}
+	
+		// bind recv socket to address 
+		if ( bind( bif->udp_recv_sock, (struct sockaddr *)&bif->broad, sizeof(struct sockaddr_in) ) < 0 ) {
+	
+			debug_output(3, "Error - can't bind receive socket: %s\n", strerror(errno));
+			goto error;
+	
+		}
+	
+	}
+	
+	check_kernel_config( bif, YES /*init*/ );
 	
 	//apply default values
-	batman_if->if_ttl = ttl;
-	batman_if->if_send_clones = wl_clones;
-	batman_if->packet_out_len = sizeof( struct bat_header );
+	bif->packet_out_len = sizeof( struct bat_header );
+	bif->if_send_clones = wl_clones;
+	bif->if_ttl = ttl;
+	bif->send_ogm_only_via_owning_if = NO;
 
-	//apply interface specific parametrization sets	
-	if( default_para_set == PARA_SET_BMX || default_para_set == PARA_SET_GRAZ07 ) {
-				
-		if ( batman_if->if_num != 0 ) {
-			
-			errno = 0;
-						
-			addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
-			sprintf( fake_arg, "%s/32", ifaddr_str);
-			prepare_add_del_own_hna( fake_arg, NO, A_TYPE_INTERFACE );
-						
-			batman_if->send_ogm_only_via_owning_if = YES;
-			batman_if->if_ttl = 1;
+	//overwrite default values with customized values
+	if( !bif->is_wlan )
+		bif->if_send_clones = DEF_LAN_CLONES;
+	
+	/*
+	if ( bif->if_num != 0  &&  !(bif->dont_make_ip_hna_if_conf == YES) ) {
+		
+		//addr_to_string( bif->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
+		//sprintf( fake_arg, "%s/32", ifaddr_str);
+		//prepare_add_del_own_hna( fake_arg,0,0, NO, A_TYPE_INTERFACE, REQ_NONE );
+		prepare_add_del_own_hna( NULL, bif->addr.sin_addr.s_addr, 32, NO, A_TYPE_INTERFACE, REQ_NONE );
 
-		}
-					
-				
-		if( !batman_if->is_wlan )
-			batman_if->if_send_clones = DEF_LAN_CLONES;
-				
+		bif->if_ttl = 1;
+		bif->send_ogm_only_via_owning_if = YES;
+	
 	}
+	*/
 	
-	
-	//apply interface specific parametrizations:
-	
-	if ( batman_if->make_ip_hna_if_conf != -1  &&  batman_if->if_num != 0 ) {
-		addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
-		sprintf( fake_arg, "%s/32", ifaddr_str);
-		prepare_add_del_own_hna( fake_arg, NO, A_TYPE_INTERFACE );
+	if ( bif->if_num != 0  &&  ( bif->hna_if_conf == YES  ||  (nonprimary_hna == YES  &&  bif->hna_if_conf != NO) ) ) {
 		
-		batman_if->send_ogm_only_via_owning_if = YES;
-		batman_if->if_ttl = 1;
-	}
-	
-	if ( batman_if->dont_make_ip_hna_if_conf != -1  &&  batman_if->if_num != 0 ) {
-		addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
-		sprintf( fake_arg, "%s/32", ifaddr_str);
-		prepare_add_del_own_hna( fake_arg, YES, A_TYPE_INTERFACE );
+		prepare_add_del_own_hna( NULL, bif->addr.sin_addr.s_addr, 32, NO, A_TYPE_INTERFACE, REQ_NONE );
 		
-		batman_if->send_ogm_only_via_owning_if_conf = NO;
-		batman_if->if_ttl_conf = ttl;
 	}
+
+	if ( bif->if_num != 0 ) {
+
+		bif->if_ttl = 1;
+		bif->send_ogm_only_via_owning_if = YES;
 	
-	if ( batman_if->if_ttl_conf != -1 )
-		batman_if->if_ttl = batman_if->if_ttl_conf;
+	}
+
 	
-	if ( batman_if->if_send_clones_conf != -1 )
-		batman_if->if_send_clones =  batman_if->if_send_clones_conf;
+	if ( bif->if_send_clones_conf != -1 )
+		bif->if_send_clones =  bif->if_send_clones_conf;
 	
-	if ( batman_if->send_ogm_only_via_owning_if_conf  != -1 )
-		batman_if->send_ogm_only_via_owning_if = batman_if->send_ogm_only_via_owning_if_conf;
+	if ( bif->if_ttl_conf != -1 )
+		bif->if_ttl = bif->if_ttl_conf;
+	
+	if ( bif->send_ogm_only_via_owning_if_conf  != -1 )
+		bif->send_ogm_only_via_owning_if = bif->send_ogm_only_via_owning_if_conf;
 	
 	
 	//prepare originator
-	batman_if->out.ttl = batman_if->if_ttl;
-	batman_if->out.orig = batman_if->addr.sin_addr.s_addr;
+	bif->out.ttl = bif->if_ttl;
+	bif->out.orig = bif->addr.sin_addr.s_addr;
 	
 	
 	//prepare extenson messages:
 	my_pip_ext_array->EXT_PIP_FIELD_ADDR = (list_entry( (&if_list)->next, struct batman_if, list ))->addr.sin_addr.s_addr;
 
 
-	batman_if->if_active = 1;
+	bif->if_active = 1;
 	active_ifs++;
 
 	//activate selector for active interfaces
-	interface_listen_sockets();
+	changed_readfds++;
 	
-//	add_del_own_hna( NO /*do not purge*/ );
+	addr_to_string( bif->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
+	addr_to_string( bif->broad.sin_addr.s_addr, str2, sizeof (str2));
 	
-	debug_output(3, "Interface activated: %s\n", batman_if->dev);
+	debug_output( DBGL_CHANGES, "activated interface %s %s/%d broadcast address %s\n", bif->dev, ifaddr_str, bif->netmask, str2 );
 
-	
-	
 	return;
 
 error:
-	deactivate_interface( batman_if );
+	deactivate_interface( bif );
 	
 }
 
 void init_interface(struct batman_if *batman_if)
 {
+	char *colon_ptr;
+
 	if (strlen( batman_if->dev ) > IFNAMSIZ - 1) {
 		printf("Error - interface name too long: %s\n", batman_if->dev);
-		restore_defaults();
-		exit(EXIT_FAILURE);
+		cleanup_all( CLEANUP_FAILURE );
 	}
 
+	sprintf( batman_if->dev_phy, "%s", batman_if->dev);
+
+	/* if given interface is an alias record physical interface name*/
+	if ( ( colon_ptr = strchr( batman_if->dev_phy, ':' ) ) != NULL )
+		*colon_ptr = '\0';
+
+	
 	if (is_interface_up(batman_if->dev))
 		activate_interface(batman_if);
+	else 
+		debug_output( DBGL_SYSTEM, "Not using interface %s (retrying later): interface not active\n", batman_if->dev);
+
+
 }
 
 
@@ -2190,7 +2183,8 @@ void check_interfaces() {
 	struct list_head *list_pos;
 	struct batman_if *batman_if;
 	uint8_t purge_origs = NO;
-	char fake_arg[ADDR_STR_LEN + 12], ifaddr_str[ADDR_STR_LEN];
+	//char ifaddr_str[ADDR_STR_LEN];
+	//char fake_arg[ADDR_STR_LEN + 4]
 
 
 	list_for_each(list_pos, &if_list) {
@@ -2221,7 +2215,7 @@ void check_interfaces() {
 			memset( &int_req, 0, sizeof (struct ifreq) );
 			strncpy( int_req.ifr_name, batman_if->dev, IFNAMSIZ - 1 );
 
-			if ( ioctl( batman_if->udp_recv_sock, SIOCGIFADDR, &int_req ) < 0 ) {
+			if ( ioctl( batman_if->udp_send_sock, SIOCGIFADDR, &int_req ) < 0 ) {
 
 				debug_output(0, "WARNING: can't get IP address of interface %s: %s\n", batman_if->dev, strerror(errno) );
 				deactivate_if = YES;
@@ -2231,7 +2225,7 @@ void check_interfaces() {
 				debug_output(0, "WARNING: IP address of interface %s: changed !!\n", batman_if->dev );
 				deactivate_if = YES;
 				
-			} else if ( ioctl( batman_if->udp_recv_sock, SIOCGIFBRDADDR, &int_req ) < 0 ) {
+			} else if ( ioctl( batman_if->udp_send_sock, SIOCGIFBRDADDR, &int_req ) < 0 ) {
 
 				debug_output(0, "WARNING: Can't get broadcast IP address of interface %s: %s\n", batman_if->dev, strerror(errno) );
 				deactivate_if = YES;
@@ -2241,7 +2235,7 @@ void check_interfaces() {
 				debug_output(0, "WARNING: Broadcast address of  interface %s changed \n", batman_if->dev );
 				deactivate_if = YES;
 
-			} else if ( ioctl( batman_if->udp_recv_sock, SIOCGIFNETMASK, &int_req ) < 0 ) {
+			} else if ( ioctl( batman_if->udp_send_sock, SIOCGIFNETMASK, &int_req ) < 0 ) {
 
 				debug_output(0, "WARNING: can't get netmask address of interface %s: %s\n", batman_if->dev, strerror(errno) );
 				deactivate_if = YES;
@@ -2251,9 +2245,9 @@ void check_interfaces() {
 				debug_output(0, "WARNING: Net address of  interface %s changed \n", batman_if->dev );
 				deactivate_if = YES;
 			
-			} else if ( batman_if->netmask != bit_count( ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr ) ) {
+			} else if ( batman_if->netmask != get_set_bits( ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr ) ) {
 				
-				debug_output(0, "WARNING: Netmask address of  interface %s changed \n", batman_if->dev );
+				debug_output(0, "WARNING: Netmask address of  interface %s changed from %d to %d \n", batman_if->dev, batman_if->netmask, get_set_bits( ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr ) );
 				deactivate_if = YES;
 			
 			}
@@ -2266,14 +2260,6 @@ void check_interfaces() {
 			
 			deactivate_interface( batman_if );
 			
-			if ( batman_if->if_num != 0 ) {
-				
-				addr_to_string( batman_if->addr.sin_addr.s_addr, ifaddr_str, sizeof(ifaddr_str) );
-				sprintf( fake_arg, "%s/32", ifaddr_str);
-				prepare_add_del_own_hna( fake_arg, YES, A_TYPE_INTERFACE );
-				add_del_own_hna( NO );	
-		
-			}
 				
 			debug_output( 0, "WARNING: Interface %s deactivated \n", batman_if->dev );
 		}
@@ -2296,6 +2282,9 @@ void check_interfaces() {
 	}
 		
 }
+
+
+
 
 
 
@@ -2373,16 +2362,9 @@ void start_gw_service ( void ) {
 	if( (gw_listen_arg->gw_client_list = debugMalloc( (0xFFFFFFFF>>gw_tunnel_netmask) * sizeof( struct gw_client* ), 210 ) ) == NULL ) {
 	
 		debug_output( 0, "Error - start_gw_service(): could not allocate memory for gw_client_list \n");
-		restore_defaults();
-		exit(EXIT_FAILURE);
+		cleanup_all( CLEANUP_FAILURE );
 	}
 	
-/*	
-	for( i=0; i<(0xFFFFFFFF>>gw_tunnel_netmask); i++) {
-		//debug_output( 3, "resetting %d at %ld\n", i, gw_listen_arg.gw_client_list[i]);
-		gw_listen_arg->gw_client_list[i] = NULL;
-	}
-*/
 	memset( gw_listen_arg->gw_client_list, 0, (0xFFFFFFFF>>gw_tunnel_netmask) * sizeof( struct gw_client* ) );
 
 	gw_listen_arg->sock = socket( PF_INET, SOCK_DGRAM, 0 );
@@ -2390,8 +2372,7 @@ void start_gw_service ( void ) {
 	if ( gw_listen_arg->sock < 0 ) {
 
 		debug_output( 0, "Error - can't create tunnel socket: %s", strerror(errno) );
-		restore_defaults();
-		exit(EXIT_FAILURE);
+		cleanup_all( CLEANUP_FAILURE );
 
 	}
 
@@ -2403,8 +2384,7 @@ void start_gw_service ( void ) {
 	if ( bind( gw_listen_arg->sock, (struct sockaddr *)&addr, sizeof(struct sockaddr_in) ) < 0 ) {
 
 		debug_output( 0, "Error - can't bind tunnel socket: %s\n", strerror(errno) );
-		restore_defaults();
-		exit(EXIT_FAILURE);
+		cleanup_all( CLEANUP_FAILURE );
 
 	}
 
@@ -2417,3 +2397,97 @@ void start_gw_service ( void ) {
 }
 
 
+void debug_config( int fd )
+{
+	dprintf(fd, "source_version=%s\n", SOURCE_VERSION);
+	dprintf(fd, "compat_version=%i\n", COMPAT_VERSION);
+	dprintf(fd, "vis_compat_version=%i\n", VIS_COMPAT_VERSION);
+	dprintf(fd, "ogm_port=%i\n", ogm_port );
+	dprintf(fd, "gw_port=%i\n", my_gw_port );
+	dprintf(fd, "vis_port=%i\n", vis_port );
+	dprintf(fd, "unix_socket_path=%s\n", unix_path);
+	dprintf(fd, "own_ogm_jitter=%i\n", JITTER);
+	dprintf(fd, "default_ttl=%i\n", ttl);
+	dprintf(fd, "originator_timeout=%i\n", PURGE_TIMEOUT);
+	dprintf(fd, "rt_table_interfaces=%i\n", BATMAN_RT_TABLE_INTERFACES);
+	dprintf(fd, "rt_table_networks=%i\n", BATMAN_RT_TABLE_NETWORKS);
+	dprintf(fd, "rt_table_hosts=%i\n", BATMAN_RT_TABLE_HOSTS);
+	dprintf(fd, "rt_table_unreach=%i\n", BATMAN_RT_TABLE_UNREACH);
+	dprintf(fd, "rt_table_tunnel=%i\n", BATMAN_RT_TABLE_TUNNEL);
+	
+	dprintf(fd, "rt_prio_interfaces=%i\n", BATMAN_RT_PRIO_INTERFACES);
+	dprintf(fd, "rt_prio_networks=%i\n", BATMAN_RT_PRIO_NETWORKS);
+	dprintf(fd, "rt_prio_unreach=%i\n", BATMAN_RT_PRIO_UNREACH);
+	dprintf(fd, "rt_prio_tunnel=%i\n", BATMAN_RT_PRIO_TUNNEL);
+	
+	
+}
+
+
+void debug_params( int fd )
+{
+	
+	struct list_head *list_pos;
+	char  str[ADDR_STR_LEN];
+
+	
+	dprintf( fd, "%s [not-all-options-displayed]", prog_name );
+
+	if ( routing_class > 0 )
+		dprintf( fd, " -r %i", routing_class );
+
+	if ( pref_gateway > 0 ) {
+
+		addr_to_string( pref_gateway, str, sizeof (str) );
+
+		dprintf( fd, " -p %s", str );
+
+	}
+
+	if ( gateway_class > 0 ) {
+
+		int download_speed, upload_speed;
+
+		get_gw_speeds( gateway_class, &download_speed, &upload_speed );
+
+		dprintf( fd, " -g %i%s/%i%s", 
+			 ( download_speed > 2048 ? download_speed / 1024 : download_speed ), 
+			   ( download_speed > 2048 ? "MBit" : "KBit" ), 
+			     ( upload_speed > 2048 ? upload_speed / 1024 : upload_speed ),
+			       ( upload_speed > 2048 ? "MBit" : "KBit" ) );
+
+	}
+
+	list_for_each( list_pos, &my_hna_list ) {
+
+		struct hna_node *hna_node = list_entry( list_pos, struct hna_node, list );
+
+		addr_to_string( hna_node->key.addr, str, sizeof (str) );
+									
+		if ( hna_node->enabled && hna_node->key.KEY_FIELD_ATYPE == A_TYPE_INTERFACE )
+			dprintf( fd, " -a %s/%i", str, hna_node->key.KEY_FIELD_ANETMASK );
+
+	}
+
+	list_for_each( list_pos, &my_srv_list ) {
+
+		struct srv_node *srv_node = list_entry( list_pos, struct srv_node, list );
+
+		addr_to_string( srv_node->srv_addr, str, sizeof (str) );
+									
+		if ( srv_node->enabled )
+			dprintf( fd, " --%s %s:%d:%i", ADD_SRV_SWITCH, str, srv_node->srv_port, srv_node->srv_seqno );
+
+	}
+								
+	list_for_each( list_pos, &if_list ) {
+
+		struct batman_if *batman_if = list_entry( list_pos, struct batman_if, list );
+		
+		dprintf( fd, " %s", batman_if->dev );
+
+	}
+	
+	dprintf( fd, "\n" );
+
+}

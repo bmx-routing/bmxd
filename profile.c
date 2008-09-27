@@ -17,10 +17,14 @@
  *
  */
 
+#define _GNU_SOURCE
+#include <stdio.h>
 
 
 #include "os.h"
 #include "batman.h"
+#include "control.h"
+
 
 
 
@@ -57,19 +61,19 @@ void prof_stop( int32_t index ) {
 }
 
 
-void prof_print() {
+void prof_print( int fd ) {
 
 	int32_t index;
 	float total_cpu_time=1;
 	
-	debug_output( 5, " \nProfile data:\n" );
+	dprintf( fd, " \nProfile data:\n" );
 
 	for ( index = 0; index < PROF_COUNT; index++ ) {
 
 		if( index == 0 )
 			total_cpu_time = (float)prof_container[0].total_time/CLOCKS_PER_SEC;
 			
-		debug_output( 5, "   %''30s:  %5.1f, cpu time = %10.3f, calls = %''10i, avg time per call = %4.10f \n", 
+		dprintf( fd, "   %30s:  %5.1f, cpu time = %10.3f, calls = %10i, avg time per call = %4.10f \n", 
 			prof_container[index].name,
 			100 * ( ((float)prof_container[index].total_time/CLOCKS_PER_SEC) / total_cpu_time ),
 			(float)prof_container[index].total_time/CLOCKS_PER_SEC, 
@@ -101,9 +105,29 @@ void prof_stop( int32_t index ) {
 }
 
 
-void prof_print() {
+void prof_print( int fd ) {
 
 }
 
 
 #endif
+
+void init_profile( void ) {
+	
+/* for profiling the functions */
+	prof_init( PROF_all, "all" );
+	prof_init( PROF_choose_gw, "choose_gw" );
+	prof_init( PROF_update_routes, "update_routes" );
+	prof_init( PROF_update_gw_list, "update_gw_list" );
+	prof_init( PROF_get_orig_node, "get_orig_node" );
+	prof_init( PROF_update_originator, "update_orig" );
+	prof_init( PROF_purge_originator, "purge_orig" );
+	prof_init( PROF_schedule_rcvd_ogm, "schedule_rcvd_ogm" );
+	prof_init( PROF_send_outstanding_ogms, "send_outstanding_ogms" );
+	prof_init( PROF_update_bits, "update_bits" );
+	prof_init( PROF_test_bits, "test_bits" );
+	prof_init( PROF_process_packet, "process_packet" );
+	
+
+}
+

@@ -24,14 +24,14 @@ enum {
 	PROF_choose_gw,
 	PROF_update_routes,
 	PROF_update_gw_list,
-	PROF_is_duplicate,
 	PROF_get_orig_node,
 	PROF_update_originator,
 	PROF_purge_originator,
-	PROF_schedule_forward_packet,
-	PROF_send_outstanding_packets,
-	PROF_receive_packet,
-	PROF_set_dbg_rcvd_all_bits,
+	PROF_schedule_rcvd_ogm,
+	PROF_send_outstanding_ogms,
+	PROF_update_bits,
+	PROF_test_bits,
+	PROF_process_packet,
 	PROF_COUNT
 };
 
@@ -49,4 +49,6 @@ struct prof_container {
 void prof_init( int32_t index, char *name );
 void prof_start( int32_t index );
 void prof_stop( int32_t index );
-void prof_print();
+void prof_print( int fd );
+void init_profile( void );
+
