@@ -26,7 +26,7 @@ struct neigh_node *init_neigh_node( struct orig_node *orig_node, uint32_t neigh,
 void free_link_node( struct orig_node *orig_node );
 void flush_link_node_seqnos( void );
 void update_primary_orig( struct orig_node *orig_node, struct msg_buff *mb );
-void update_link( struct orig_node *orig_node, SQ_TYPE in_seqno, struct batman_if *this_if, uint8_t direct_undupl_neigh_ogm, uint8_t link_flags );
+void update_link( struct orig_node *orig_node, SQ_TYPE in_seqno, struct batman_if *this_if, uint16_t context, uint8_t link_flags );
 void set_lq_bits( struct link_node *link_node, SQ_TYPE in_seqno, struct batman_if *this_if, uint8_t direct_undupl_neigh_ogm );
 
 int get_lq_bits( struct link_node *link_node, struct batman_if *this_if, uint16_t read_range );
@@ -36,9 +36,7 @@ int tq_power( int tq_rate_value, int range );
 
 int alreadyConsidered( struct orig_node *orig_node, SQ_TYPE seqno, uint32_t neigh, struct batman_if *if_incoming );
 
-struct neigh_node *get_neigh_node( struct orig_node *orig_node, uint32_t neigh, struct batman_if *if_incoming );
-
-void update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node, uint8_t acceppted, struct msg_buff *mb );
+struct neigh_node *update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node, uint16_t context, struct msg_buff *mb );
 void purge_orig( uint32_t curr_time );
 void debug_orig( int dbgl, int sock );
 

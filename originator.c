@@ -61,7 +61,7 @@ struct orig_node *get_orig_node( uint32_t addr ) {
 
 
 	addr_to_string( addr, orig_str, ADDR_STR_LEN );
-	debug_output( 4, "Creating new originator: %s \n", orig_str );
+	debug_all( "Creating new originator: %s \n", orig_str );
 
 	orig_node = debugMalloc( sizeof(struct orig_node), 402 );
 	memset(orig_node, 0, sizeof(struct orig_node));
@@ -119,7 +119,7 @@ void flush_neigh_node_seqnos( struct orig_node *orig_node ) {
 
 struct neigh_node *init_neigh_node( struct orig_node *orig_node, uint32_t neigh, struct batman_if *iif, uint16_t seqno, uint32_t last_aware )
 {
-	debug_output( 4, "Creating new last-hop neighbour of originator\n" );
+	debug_all( "Creating new last-hop neighbour of originator\n" );
 
 	struct neigh_node *neigh_node = debugMalloc( sizeof (struct neigh_node), 403 );
 	memset( neigh_node, 0, sizeof(struct neigh_node) );
@@ -150,10 +150,12 @@ void free_neigh_node( struct neigh_node *neigh_node )
 	debugFree( neigh_node, 1403 );
 }
 
-void update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node, uint8_t acceppted, struct msg_buff *mb ) {
+struct neigh_node *update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node, uint16_t context, struct msg_buff *mb )
+{
 
 	prof_start( PROF_update_originator );
 	
+	uint8_t acceppted = context & IS_ACCEPTED ? YES : NO;
 	struct list_head *neigh_pos;
 	struct neigh_node *neigh_node = NULL, *tmp_neigh_node = NULL, *best_neigh_node = NULL;
 	uint8_t max_packet_count = 0 /*, is_new_seqno = 0*/; // TBD: check max_packet_count for overflows if MAX_SEQ_RANGE > 256
@@ -165,15 +167,11 @@ void update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node
 	static char addr_str[ADDR_STR_LEN], orig_str[ADDR_STR_LEN], blocker_str[ADDR_STR_LEN], hna_str[ADDR_STR_LEN];
 	
 	addr_to_string( orig_node->orig, orig_str, ADDR_STR_LEN );
-	debug_output( 4, "update_originator(): Updating originator (%s) entry of received packet,  \n", orig_str );
+	debug_all( "update_originator(): Updating originator (%s) entry of received packet,  \n", orig_str );
 
-	/* it seems we missed a lot of packets or the other host restarted */
-	
 	
 	/* only used for debugging purposes */
-	if (  orig_node->first_valid_sec == 0 /* ||  
-		     ((int16_t)(in->seqno - orig_node->last_accept_seqno)) > orig_node->ws  ||  
-		     ((int16_t)(in->seqno - orig_node->last_accept_seqno)) < -(orig_node->ws) */  )
+	if (  orig_node->first_valid_sec == 0  )
 		orig_node->first_valid_sec = get_time_sec();
 	
 	
@@ -212,7 +210,7 @@ void update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node
 
 	} else {
 
-		debug_output( 4, "Updating existing last-hop neighbour of originator\n" );
+		debug_all( "Updating existing last-hop neighbour of originator\n" );
 
 	}
 
@@ -230,7 +228,7 @@ void update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node
 	/* check for duplicate/blocked hna announcements */
 	if ( best_neigh_node == neigh_node  &&  mb->hna_array_len > 0 ) {
 
-		debug_output( 4, "HNA information received (%i HNA networks): \n", mb->hna_array_len );
+		debug_all( "HNA information received (%i HNA networks): \n", mb->hna_array_len );
 		hna_count = 0;
 
 		while ( hna_count < mb->hna_array_len ) {
@@ -268,14 +266,15 @@ void update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node
 					del_default_route();
 				}
 				
-				return;
+				prof_stop( PROF_update_originator );
+				return neigh_node;
 				
 			} else {
 
 				if (  key.KEY_FIELD_ANETMASK > 0  &&  key.KEY_FIELD_ANETMASK <= 32  &&  key.KEY_FIELD_ATYPE <= A_TYPE_MAX )
-					debug_output( 4, "  hna: %s/%i, type %d\n", hna_str, key.KEY_FIELD_ANETMASK, key.KEY_FIELD_ATYPE );
+					debug_all( "  hna: %s/%i, type %d\n", hna_str, key.KEY_FIELD_ANETMASK, key.KEY_FIELD_ATYPE );
 				else
-					debug_output( 4, "  hna: %s/%i, type %d -> ignoring (invalid netmask or type) \n", hna_str, key.KEY_FIELD_ANETMASK, key.KEY_FIELD_ATYPE );
+					debug_all( "  hna: %s/%i, type %d -> ignoring (invalid netmask or type) \n", hna_str, key.KEY_FIELD_ANETMASK, key.KEY_FIELD_ATYPE );
 
 			}
 
@@ -285,8 +284,10 @@ void update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node
 	
 	if ( orig_node->last_accepted_sqn != in->seqno ) {
 
-		/* estimated average originaotr interval of this node */
-		if ( GREAT_SQ( in->seqno, orig_node->last_accepted_sqn )  &&  orig_node->last_accept_time > 0  &&  orig_node->last_accept_time < batman_time ) {
+		/* only for debugging: estimated average originaotr interval of this node */
+		if ( GREAT_SQ( in->seqno, orig_node->last_accepted_sqn )  &&  
+				   orig_node->last_accept_time > 0  &&  
+				   LESS_U32( orig_node->last_accept_time, batman_time ) ) {
 			
 			orig_node->ca10ogis += ((batman_time - orig_node->last_accept_time) / (in->seqno - orig_node->last_accepted_sqn)) -
 						(orig_node->ca10ogis/10);
@@ -294,11 +295,6 @@ void update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node
 		}
 		
 		orig_node->last_accept_time =  batman_time;
-		
-		
-		//if ( orig_node->last_valid_seqno_largest_ttl != in->ttl )
-		debug_output( 4, "updating changed largest_ttl: oldSeqno %d, newSeqno %d, old TTL %d new TTL %d \n", 
-			      orig_node->last_accepted_sqn, in->seqno, orig_node->last_accept_largest_ttl,  in->ttl  );
 		
 		orig_node->last_accept_largest_ttl = in->ttl;
 		
@@ -313,9 +309,6 @@ void update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node
 	if ( orig_node->last_accepted_sqn == in->seqno && in->ttl > orig_node->last_accept_largest_ttl )
 		orig_node->last_accept_largest_ttl = in->ttl;
 	
-	
-	orig_node->last_valid = batman_time;
-
 	
 	/* only evaluate and change recorded attributes and route if arrived via best neighbor */
 	if ( best_neigh_node == neigh_node ) {
@@ -397,7 +390,7 @@ void update_orig( struct orig_node *orig_node, struct orig_node *orig_neigh_node
 	}
 	
 	prof_stop( PROF_update_originator );
-
+	return neigh_node;
 }
 
 
@@ -646,7 +639,7 @@ void purge_orig( uint32_t curr_time ) {
 		if ( curr_time == 0 || LESS_U32( orig_node->last_aware + PURGE_TIMEOUT , curr_time  )  ) {
 
 			addr_to_string( orig_node->orig, orig_str, ADDR_STR_LEN );
-			debug_output( 4, "originator timeout: %s, last_valid %u, last_aware %u  \n", orig_str, orig_node->last_valid, orig_node->last_aware );
+			debug_all( "originator timeout: %s, last_valid %u, last_aware %u  \n", orig_str, orig_node->last_valid, orig_node->last_aware );
 
 			hash_remove_bucket( orig_hash, hashit );
 
@@ -747,7 +740,7 @@ void purge_orig( uint32_t curr_time ) {
 
 			
 			/* purge outdated PrimaryInterFace NeighBor Identifier */
-			if ( orig_node->id4him > 0  &&  orig_node->last_link + PURGE_TIMEOUT < curr_time  )
+			if ( orig_node->id4him > 0  &&  LESS_U32( (orig_node->last_link + PURGE_TIMEOUT), curr_time)  )
 				free_pifnb_node( orig_node );
 			
 			
@@ -761,11 +754,11 @@ void purge_orig( uint32_t curr_time ) {
 
 				neigh_node = list_entry( neigh_pos, struct neigh_node, list );
 
-				if (  neigh_node->last_aware + PURGE_TIMEOUT < curr_time  &&  orig_node->router != neigh_node  ) {
+				if (  LESS_U32( (neigh_node->last_aware + PURGE_TIMEOUT), curr_time )  &&  orig_node->router != neigh_node  ) {
 
 					addr_to_string( orig_node->orig, orig_str, ADDR_STR_LEN );
 					addr_to_string( neigh_node->addr, neigh_str, ADDR_STR_LEN );
-					debug_output( 4, "Neighbour timeout: originator %s, neighbour: %s, last_aware %u \n", orig_str, neigh_str, neigh_node->last_aware );
+					debug_all( "Neighbour timeout: originator %s, neighbour: %s, last_aware %u \n", orig_str, neigh_str, neigh_node->last_aware );
 					
 					list_del( prev_list_head, neigh_pos, &orig_node->neigh_list );
 					
@@ -914,7 +907,9 @@ void set_lq_bits( struct link_node *ln, SQ_TYPE in_seqno, struct batman_if *this
 
 
 
-void update_link( struct orig_node *orig_node, SQ_TYPE in_seqno, struct batman_if *this_if, uint8_t direct_undupl_neigh_ogm, uint8_t link_flags ) {
+void update_link( struct orig_node *orig_node, SQ_TYPE in_seqno, struct batman_if *this_if, uint16_t context, uint8_t link_flags ) {
+	
+	uint8_t direct_undupl_neigh_ogm = ( !(context & HAS_CLONED_FLAG) && (context & IS_DIRECT_NEIGH) ) ? YES : NO;
 	static char orig_str[ADDR_STR_LEN];
 					
 	if( direct_undupl_neigh_ogm ) {
@@ -1027,23 +1022,6 @@ int alreadyConsidered( struct orig_node *orig_node, SQ_TYPE seqno, uint32_t neig
 	return NO;
 }
 
-struct neigh_node *get_neigh_node( struct orig_node *orig_node, uint32_t neigh, struct batman_if *if_incoming ) {
-
-	struct list_head *neigh_pos;
-	struct neigh_node *nn;
-
-	list_for_each( neigh_pos, &orig_node->neigh_list ) {
-
-		nn = list_entry( neigh_pos, struct neigh_node, list );
-		
-		if ( neigh == nn->addr  &&  if_incoming == nn->if_incoming )
-			return nn;
-		
-	}
-
-	return NULL;
-}
-
 
 
 void debug_orig( int dbgl, int sock ) {
@@ -1088,7 +1066,7 @@ void debug_orig( int dbgl, int sock ) {
 	
 	if ( dbgl == DBGL_DETAILS  || dbgl == DBGL_NEIGHBORS ||  dbgl == DBGL_ALL ) {
 		
-		dprintf( sock, "BatMan-eXp %s%s, IF %s %s, LinkWindowSize %i, PathWindSize %i, OGI %ims, currSeqno %d, UT %i:%i%i:%i%i:%i%i, CPU %d/1000 \n",
+		dprintf( sock, "BatMan-eXp %s%s, IF %s %s, LinkWindowSize %i, PathWindSize %i, OGI %ims, currSeqno %d, UT %i:%i%i:%i%i:%i%i, CPU %d/1000, IntTime %10u \n",
 		SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), 
 		((struct batman_if *)if_list.next)->dev, orig_str, my_lws, my_pws, my_ogi, 
 		(list_entry( (&if_list)->next, struct batman_if, list ))->out.seqno,
@@ -1099,7 +1077,8 @@ void debug_orig( int dbgl, int sock ) {
 				(((uptime_sec)%3600)/60)%10,
 				(((uptime_sec)%60)/10)%10,
 				(((uptime_sec)%60))%10,
-				s_curr_avg_cpu_load
+				s_curr_avg_cpu_load,
+				batman_time
 			);
 	}
 	

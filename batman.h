@@ -41,6 +41,8 @@
  */
 
 //#define EXT_DBG
+//#define NODEBUGALL
+//#define NODEBUG
 
 #define SOURCE_VERSION "0.3-alpha" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
 
@@ -200,13 +202,13 @@ extern int32_t initial_seqno;
 
 extern int32_t fake_uptime;
 #define MIN_FAKE_UPTIME 0
-#define MAX_FAKE_UPTIME 4292967
+#define MAX_FAKE_UPTIME 2147383 /*(((TP32/1000)/2)-100) /1000 to talk about seconds and not ms, /2 to not render scheduled events outdated, -100 to be save */
 #define DEF_FAKE_UPTIME 0 
 #define FAKE_UPTIME_SWITCH "fake-uptime"
 
 
 
-extern uint8_t mobile_device;
+extern uint8_t asocial_device;
 #define ASOCIAL_SWITCH           "asocial-device"
 
 extern uint8_t no_forw_dupl_ttl_check;
@@ -474,8 +476,25 @@ extern int debug_level;
 #define DBGL_DETAILS    8
 #define DBGL_HNAS       9
 #define DBGL_NEIGHBORS  10
-#define DBGL_MAX 	10
-#define DBGL_INVALID	11
+#define DBGL_TEST	11
+#define DBGL_MAX 	11
+#define DBGL_INVALID	12
+
+#define HAS_UNIDIRECT_FLAG	0x00000001
+#define HAS_DIRECTLINK_FLAG	0x00000002
+#define HAS_CLONED_FLAG		0x00000004
+#define IS_DIRECT_NEIGH		0x00000010
+#define IS_MY_ADDR		0x00000020
+#define IS_MY_ORIG		0x00000040
+#define IS_BROADCAST		0x00000080
+#define IS_VALID		0x00000100
+#define IS_NEW			0x00000200
+#define IS_BIDIRECTIONAL	0x00000400
+#define IS_ACCEPTABLE		0x00000800
+#define IS_ACCEPTED		0x00001000
+#define IS_BEST_NEIGH		0x00002000
+#define IS_ASOCIAL		0x00004000
+
 
 
 // my HNA extension messages (attached to all primary OGMs)
@@ -556,7 +575,6 @@ extern struct debug_clients debug_clients;
 extern int s_returned_select;
 extern int s_received_aggregations;
 extern int s_broadcasted_aggregations;
-extern int s_broadcasted_cp_aggregations;
 extern int s_received_ogms;
 extern int s_accepted_ogms;
 extern int s_broadcasted_ogms;
@@ -1151,7 +1169,6 @@ void add_del_other_srv( struct orig_node *orig_node, struct ext_packet *srv_arra
 void add_del_own_hna( uint8_t purge );
 void add_del_own_srv( uint8_t purge );
 
-void process_ogm( struct msg_buff *mb );
 void purge_empty_hna_nodes( void );
 
 #endif

@@ -51,6 +51,25 @@ struct cmsg_node {
 	struct cntl_msg cmsg;
 };
 
+#ifndef  NODEBUG
+
+#ifndef  NODEBUGALL
+#define debug_all(...) debug_output( DBGL_ALL, __VA_ARGS__ )
+#else  //NODEBUGALL
+#define debug_all(...)
+#endif //NODEBUGALL
+
+void debug_output( int8_t dbgl, char *last, ... );
+
+#else  //NODEBUG
+
+#define debug_output(...)
+
+#define debug_all(...)
+
+#endif //NODEBUG
+
+
 void init_control( void );
 void cleanup_control( void );
 void activate_debug_system( void );
@@ -58,5 +77,7 @@ void accept_unix_client( void );
 void handle_unix_dbgl_msg( struct list_head* list_pos, struct list_head * prev_list_head, int dbgl );
 void handle_unix_control_msg( struct list_head* list_pos, struct list_head * prev_list_head );
 void debug_log( char *last, ... );
-void debug_output( int8_t dbgl, char *last, ... );
+
+
+
 

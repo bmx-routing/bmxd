@@ -24,19 +24,19 @@ struct send_node                 /* structure for send_list maintaining packets 
 	uint32_t send_time;
 	int16_t  send_bucket;
 	uint8_t  iteration;
-	uint8_t  send;
-	uint8_t  done;
 	uint8_t  own;
 	unsigned char *ogm_buff;
 	int32_t  ogm_buff_len;
 	struct batman_if *if_outgoing;
 };
 
+
+
+
 void init_dispatch( void );
 void cleanup_dispatch( void );
 void wait4Event( uint32_t timeout );
 void schedule_own_ogm( struct batman_if *batman_if, uint32_t current_time );
-void schedule_rcvd_ogm( uint8_t unidirectional, uint8_t directlink, uint8_t cloned, uint16_t neigh_id, struct msg_buff *mb );
 void debug_send_list( int sock );
 void send_outstanding_ogms();
 

@@ -81,7 +81,7 @@ void cleanup_control( void ) {
 	struct client_node *client_node;
 	struct list_head *list_pos, *list_tmp;
 	
-	for ( i = 0; i < DBGL_MAX; i++ ) {
+	for ( i = DBGL_MIN; i <= DBGL_MAX; i++ ) {
 
 		list_for_each_safe( list_pos, list_tmp, (struct list_head *)&dbgl_clients[i] ) {
 
@@ -109,6 +109,7 @@ void cleanup_control( void ) {
 	
 
 }
+	
 	
 	
 void activate_debug_system( void ) {
@@ -146,7 +147,7 @@ void accept_unix_client( void )
 	
 	changed_readfds++;
 	
-	debug_output( DBGL_ALL, "accept_unix_client(): got unix control connection\n" );
+	debug_all( "accept_unix_client(): got unix control connection\n" );
 	
 }
 
@@ -165,11 +166,11 @@ void handle_unix_control_msg( struct list_head* list_pos, struct list_head * pre
 	if ( input == sizeof(struct cntl_msg)  &&  cmsg->version == COMPAT_VERSION  && 
 		( cmsg->len == sizeof(struct cntl_msg) ||  cmsg->len == ( input += read( client->fd, cmsg->aux, (cmsg->len-sizeof(struct cntl_msg)) ) ) ) ) {
 		
-		debug_output( DBGL_ALL, "rcvd control request via fd %d type %d  of %d bytes, version %d, val %d\n", client->fd, cmsg->type, cmsg->len, cmsg->version, cmsg->val );
+		debug_all( "rcvd control request via fd %d type %d  of %d bytes, version %d, val %d\n", client->fd, cmsg->type, cmsg->len, cmsg->version, cmsg->val );
 		
 		if ( cmsg->type == REQ_DBGL   ) {
 
-			if (  cmsg->val == DBGL_SYSTEM || cmsg->val == DBGL_CHANGES || cmsg->val == DBGL_ALL ) {
+			if (  cmsg->val == DBGL_SYSTEM || cmsg->val == DBGL_CHANGES || cmsg->val == DBGL_TEST || cmsg->val == DBGL_ALL ) {
 
 				list_del( prev_list_head, list_pos, &unix_clients );
 						
@@ -198,9 +199,9 @@ void handle_unix_control_msg( struct list_head* list_pos, struct list_head * pre
 				
 			}
 			
-		 } else if ( cmsg->type == REQ_DBGL_INPUT ) {
+		} else if ( cmsg->type == REQ_DBGL_INPUT ) {
 			 
-			if ( cmsg->val == DBGL_SYSTEM || cmsg->val == DBGL_CHANGES || cmsg->val == DBGL_ALL )  {
+			if ( cmsg->val == DBGL_SYSTEM || cmsg->val == DBGL_CHANGES || cmsg->val == DBGL_TEST || cmsg->val == DBGL_ALL )  {
 
 				buff[cmsg->len] = '\0';
 				debug_output( cmsg->val, "%s", cmsg->aux );
@@ -509,11 +510,12 @@ void handle_unix_control_msg( struct list_head* list_pos, struct list_head * pre
 void handle_unix_dbgl_msg( struct list_head* list_pos, struct list_head * prev_list_head, int dbgl )
 {
 	char buff[MAX_UNIX_MSG_SIZE];
+	int input;
 	
 	struct client_node *client = list_entry( list_pos, struct client_node, list );
 	
 	errno=0;
-	int input = read( client->fd, buff, sizeof( buff ) );
+	input = read( client->fd, buff, sizeof( buff ) );
 
 	debug_output( DBGL_SYSTEM, "ERROR: rcvd dbgl msg via fd %d, len %d, error %s \n", client->fd, input, strerror( errno ) );
 	close( client->fd );
@@ -553,14 +555,15 @@ void debug_log( char *last, ... ) {
 
 }
 
+#ifndef NODEBUG
 
 void debug_output( int8_t dbgl, char *last, ... )
 {
 	va_list ap;
 	struct list_head *client_pos;
 	struct client_node *client_node;
-	int16_t dbgl_out[DBGL_MAX];
-	memset( &dbgl_out, -1, DBGL_MAX );
+	int16_t dbgl_out[DBGL_MAX+1];
+	memset( &dbgl_out, -1, DBGL_MAX+1 );
 	int level, i = 0;
 
 	if ( dbgl == DBGL_SYSTEM ) {
@@ -601,6 +604,11 @@ void debug_output( int8_t dbgl, char *last, ... )
 	} else if ( dbgl == DBGL_CHANGES ) {
 	
 		if ( !list_empty( &dbgl_clients[DBGL_CHANGES    ] ) ) dbgl_out[i++] = DBGL_CHANGES;
+		if ( !list_empty( &dbgl_clients[DBGL_ALL        ] ) ) dbgl_out[i++] = DBGL_ALL;
+
+	} else if ( dbgl == DBGL_TEST ) {
+	
+		if ( !list_empty( &dbgl_clients[DBGL_TEST       ] ) ) dbgl_out[i++] = DBGL_TEST;
 		if ( !list_empty( &dbgl_clients[DBGL_ALL        ] ) ) dbgl_out[i++] = DBGL_ALL;
 
 	} else if ( dbgl == DBGL_ALL ) {
@@ -648,7 +656,7 @@ void debug_output( int8_t dbgl, char *last, ... )
 
 			client_node = list_entry(client_pos, struct client_node, list);
 
-			if ( level == DBGL_CHANGES || level == DBGL_ALL || level == DBGL_PROFILE  )
+			if ( level == DBGL_CHANGES || level == DBGL_TEST ||  level == DBGL_ALL ||  level == DBGL_PROFILE  )
 				dprintf( client_node->fd, "[%10u] ", get_time_msec() );
 
 			va_start( ap, last );
@@ -661,3 +669,5 @@ void debug_output( int8_t dbgl, char *last, ... )
 	}
 	
 }
+
+#endif

@@ -1023,7 +1023,7 @@ void apply_long_opt( int32_t option_index ) {
 						
 		} else if ( strcmp( ASOCIAL_SWITCH, long_options[option_index].name ) == 0 ) {
 
-			mobile_device = YES;
+			asocial_device = YES;
 			break;
 
 				
@@ -1305,11 +1305,13 @@ void apply_init_args( int argc, char *argv[] ) {
 	if ( !client_mode  &&  info_output ) {
 
 		debug_config(1);
+		
 		print_metric_table( 1, global_mt );
 
 		cleanup_all( CLEANUP_SUCCESS );
 
 	}
+	
 
 	if ( gateway_class  &&  routing_class ) {
 		fprintf( stderr, "Error - routing class can't be set while gateway class is in use !\n" );
@@ -1667,7 +1669,8 @@ void apply_init_args( int argc, char *argv[] ) {
 				if ( cmsg.type != REQ_DBGL && cmsg.type != REQ_END )
 					loop_mode = NO;
 					
-				if ( cmsg.type == REQ_DBGL  &&  (cmsg.val == DBGL_SYSTEM || cmsg.val == DBGL_CHANGES || cmsg.val == DBGL_ALL) ) {
+				if ( cmsg.type == REQ_DBGL  &&  
+					(cmsg.val == DBGL_SYSTEM || cmsg.val == DBGL_CHANGES || cmsg.val == DBGL_TEST || cmsg.val == DBGL_ALL) ) {
 					
 					// if this is the only element in the list...
 					if ( cmsg_list.next == (struct list_head*)cmsg_node && 
@@ -1762,7 +1765,7 @@ void set_readfds()
 	struct client_node *client;
 	int i;
 
-	debug_output( DBGL_ALL, "set_readfds():... \n");
+	debug_all( "set_readfds():... \n");
 	
 	FD_ZERO(&receive_wait_set);
 	receive_max_sock = 0;
