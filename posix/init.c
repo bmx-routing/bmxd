@@ -1306,7 +1306,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		debug_config(1);
 		
-		print_metric_table( 1, global_mt );
+		//print_metric_table( 1, global_mt );
 
 		cleanup_all( CLEANUP_SUCCESS );
 
