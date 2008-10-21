@@ -55,7 +55,7 @@
 extern char unix_path[]; 
 
 
-#define VIS_COMPAT_VERSION 22
+#define VIS_COMPAT_VERSION 23
 
 
 #define MAX_DBG_STR_SIZE 1500
