@@ -17,7 +17,6 @@
  *
  */
 
-#include "batman.h"
 
 extern int unix_sock;
 

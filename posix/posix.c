@@ -26,14 +26,12 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
-#include <syslog.h>
 #include <sys/socket.h>
 #include <sys/time.h>
-#include <sys/ioctl.h>
 
 
-#include "../os.h"
 #include "../batman.h"
+#include "../os.h"
 #include "../originator.h"
 #include "../metrics.h"
 #include "../control.h"
@@ -283,51 +281,6 @@ uint8_t get_set_bits( uint32_t v ) {
 }
 
 
-void del_default_route() {
-
-	curr_gateway = NULL;
-
-	if ( curr_gateway_thread_id != 0 ) {
-		
-		if ( pthread_join( curr_gateway_thread_id, NULL ) != 0 ) {
-			
-			debug_output( 0, "ERROR - couldn't completely join thread, %s! \n", strerror(errno));
-			
-		}
-		
-		curr_gateway_thread_id = 0;
-	}
-}
-
-
-
-int8_t add_default_route( struct gw_node *new_curr_gw ) {
-
-	debug_output( DBGL_CHANGES, "add_default_route()... \n");
-	struct curr_gw_data *curr_gw_data;
-
-	del_default_route();
-	
-	curr_gateway = new_curr_gw;
-	
-	curr_gw_data = debugMalloc( sizeof(struct curr_gw_data), 207 );
-	curr_gw_data->gw_node = new_curr_gw;
-	curr_gw_data->orig = new_curr_gw->orig_node->orig;
-	curr_gw_data->batman_if = list_entry( (&if_list)->next , struct batman_if, list );
-	curr_gw_data->outgoing_src = outgoing_src;
-
-	if ( pthread_create( &curr_gateway_thread_id, NULL, &client_to_gw_tun, curr_gw_data ) != 0 ) {
-
-		debug_output( 0, "ERROR - couldn't spawn thread: %s\n", strerror(errno) );
-		debugFree( curr_gw_data, 1207 );
-		curr_gateway = NULL;
-		curr_gateway_thread_id=0;
-	}
-
-	return 1;
-
-}
-
 
 
 
@@ -435,7 +388,9 @@ void cleanup_all( int status ) {
 		if ( vis_if )
 			cleanup_vis();
 	
+#ifdef METRICTABLE
 		cleanup_metric_table( global_mt );
+#endif
 		
 		struct list_head *list_pos, *list_tmp;
 		
@@ -514,9 +469,12 @@ int main( int argc, char *argv[] ) {
 
 	srand( getpid() );
 
-	init_set_bits_table256();	
-	global_mt = init_metric_table( MAX_BITS_RANGE, 1015, 1000 );
-
+	init_set_bits_table256();
+	
+#ifdef METRICTABLE
+	global_mt = init_metric_table( MAX_BITS_RANGE, 1010, 1000 );
+#endif
+	
 	init_originator();
 	init_control();
 	init_dispatch();

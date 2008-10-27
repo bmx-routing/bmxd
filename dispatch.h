@@ -32,11 +32,21 @@ struct send_node                 /* structure for send_list maintaining packets 
 
 
 
+struct todo_node 
+{ 
+	struct list_head list; 
+	uint32_t expire;
+	void (* task) (void *fpara); // pointer to the function to be executed
+	void *data; //NULL or pointer to data to be given to function. Data will be freed after functio is called.
+};
+
 
 void init_dispatch( void );
 void cleanup_dispatch( void );
+void register_task( uint32_t timeout, void (* task) (void *), void *data );
+uint32_t whats_next( void /*(** task) (void *),  void **data*/ );
 void wait4Event( uint32_t timeout );
 void schedule_own_ogm( struct batman_if *batman_if, uint32_t current_time );
 void debug_send_list( int sock );
-void send_outstanding_ogms();
+void send_outstanding_ogms( void *data );
 

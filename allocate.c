@@ -23,7 +23,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <syslog.h>
+#include <pthread.h>
 
+#include "batman.h"
 #include "os.h"
 #include "control.h"
 #include "allocate.h"
@@ -32,6 +34,8 @@
 #define MAGIC_NUMBER 0x12345678
 
 #if defined DEBUG_MALLOC
+
+static pthread_mutex_t chunk_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 struct chunkHeader *chunkList = NULL;
 
@@ -53,6 +57,7 @@ struct chunkTrailer
 #if defined MEMORY_USAGE
 
 struct memoryUsage *memoryList = NULL;
+static pthread_mutex_t memory_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 
 struct memoryUsage
@@ -68,7 +73,7 @@ void addMemory( uint32_t length, int32_t tag ) {
 
 	struct memoryUsage *walker;
 
-
+	pthread_mutex_lock(&memory_mutex);
 	for ( walker = memoryList; walker != NULL; walker = walker->next ) {
 
 		if ( walker->tag == tag ) {
@@ -93,6 +98,7 @@ void addMemory( uint32_t length, int32_t tag ) {
 
 	}
 
+	pthread_mutex_unlock(&memory_mutex);
 }
 
 
@@ -100,7 +106,7 @@ void removeMemory( int32_t tag, int32_t freetag ) {
 
 	struct memoryUsage *walker;
 
-
+	pthread_mutex_lock(&memory_mutex);
 	for ( walker = memoryList; walker != NULL; walker = walker->next ) {
 
 		if ( walker->tag == tag ) {
@@ -108,6 +114,7 @@ void removeMemory( int32_t tag, int32_t freetag ) {
 			if ( walker->counter == 0 ) {
 
 				debug_output( 0, "Freeing more memory than was allocated: malloc tag = %d, free tag = %d\n", tag, freetag );
+				pthread_mutex_unlock(&memory_mutex);
 				cleanup_all( CLEANUP_FAILURE );
 
 			}
@@ -122,27 +129,33 @@ void removeMemory( int32_t tag, int32_t freetag ) {
 	if ( walker == NULL ) {
 
 		debug_output( 0, "Freeing memory that was never allocated: malloc tag = %d, free tag = %d\n", tag, freetag );
+		pthread_mutex_unlock(&memory_mutex);
 		cleanup_all( CLEANUP_FAILURE );
 
 	}
 
+	pthread_mutex_unlock(&memory_mutex);
 }
 
+#endif
+
+#if defined MEMORY_USAGE
 
 void debugMemory( int fd ) {
-
+	
 	struct memoryUsage *memoryWalker;
 
 	dprintf( fd, " \nMemory usage information:\n" );
 
+	pthread_mutex_lock(&memory_mutex);
 	for ( memoryWalker = memoryList; memoryWalker != NULL; memoryWalker = memoryWalker->next ) {
 
-		if ( memoryWalker->counter != 0 ) {
+		if ( memoryWalker->counter != 0 )
 			dprintf( fd, "   tag: %4i, num malloc: %4i, bytes per malloc: %4i, total: %6i\n", memoryWalker->tag, memoryWalker->counter, memoryWalker->length, memoryWalker->counter * memoryWalker->length );
-		}
 
 	}
-
+	pthread_mutex_unlock(&memory_mutex);
+	
 }
 
 #endif
@@ -154,11 +167,14 @@ void checkIntegrity(void)
 	struct chunkTrailer *chunkTrailer;
 	unsigned char *memory;
 
+	pthread_mutex_lock(&chunk_mutex);
+
 	for (walker = chunkList; walker != NULL; walker = walker->next)
 	{
 		if (walker->magicNumber != MAGIC_NUMBER)
 		{
 			debug_output( 0, "checkIntegrity - invalid magic number in header: %08x, malloc tag = %d\n", walker->magicNumber, walker->tag );
+			pthread_mutex_unlock(&chunk_mutex);
 			cleanup_all( CLEANUP_FAILURE );
 		}
 
@@ -169,14 +185,19 @@ void checkIntegrity(void)
 		if (chunkTrailer->magicNumber != MAGIC_NUMBER)
 		{
 			debug_output( 0, "checkIntegrity - invalid magic number in trailer: %08x, malloc tag = %d\n", chunkTrailer->magicNumber, walker->tag );
+			pthread_mutex_unlock(&chunk_mutex);
 			cleanup_all( CLEANUP_FAILURE );
 		}
 	}
+
+	pthread_mutex_unlock(&chunk_mutex);
 }
 
 void checkLeak(void)
 {
 	struct chunkHeader *walker;
+	
+	pthread_mutex_lock(&chunk_mutex);
 	
 	if ( chunkList != NULL ) {
 		
@@ -188,12 +209,13 @@ void checkLeak(void)
 		
 			if (debug_level >= 0)
 				fprintf( stderr, "ERROR -  Memory leak detected, malloc tag = %d \n", walker->tag );
-
+			
 		}
 		
 		closelog();
-
 	}
+
+	pthread_mutex_unlock(&chunk_mutex);
 }
 
 void *debugMalloc(uint32_t length, int32_t tag)
@@ -223,8 +245,10 @@ void *debugMalloc(uint32_t length, int32_t tag)
 
 	chunkTrailer->magicNumber = MAGIC_NUMBER;
 
+	pthread_mutex_lock(&chunk_mutex);
 	chunkHeader->next = chunkList;
 	chunkList = chunkHeader;
+	pthread_mutex_unlock(&chunk_mutex);
 
 #if defined MEMORY_USAGE
 
@@ -238,7 +262,7 @@ void *debugMalloc(uint32_t length, int32_t tag)
 void *debugRealloc(void *memoryParameter, uint32_t length, int32_t tag)
 {
 	unsigned char *memory;
-	struct chunkHeader *chunkHeader = NULL;
+	struct chunkHeader *chunkHeader=NULL;
 	struct chunkTrailer *chunkTrailer;
 	unsigned char *result;
 	uint32_t copyLength;
@@ -274,7 +298,6 @@ void *debugRealloc(void *memoryParameter, uint32_t length, int32_t tag)
 		debugFree(memoryParameter, 9999);
 	}
 
-
 	return result;
 }
 
@@ -297,6 +320,7 @@ void debugFree(void *memoryParameter, int tag)
 
 	previous = NULL;
 
+	pthread_mutex_lock(&chunk_mutex);
 	for (walker = chunkList; walker != NULL; walker = walker->next)
 	{
 		if (walker == chunkHeader)
@@ -308,6 +332,7 @@ void debugFree(void *memoryParameter, int tag)
 	if (walker == NULL)
 	{
 		debug_output( 0, "Double free detected, malloc tag = %d, free tag = %d\n", chunkHeader->tag, tag );
+		pthread_mutex_unlock(&chunk_mutex);
 		cleanup_all( CLEANUP_FAILURE );
 	}
 
@@ -316,6 +341,8 @@ void debugFree(void *memoryParameter, int tag)
 
 	else
 		previous->next = walker->next;
+
+	pthread_mutex_unlock(&chunk_mutex);
 
 	chunkTrailer = (struct chunkTrailer *)(memory + chunkHeader->length);
 
@@ -332,7 +359,6 @@ void debugFree(void *memoryParameter, int tag)
 #endif
 
 	free(chunkHeader);
-
 }
 
 #else
@@ -342,6 +368,10 @@ void checkIntegrity(void)
 }
 
 void checkLeak(void)
+{
+}
+
+void debugMemory( int fd )
 {
 }
 
@@ -379,10 +409,5 @@ void debugFree(void *memory, int32_t tag)
 {
 	free(memory);
 }
-
-void debugMemory( int fd )
-{
-}
-
 
 #endif

@@ -24,15 +24,13 @@
 #include <syslog.h>
 #include <stdlib.h>
 #include <errno.h>
-#include <sys/types.h>
+#include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <arpa/inet.h>
 
-
-#include "os.h"
 #include "batman.h"
+#include "os.h"
 #include "originator.h"
 #include "metrics.h"
 #include "control.h"
@@ -223,7 +221,7 @@ void handle_unix_control_msg( struct list_head* list_pos, struct list_head * pre
 									
 			purge_orig( 0 );
 		
-			if ( gateway_class  &&  (one_way_tunnel || two_way_tunnel)  &&  probe_tun(0) )
+			if ( gateway_class  &&  (one_way_tunnel || two_way_tunnel)  &&  probe_tun() )
 				start_gw_service();
 
 			return;
@@ -241,7 +239,7 @@ void handle_unix_control_msg( struct list_head* list_pos, struct list_head * pre
 			debug_output( DBGL_CHANGES, " changing rt_class: %d owt: %d twt: %d gw_class %d \n", 
 				      routing_class, one_way_tunnel, two_way_tunnel, gateway_class );
 									
-			if ( gateway_class  &&  (one_way_tunnel || two_way_tunnel)  &&  probe_tun(0) )
+			if ( gateway_class  &&  (one_way_tunnel || two_way_tunnel)  &&  probe_tun() )
 				start_gw_service();
 			return;
 		
@@ -259,7 +257,7 @@ void handle_unix_control_msg( struct list_head* list_pos, struct list_head * pre
 			debug_output( 3, " changing rt_class: %d owt: %d twt: %d gw_class %d \n", 
 				      routing_class, one_way_tunnel, two_way_tunnel, gateway_class );
 									
-			if ( gateway_class  &&  (one_way_tunnel || two_way_tunnel)  &&  probe_tun(0) )
+			if ( gateway_class  &&  (one_way_tunnel || two_way_tunnel)  &&  probe_tun() )
 				start_gw_service();
 
 			return;
@@ -271,7 +269,7 @@ void handle_unix_control_msg( struct list_head* list_pos, struct list_head * pre
 
 			stop_gw_service();
 									
-			if ( gateway_class  &&  (one_way_tunnel || two_way_tunnel)  &&  probe_tun(0) ) {
+			if ( gateway_class  &&  (one_way_tunnel || two_way_tunnel)  &&  probe_tun() ) {
 
 				if ( routing_class > 0 ) {
 
@@ -384,8 +382,9 @@ void handle_unix_control_msg( struct list_head* list_pos, struct list_head * pre
 
 					struct link_node_dev *lndev = &(ln->lndev[ bif->if_num ]);
 					
+#ifdef METRICTABLE
 					flush_sq_record( &lndev->up_sqr, MAX_UNICAST_PROBING_WORDS );
-					
+#endif
 					lndev->sum_probe_tp = 0;
 				}
 				

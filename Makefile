@@ -31,7 +31,7 @@ UNAME=		$(shell uname)
 POSIX_C=	posix/init.c posix/posix.c posix/tunnel.c
 
 ifeq ($(UNAME),Linux)
-OS_C=	 linux/route.c linux/tun.c  $(POSIX_C)
+OS_C=	 linux/route.c  $(POSIX_C)
 endif
 
 SBINDIR =       $(INSTALL_PREFIX)/usr/sbin

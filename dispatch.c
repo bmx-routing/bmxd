@@ -20,18 +20,12 @@
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
 #include <errno.h>
 #include <sys/ioctl.h>
-#include <unistd.h>
-#include <sys/types.h>
 #include <sys/socket.h>
-#include <sys/time.h>
 
-
-#include "os.h"
 #include "batman.h"
+#include "os.h"
 #include "originator.h"
 #include "metrics.h"
 #include "control.h"
@@ -40,6 +34,7 @@
 
 SIMPEL_LIST( send_list );
 
+SIMPEL_LIST( todo_list );
 
 
 void init_dispatch( void ) {
@@ -48,12 +43,11 @@ void init_dispatch( void ) {
 void cleanup_dispatch( void )
 {
 	
-	struct send_node *send_node;
 	struct list_head *list_pos_tmp, *list_pos;
 	
 	list_for_each_safe( list_pos, list_pos_tmp, &send_list ) {
 
-		send_node = list_entry( list_pos, struct send_node, list );
+		struct send_node *send_node = list_entry( list_pos, struct send_node, list );
 
 		list_del( (struct list_head *)&send_list, list_pos, &send_list );
 
@@ -62,10 +56,93 @@ void cleanup_dispatch( void )
 
 	}
 	
+	list_for_each_safe( list_pos, list_pos_tmp, &todo_list ) {
+
+		struct todo_node *todo_node = list_entry( list_pos, struct todo_node, list );
+
+		list_del( (struct list_head *)&todo_list, list_pos, &todo_list );
+
+		if ( todo_node->data )
+			debugFree( todo_node->data, 1109 );
+		debugFree( todo_node, 1109 );
+
+	}
+
+}
+
+
+void register_task( uint32_t timeout, void (* task) (void *), void *data ) {
+	
+	struct list_head *list_pos;
+	
+	struct todo_node *tn = debugMalloc( sizeof( struct todo_node ), 109 );
+	
+	INIT_LIST_HEAD( &tn->list );
+	tn->expire = batman_time + timeout;
+	tn->task = task;
+	tn->data = data;
+	
+	
+	struct list_head *prev_list_head = (struct list_head *)&todo_list;
+	struct todo_node *tmp_tn = NULL;
+	
+	list_for_each( list_pos, &todo_list ) {
+
+		tmp_tn = list_entry( list_pos, struct todo_node, list );
+
+		if ( GREAT_U32(tmp_tn->expire, tn->expire) ) {
+
+			list_add_before( prev_list_head, list_pos, &tn->list );
+			break;
+
+		}
+
+		prev_list_head = &tmp_tn->list;
+
+	}
+
+	if ( ( tmp_tn == NULL ) || ( LSEQ_U32(tmp_tn->expire, tn->expire) ) )
+		list_add_tail( &tn->list, &todo_list );
+	
+}
+
+
+uint32_t whats_next( void /*(** task) (void *),  void **data */ ) {
+	
+	struct list_head *list_pos, *tmp_pos, *prev_pos = (struct list_head*)&todo_list;
+		
+	list_for_each_safe( list_pos, tmp_pos, &todo_list ) {
+			
+		struct todo_node *tn = list_entry( list_pos, struct todo_node, list );
+			
+		if ( LSEQ_U32( tn->expire, batman_time )  ) {
+			
+			list_del( prev_pos, list_pos, &todo_list );
+			
+			(*(tn->task)) (tn->data);
+			
+			debugFree( tn, 1109 );
+			
+			if ( tn->data )
+				debugFree( tn->data, 1109 );
+			
+			return 0;
+			
+		} else {
+			
+			return tn->expire - batman_time;
+			
+		}
+
+	}
+	
+	return 100; // check me again in 100 ms
+	
 }
 
 
 void send_aggregated_ogms( void ) {
+	
 	struct list_head *if_pos;
 	struct batman_if *batman_if;
 
@@ -137,7 +214,7 @@ void debug_send_list( int sock ) {
 
 
 
-void send_outstanding_ogms() {
+void send_outstanding_ogms( void *data ) {
 
 	prof_start( PROF_send_outstanding_ogms );
 	struct send_node *send_node;
@@ -152,9 +229,12 @@ void send_outstanding_ogms() {
 #define	MAX_DBG_IF_SIZE 200
 	static char dbg_if_str[ MAX_DBG_IF_SIZE ];
 	
-	//uint32_t send_time = batman_time;
-	
+	uint16_t aggr_interval = 
+			(my_ogi/aggregations_per_ogi > MAX_AGGREGATION_INTERVAL_MS) ? MAX_AGGREGATION_INTERVAL_MS :  (my_ogi/aggregations_per_ogi);
 
+	register_task( (aggr_interval + rand_num( aggr_interval/2 )) - (aggr_interval/4), send_outstanding_ogms, NULL );
+
+	
 	if ( list_empty( &send_list )  ||  GREAT_U32( (list_entry( (&send_list)->next, struct send_node, list ))->send_time, batman_time ) )
 		return;	
 	

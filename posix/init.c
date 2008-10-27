@@ -23,23 +23,22 @@
 #include <unistd.h>
 #include <getopt.h>
 #include <stdio.h>
-#include <syslog.h>
 #include <errno.h>
 #include <signal.h>
 #include <paths.h>
-#include <string.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
-//#include <net/if.h>
+#include <sys/un.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include <pthread.h>
 
+#include "../batman.h"
 #include "../os.h"
 #include "../originator.h"
 #include "../metrics.h"
 #include "../control.h"
 
-#include "../batman.h"
 
 #define IOCSETDEV 1
 
@@ -1329,7 +1328,7 @@ void apply_init_args( int argc, char *argv[] ) {
 	if ( !routing_class  &&  pref_gateway )
 		routing_class = 3;
 
-	if ( ( routing_class  ||  gateway_class )  &&  !probe_tun(1) )
+	if ( ( routing_class  ||  gateway_class )  &&  !probe_tun() )
 		exit(EXIT_FAILURE);
 
 	/* this must be set for unix_clients and non-unix_clients */ 
@@ -1887,6 +1886,8 @@ void deactivate_interface( struct batman_if *batman_if ) {
 	changed_readfds++;
 }
 
+int mtu_min = MAX_MTU;
+
 void activate_interface(struct batman_if *bif)
 {
 	struct ifreq int_req;
@@ -1991,6 +1992,27 @@ void activate_interface(struct batman_if *bif)
 	bif->netaddr = ( ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr & bif->addr.sin_addr.s_addr );
 	bif->netmask = get_set_bits( ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr );
 
+	
+	/* find smallest MTU from real interfaces */
+	if ( ioctl( bif->udp_send_sock, SIOCGIFMTU, &int_req ) < 0 ) {
+
+		debug_output( DBGL_SYSTEM, "Error - can't get SIOCGIFMTU from device %s: %s\n", bif->dev, strerror(errno) );
+		
+		if ( bif->is_lo )
+			cleanup_all( CLEANUP_FAILURE );
+		
+		goto error;
+
+	}
+	
+	bif->if_mtu = int_req.ifr_mtu;
+	
+	if( mtu_min > bif->if_mtu ) 
+		mtu_min = bif->if_mtu;
+	
+	debug_output( DBGL_CHANGES, "searching min. MTU, so fare: %d, current dev %s, mtu: %d \n", mtu_min, bif->dev, int_req.ifr_mtu);
+
+	
 	if ( bif->is_lo ) {
 		
 		if ( bif->if_num != 0 || bif->netmask != 32 || bif->addr.sin_addr.s_addr != bif->broad.sin_addr.s_addr ) {
@@ -2078,6 +2100,7 @@ void activate_interface(struct batman_if *bif)
 		}
 	
 	}
+	
 	
 	check_kernel_config( bif, YES /*init*/ );
 	
@@ -2186,10 +2209,9 @@ void check_interfaces() {
 	struct list_head *list_pos;
 	struct batman_if *batman_if;
 	uint8_t purge_origs = NO;
-	//char ifaddr_str[ADDR_STR_LEN];
-	//char fake_arg[ADDR_STR_LEN + 4]
 
-
+	mtu_min = MAX_MTU;
+	
 	list_for_each(list_pos, &if_list) {
 		
 		int deactivate_if = NO;
@@ -2202,7 +2224,7 @@ void check_interfaces() {
 			activate_interface(batman_if);
 			add_del_own_hna( NO  /*do not purge*/ );
 			
-			if( batman_if->if_num == 0  &&  batman_if->if_active  &&  gateway_class  &&  (one_way_tunnel || two_way_tunnel)  &&  probe_tun(0) )
+			if( batman_if->if_num == 0  &&  batman_if->if_active  &&  gateway_class  &&  (one_way_tunnel || two_way_tunnel)  &&  probe_tun() )
 				start_gw_service();
 		
 		} else if ((batman_if->if_active) && (!is_interface_up(batman_if->dev))) {
@@ -2253,8 +2275,25 @@ void check_interfaces() {
 				debug_output(0, "WARNING: Netmask address of  interface %s changed from %d to %d \n", batman_if->dev, batman_if->netmask, get_set_bits( ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr ) );
 				deactivate_if = YES;
 			
-			}
+			} else if ( ioctl( batman_if->udp_send_sock, SIOCGIFMTU, &int_req ) < 0 ) {
+				
+				debug_output( 0, "WARNING: can't get SIOCGIFMTU from device %s: %s\n", batman_if->dev, strerror(errno) );
+				deactivate_if = YES;
 
+			} else if ( batman_if->if_mtu != int_req.ifr_mtu ) {
+				
+				debug_output(0, "WARNING: MTU of  interface %s changed from %d to %d \n", batman_if->dev, batman_if->if_mtu, int_req.ifr_mtu );
+				deactivate_if = YES;
+			
+			} else {
+			
+				if( mtu_min > batman_if->if_mtu ) 
+					mtu_min = batman_if->if_mtu;
+	
+				debug_output( DBGL_CHANGES, "researching min. MTU, so fare: %d, current dev %s, mtu: %d \n", mtu_min, batman_if->dev, batman_if->if_mtu);
+				
+			}
+			
 		}
 		
 		if ( deactivate_if ) {
@@ -2263,8 +2302,8 @@ void check_interfaces() {
 			
 			deactivate_interface( batman_if );
 			
-				
 			debug_output( 0, "WARNING: Interface %s deactivated \n", batman_if->dev );
+		
 		}
 	
 	}
@@ -2272,14 +2311,14 @@ void check_interfaces() {
 	if ( purge_origs ) {
 		
 		// if there is a gw-client thread: stop it now, it restarts automatically
-		del_default_route(); 
-									
+		del_default_route();
+		
 		// if there is a gw thread: stop it now
 		stop_gw_service();
-									
+		
 		purge_orig( 0 );
 		
-		if ( gateway_class  &&  (one_way_tunnel || two_way_tunnel)  &&  probe_tun(0) )
+		if ( gateway_class  &&  (one_way_tunnel || two_way_tunnel)  &&  probe_tun() )
 			start_gw_service();
 
 	}
@@ -2360,6 +2399,8 @@ void start_gw_service ( void ) {
 	gw_listen_arg->owt = one_way_tunnel;
 	gw_listen_arg->twt = two_way_tunnel;
 	gw_listen_arg->lease_time = tunnel_ip_lease_time;
+	gw_listen_arg->mtu_min = mtu_min;
+	
 	
 	
 	if( (gw_listen_arg->gw_client_list = debugMalloc( (0xFFFFFFFF>>gw_tunnel_netmask) * sizeof( struct gw_client* ), 210 ) ) == NULL ) {
@@ -2492,5 +2533,52 @@ void debug_params( int fd )
 	}
 	
 	dprintf( fd, "\n" );
+
+}
+
+
+void del_default_route() {
+
+	curr_gateway = NULL;
+
+	if ( curr_gateway_thread_id != 0 ) {
+		
+		if ( pthread_join( curr_gateway_thread_id, NULL ) != 0 ) {
+			
+			debug_output( 0, "ERROR - couldn't completely join thread, %s! \n", strerror(errno));
+			
+		}
+		
+		curr_gateway_thread_id = 0;
+	}
+}
+
+
+
+int8_t add_default_route( struct gw_node *new_curr_gw ) {
+
+	debug_output( DBGL_CHANGES, "add_default_route()... \n");
+	struct curr_gw_data *curr_gw_data;
+
+	del_default_route();
+	
+	curr_gateway = new_curr_gw;
+	
+	curr_gw_data = debugMalloc( sizeof(struct curr_gw_data), 207 );
+	curr_gw_data->gw_node = new_curr_gw;
+	curr_gw_data->orig = new_curr_gw->orig_node->orig;
+	curr_gw_data->batman_if = list_entry( (&if_list)->next , struct batman_if, list );
+	curr_gw_data->outgoing_src = outgoing_src;
+	curr_gw_data->mtu_min = mtu_min;
+	
+	if ( pthread_create( &curr_gateway_thread_id, NULL, &client_to_gw_tun, curr_gw_data ) != 0 ) {
+
+		debug_output( 0, "ERROR - couldn't spawn thread: %s\n", strerror(errno) );
+		debugFree( curr_gw_data, 1207 );
+		curr_gateway = NULL;
+		curr_gateway_thread_id=0;
+	}
+
+	return 1;
 
 }

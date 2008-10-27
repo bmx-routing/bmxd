@@ -31,10 +31,8 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-
-
-#include "os.h"
 #include "batman.h"
+#include "os.h"
 #include "originator.h"
 #include "dispatch.h"
 #include "metrics.h"
@@ -728,8 +726,9 @@ void add_del_own_hna( uint8_t purge ) {
 				
 			hash_remove( hna_hash, hash_node );
 			debugFree( hash_node, 1401 );
-			debugFree( hna_node, 1103 );
+			
 			list_del( prev_list_head, list_pos, &my_hna_list );
+			debugFree( hna_node, 1103 );
 		}
 
 	}
@@ -1439,43 +1438,15 @@ int calc_ogm_if_size( int if_num ) {
 		return ( sizeof(struct bat_packet_ogm) + sizeof(struct ext_packet) );
 }
 
-/*
-uint32_t whats_next(  ) {
-
-	static uint32_t next = 0;
-	
-	next++;
-	
-	next = next % 3;
-	
-	return next;
-}
-
-
-static int32_t test_func( void *para ) {
-	
-	static int32_t called = 0;
-	debug_output(DBGL_TEST, "test_func() called with int val pointer %d \n", *((uint32_t*)para) );
-	
-	return called++;
-	
-}
-*/
 
 void batman( void ) {
 
 	struct list_head *list_pos;
 	struct batman_if *batman_if;
-	uint32_t debug_timeout, statistic_timeout, vis_timeout, select_timeout, aggregation_time, probing_time;
+	uint32_t debug_timeout, statistic_timeout, vis_timeout, probing_time;
 
-	uint16_t aggr_interval;
-	
 	uint32_t s_last_cpu_time = 0, s_curr_cpu_time = 0;
 	
-	batman_time = debug_timeout = statistic_timeout = vis_timeout = get_time_msec();
-		
-	aggregation_time = probing_time = batman_time + 50 + rand_num( 100 );
-
 	if ( NULL == ( orig_hash = hash_new( 128, compare_key, choose_key, 4 ) ) )
 		cleanup_all( CLEANUP_FAILURE );
 	
@@ -1487,6 +1458,13 @@ void batman( void ) {
 	
 	add_del_own_hna( NO /*do not purge*/ );	
 	
+	
+	batman_time = debug_timeout = statistic_timeout = vis_timeout = get_time_msec();
+		
+	probing_time = batman_time + 50 + rand_num( 100 );
+
+	
+	register_task( 50+rand_num(100), send_outstanding_ogms, NULL );
 	
 	
 	list_for_each( list_pos, &if_list ) {
@@ -1505,30 +1483,18 @@ void batman( void ) {
 		prof_start( PROF_all );
 
 		debug_output( DBGL_ALL, " \n \n" );
-
 		
 		
-		if ( GREAT_U32( aggregation_time, batman_time ) ) {
+		uint32_t wait = whats_next( );
 		
-			select_timeout = aggregation_time - batman_time ;
+		if ( wait ) {
 			
-			if ( select_timeout > MAX_SELECT_TIMEOUT_MS )
-				select_timeout = MAX_SELECT_TIMEOUT_MS;
+			debug_output( DBGL_TEST, "whats_next() suggests to wait for events at most %d ms.. \n", wait ); 
 			
-			wait4Event( select_timeout );
-			
-		} 
-
-		
-		if ( LSEQ_U32( aggregation_time, batman_time ) ) {
-				
-			aggr_interval = (my_ogi/aggregations_per_ogi > MAX_AGGREGATION_INTERVAL_MS) ? MAX_AGGREGATION_INTERVAL_MS :  (my_ogi/aggregations_per_ogi);
-
-			send_outstanding_ogms();
-			
-			aggregation_time = (batman_time + aggr_interval + rand_num( aggr_interval/2 )) - (aggr_interval/4);
+			wait4Event( wait < MAX_SELECT_TIMEOUT_MS ? wait : MAX_SELECT_TIMEOUT_MS );
 			
 		}
+		
 		
 		if ( unicast_probes_num && LSEQ_U32( probing_time, batman_time ) ) {
 			
@@ -1536,10 +1502,10 @@ void batman( void ) {
 			
 		}
 		
-
+		
+		// The regular tasks...
 		if ( LESS_U32( debug_timeout + 1000,  batman_time ) ) {
 	
-			
 			purge_orig( batman_time );
 			
 			purge_empty_hna_nodes( );
@@ -1574,6 +1540,7 @@ void batman( void ) {
 				
 				// check for changed kernel konfigurations...
 				check_kernel_config( NULL, NO );
+				
 				// check for changed interface konfigurations...
 				list_for_each( list_pos, &if_list ) {
 					

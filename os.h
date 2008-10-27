@@ -20,8 +20,6 @@
 #ifndef _BATMAN_OS_H
 #define _BATMAN_OS_H
 
-#include "batman.h"
-
 
 /* get_time functions MUST be called at least every 2*MAX_SELECT_TIMEOUT_MS to allow for properly working time-drift checks */
 
@@ -43,8 +41,6 @@ enum {
 };
 
 void print_animation( void );
-void   del_default_route();
-int8_t add_default_route( struct gw_node *new_curr_gw );
 
 int8_t send_udp_packet( unsigned char *packet_buff, int32_t packet_buff_len, struct sockaddr_in *dst, int32_t send_sock );
 
@@ -86,6 +82,9 @@ void set_readfds();
 
 void stop_gw_service ( void );
 void start_gw_service ( void );
+
+void   del_default_route();
+int8_t add_default_route( struct gw_node *new_curr_gw );
 
 void debug_params( int fd );
 void debug_config( int fd );
@@ -134,89 +133,12 @@ void restore_kernel_config( struct batman_if *batman_if );
 int8_t bind_to_iface( int32_t sock, char *dev );
 
 
-/* tun.c */
-int8_t probe_tun(uint8_t print_to_stderr);
-int8_t del_dev_tun( int32_t fd );
-int8_t add_dev_tun(  uint32_t dest_addr, char *tun_dev, size_t tun_dev_size, int32_t *fd, int32_t *ifi );
-int8_t set_tun_addr( int32_t fd, uint32_t tun_addr, char *tun_dev );
-
-
-
-
-
-
 /* tunnel.c */
+
 void *gw_listen( void *arg );
 void *client_to_gw_tun( void *arg );
+int8_t probe_tun( void );
 
-#define MAX_MTU 1500
-
-
-#define TUNNEL_DATA 0x01
-#define TUNNEL_IP_REQUEST 0x02
-#define TUNNEL_IP_INVALID 0x03
-#define TUNNEL_KEEPALIVE_REQUEST 0x04 /* unused */
-#define TUNNEL_KEEPALIVE_REPLY 0x05   /* unused */
-#define TUNNEL_IP_REPLY 0x06
-
-#define GW_STATE_UNKNOWN  0x01
-#define GW_STATE_VERIFIED 0x02
-
-#define ONE_MINUTE                60000
-
-#define GW_STATE_UNKNOWN_TIMEOUT  (1  * ONE_MINUTE)
-#define GW_STATE_VERIFIED_TIMEOUT (5  * ONE_MINUTE)
-
-#define IP_LEASE_TIMEOUT          (1 * ONE_MINUTE)
-
-#define MAX_TUNNEL_IP_REQUESTS 60 /*12*/
-#define TUNNEL_IP_REQUEST_TIMEOUT 1000 /* msec */
-
-	
-struct tun_request_type {
-	uint32_t lease_ip;
-	uint16_t lease_lt;
-} __attribute__((packed));
-
-struct tun_data_type {
-	unsigned char ip_packet[MAX_MTU];
-} __attribute__((packed));
-
-struct tun_packet_start {
-#if __BYTE_ORDER == __LITTLE_ENDIAN
-	unsigned int type:4;
-	unsigned int version:4;  /* should be the first field in the packet in network byte order */
-#elif __BYTE_ORDER == __BIG_ENDIAN
-	unsigned int version:4;
-	unsigned int type:4;
-#else
-# error "Please fix <bits/endian.h>"
-#endif
-} __attribute__((packed));
-
-struct tun_packet
-{
-	uint8_t  reserved1;
-	uint8_t  reserved2;
-	uint8_t  reserved3;
-
-	struct tun_packet_start start;
-#define TP_TYPE  start.type
-#define TP_VERS  start.version	
-
-	union
-	{
-		struct tun_request_type trt;
-		struct tun_data_type tdt;
-	}tt;
-#define LEASE_IP  tt.trt.lease_ip
-#define LEASE_LT  tt.trt.lease_lt
-#define IP_PACKET tt.tdt.ip_packet
-} __attribute__((packed));
-
-
-#define TX_RP_SIZE (sizeof(struct tun_packet_start) + sizeof(struct tun_request_type))
-#define TX_DP_SIZE (sizeof(struct tun_packet_start) + sizeof(struct tun_data_type))
 
 
 

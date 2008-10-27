@@ -21,8 +21,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include "os.h"
+
 #include "batman.h"
+#include "os.h"
 #include "metrics.h"
 #include "control.h"
 #include "dispatch.h"
@@ -502,7 +503,9 @@ void free_link_node( struct orig_node *orig_node ) {
 	for ( i = 0; i < found_ifs; i++ ) {
 		debugFree( orig_node->link_node->lndev[i].rtq_sqr.bits, 1488 );
 		debugFree( orig_node->link_node->lndev[i].rq_sqr.bits, 1489 );
+#ifdef METRICTABLE
 		debugFree( orig_node->link_node->lndev[i].up_sqr.bits, 1487 );
+#endif
 	}
 		
 	debugFree( orig_node->link_node->lndev, 1408 );
@@ -588,11 +591,12 @@ void init_link_node( struct orig_node *orig_node, SQ_TYPE in_seqno ) {
 		flush_sq_record( &lndev->rq_sqr, MAX_REC_WORDS );
 		
 		
+#ifdef METRICTABLE
 		//testing the new metrics stuff...
 		lndev->up_sqr.bits = debugMalloc( MAX_UNICAST_PROBING_WORDS * sizeof(REC_BITS_TYPE), 487 );
 		
 		flush_sq_record( &lndev->up_sqr, MAX_UNICAST_PROBING_WORDS );
-	
+#endif	
 		
 	}
 	
@@ -1215,7 +1219,7 @@ void debug_orig( int dbgl, int sock ) {
 	
 						struct link_node_dev *lndev = &(ln->lndev[ neigh_node_if->if_num ]);
 
-						
+#ifdef METRICTABLE						
 						dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), 
 								" %10s                 %7.3f   %7.3f    %7.3f   %7.3f Mbps  %5d",
 							neigh_node->if_incoming->dev, 
@@ -1225,7 +1229,17 @@ void debug_orig( int dbgl, int sock ) {
 							((float)(global_mt->t[ lndev->up_sqr.vcnt * (MAX_BITS_RANGE / unicast_probes_ws) ]))/1000/1000,
 							( batman_time - lndev->last_complete_probe_stamp)/1000
 							);
-	
+#else						
+						dbg_ogm_out = dbg_ogm_out + snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), 
+								" %10s                 %7.3f   %7.3f    %7.3f   Mbps  %5d",
+							neigh_node->if_incoming->dev, 
+							(float)lndev->last_probe_tp/1000,
+							(float)lndev->sum_probe_tp/PROBE_HISTORY/1000,
+							(float)lndev->conservative_probe_tp/PROBE_HISTORY/1000,
+							( batman_time - lndev->last_complete_probe_stamp)/1000
+							);
+#endif
+						
 						dprintf( sock, "                                           %s \n", dbg_ogm_str);
 						dbg_ogm_out = 0;
 

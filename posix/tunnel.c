@@ -21,23 +21,115 @@
 #define _GNU_SOURCE
 #include <errno.h>
 #include <unistd.h>
-#include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
-#include <string.h>
-#include <arpa/inet.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <netinet/ip.h>
-#include <netinet/tcp.h>
 #include <netinet/udp.h>
-//#include <net/if.h>
+#include <linux/if_tun.h> /* TUNSETPERSIST, ... */
+#include <linux/if.h>     /* ifr_if, ifr_tun */
 #include <fcntl.h>        /* open(), O_RDWR */
 
+#define BATMAN_TUN_PREFIX "bat"
+#define MAX_BATMAN_TUN_INDEX 20 
+
+#include "../batman.h"
 
 #include "../os.h"
-#include "../batman.h"
+/*
+#define MAX_UNIX_MSG_SIZE 500
+void addr_to_string( uint32_t addr, char *str, int32_t len );
+int8_t is_aborted();
+void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t source, int32_t ifi, char *dev, uint8_t rt_table, int8_t route_type, int8_t del, int8_t track ); // ??????????????????
+
+*/
+
+#define TUNNEL_DATA 0x01
+#define TUNNEL_IP_REQUEST 0x02
+#define TUNNEL_IP_INVALID 0x03
+#define TUNNEL_IP_REPLY 0x06
+
+#define GW_STATE_UNKNOWN  0x01
+#define GW_STATE_VERIFIED 0x02
+
+#define ONE_MINUTE                60000
+
+#define GW_STATE_UNKNOWN_TIMEOUT  (1  * ONE_MINUTE)
+#define GW_STATE_VERIFIED_TIMEOUT (5  * ONE_MINUTE)
+
+#define IP_LEASE_TIMEOUT          (1 * ONE_MINUTE)
+
+#define MAX_TUNNEL_IP_REQUESTS 60 //12
+#define TUNNEL_IP_REQUEST_TIMEOUT 1000 // msec
+
+	
+struct tun_request_type {
+	uint32_t lease_ip;
+	uint16_t lease_lt;
+} __attribute__((packed));
+
+struct tun_data_type {
+	unsigned char ip_packet[MAX_MTU];
+} __attribute__((packed));
+
+struct tun_packet_start {
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+	unsigned int type:4;
+	unsigned int version:4;  // should be the first field in the packet in network byte order
+#elif __BYTE_ORDER == __BIG_ENDIAN
+	unsigned int version:4;
+	unsigned int type:4;
+#else
+# error "Please fix <bits/endian.h>"
+#endif
+} __attribute__((packed));
+
+struct tun_packet
+{
+	uint8_t  reserved1;
+	uint8_t  reserved2;
+	uint8_t  reserved3;
+
+	struct tun_packet_start start;
+#define TP_TYPE  start.type
+#define TP_VERS  start.version	
+
+	union
+	{
+		struct tun_request_type trt;
+		struct tun_data_type tdt;
+	}tt;
+#define LEASE_IP  tt.trt.lease_ip
+#define LEASE_LT  tt.trt.lease_lt
+#define IP_PACKET tt.tdt.ip_packet
+} __attribute__((packed));
+
+
+#define TX_RP_SIZE (sizeof(struct tun_packet_start) + sizeof(struct tun_request_type))
+#define TX_DP_SIZE (sizeof(struct tun_packet_start) + sizeof(struct tun_data_type))
+
+
 #include "../control.h"
+/*
+void debug_output( int8_t dbgl, char *last, ... );
+
+struct cntl_msg {
+	uint8_t version;
+	uint8_t type;
+	uint16_t len;
+	int32_t val;
+	uint32_t ip;
+	uint32_t val1;
+	uint32_t val2;
+	char aux[]; // this may the beginning of an auxilarry string or the end of a common cntl_msg
+} __attribute__((packed));
+
+*/
+
+//end test #includes
+
 
 int unix_tunnel_sock = 0;
 
@@ -65,6 +157,246 @@ int debug_tunnel( int8_t dbgl, char *last, ... ) {
 	return write( unix_tunnel_sock, cmsg, cmsg->len );
 	
 }
+
+ 
+static int32_t batman_tun_index = 0;
+
+
+/* Probe for tun interface availability */
+int8_t probe_tun( void ) {
+
+	int32_t fd;
+
+	if ( ( fd = open( "/dev/net/tun", O_RDWR ) ) < 0 ) {
+
+		debug_output( 0, "Error - could not open '/dev/net/tun' ! Is the tun kernel module loaded ?\n" );
+		
+		return 0;
+
+	}
+
+	close( fd );
+
+	return 1;
+
+}
+
+
+
+int8_t del_dev_tun( int32_t fd ) {
+
+	if ( no_tun_persist == NO ) {
+		
+		if ( ioctl( fd, TUNSETPERSIST, 0 ) < 0 ) {
+	
+			debug_tunnel( 0, "Error - can't delete tun device: %s\n", strerror(errno) );
+			return -1;
+	
+		}
+		
+	}
+
+	close( fd );
+
+	return 1;
+
+}
+
+
+int8_t add_dev_tun(  uint32_t tun_addr, char *tun_dev, size_t tun_dev_size, int32_t *fd, int32_t *ifi, int mtu_min ) {
+
+	int32_t tmp_fd, sock_opts;
+	struct ifreq ifr_tun, ifr_if;
+	struct sockaddr_in addr;
+
+	/* set up tunnel device */
+	memset( &ifr_if, 0, sizeof(ifr_if) );
+
+	
+	if ( ( *fd = open( "/dev/net/tun", O_RDWR ) ) < 0 ) {
+
+		debug_tunnel( 0, "Error - can't open tun device (/dev/net/tun): %s\n", strerror(errno) );
+		return -1;
+
+	}
+
+	batman_tun_index = 0;
+	uint8_t name_tun_success = NO;
+	
+	while ( batman_tun_index < MAX_BATMAN_TUN_INDEX && !name_tun_success ) {
+		
+		memset( &ifr_tun, 0, sizeof(ifr_tun) );
+		ifr_tun.ifr_flags = IFF_TUN | IFF_NO_PI;
+		sprintf( ifr_tun.ifr_name, "%s%d", BATMAN_TUN_PREFIX, batman_tun_index++ );
+		
+		
+		if ( ( ioctl( *fd, TUNSETIFF, (void *) &ifr_tun ) ) < 0 ) {
+	
+			debug_tunnel( DBGL_CHANGES, "Tried to name tunnel to %s ... busy\n", ifr_tun.ifr_name );
+	
+		} else {
+			
+			name_tun_success = YES;
+			debug_tunnel( DBGL_CHANGES, "Tried to name tunnel to %s ... success \n", ifr_tun.ifr_name );
+		
+		}
+		
+	}
+	
+	if ( !name_tun_success ) {
+		
+		debug_tunnel( 0, "Error - can't create tun device (TUNSETIFF): %s\n", strerror(errno) );
+		
+		debug_tunnel( 0, "Error - Giving up !\n" );
+		close(*fd);
+		return -1;
+		
+	}
+	
+	if( no_tun_persist == NO ) {
+		
+		if ( ioctl( *fd, TUNSETPERSIST, 1 ) < 0 ) {
+	
+			debug_tunnel( 0, "Error - can't create tun device (TUNSETPERSIST): %s\n", strerror(errno) );
+			close(*fd);
+			return -1;
+	
+		}
+	
+	}
+
+	tmp_fd = socket( AF_INET, SOCK_DGRAM, 0 );
+
+	if ( tmp_fd < 0 ) {
+		debug_tunnel( 0, "Error - can't create tun device (udp socket): %s\n", strerror(errno) );
+		del_dev_tun( *fd );
+		return -1;
+	}
+
+
+	/* set ip of this end point of tunnel */
+	memset( &addr, 0, sizeof(addr) );
+	addr.sin_addr.s_addr = tun_addr;
+	addr.sin_family = AF_INET;
+	memcpy( &ifr_tun.ifr_addr, &addr, sizeof(struct sockaddr) );
+
+
+	if ( ioctl( tmp_fd, SIOCSIFADDR, &ifr_tun) < 0 ) {
+
+		debug_tunnel( 0, "Error - can't create tun device (SIOCSIFADDR): %s\n", strerror(errno) );
+		del_dev_tun( *fd );
+		close( tmp_fd );
+		return -1;
+
+	}
+
+
+	if ( ioctl( tmp_fd, SIOCGIFINDEX, &ifr_tun ) < 0 ) {
+
+		debug_tunnel( 0, "Error - can't create tun device (SIOCGIFINDEX): %s\n", strerror(errno) );
+		del_dev_tun( *fd );
+		close( tmp_fd );
+		return -1;
+
+	}
+
+	*ifi = ifr_tun.ifr_ifindex;
+
+	if ( ioctl( tmp_fd, SIOCGIFFLAGS, &ifr_tun) < 0 ) {
+
+		debug_tunnel( 0, "Error - can't create tun device (SIOCGIFFLAGS): %s\n", strerror(errno) );
+		del_dev_tun( *fd );
+		close( tmp_fd );
+		return -1;
+
+	}
+
+	ifr_tun.ifr_flags |= IFF_UP;
+	ifr_tun.ifr_flags |= IFF_RUNNING;
+
+	if ( ioctl( tmp_fd, SIOCSIFFLAGS, &ifr_tun) < 0 ) {
+
+		debug_tunnel( 0, "Error - can't create tun device (SIOCSIFFLAGS): %s\n", strerror(errno) );
+		del_dev_tun( *fd );
+		close( tmp_fd );
+		return -1;
+
+	}
+
+
+
+	/* set MTU of tun interface: real MTU - 29 */
+	if ( mtu_min < 100 ) {
+
+		debug_tunnel( 0, "Warning - MTU min smaller than 100 -> can't reduce MTU anymore\n" );
+		del_dev_tun( *fd );
+		close( tmp_fd );
+		return -1;
+
+	} else {
+
+		ifr_tun.ifr_mtu = mtu_min - 29;
+
+		if ( ioctl( tmp_fd, SIOCSIFMTU, &ifr_tun ) < 0 ) {
+
+			debug_tunnel( 0, "Error - can't set SIOCSIFMTU for device %s: %s\n", 
+				      ifr_tun.ifr_name, strerror(errno) );
+			del_dev_tun( *fd );
+			close( tmp_fd );
+			return -1;
+
+		}
+
+	}
+
+
+	/* make tun socket non blocking */
+	sock_opts = fcntl( *fd, F_GETFL, 0 );
+	fcntl( *fd, F_SETFL, sock_opts | O_NONBLOCK );
+
+
+	strncpy( tun_dev, ifr_tun.ifr_name, tun_dev_size - 1 );
+	close( tmp_fd );
+
+	return 1;
+
+}
+
+
+int8_t set_tun_addr( int32_t fd, uint32_t tun_addr, char *tun_dev ) {
+
+	struct sockaddr_in addr;
+	struct ifreq ifr_tun;
+
+
+	memset( &ifr_tun, 0, sizeof(ifr_tun) );
+	memset( &addr, 0, sizeof(addr) );
+
+	addr.sin_addr.s_addr = tun_addr;
+	addr.sin_family = AF_INET;
+	memcpy( &ifr_tun.ifr_addr, &addr, sizeof(struct sockaddr) );
+
+	strncpy( ifr_tun.ifr_name, tun_dev, IFNAMSIZ - 1 );
+
+	if ( ioctl( fd, SIOCSIFADDR, &ifr_tun) < 0 ) {
+
+		debug_tunnel( 0, "Error - can't set tun address (SIOCSIFADDR): %s\n", strerror(errno) );
+		return -1;
+
+	}
+
+	return 1;
+
+}
+
+
+
+
+
+
+
+
+
 
 
 
@@ -111,8 +443,9 @@ uint32_t handle_tun_ip_reply(
   struct tun_packet *tp,		//
   struct sockaddr_in *sender_addr, 	//
   int32_t rcv_buff_len, 		//
-  uint32_t current_time			//
-			    )
+  uint32_t current_time,		//
+  int mtu_min				//
+	)
 {
 	
 	char pref_str[ADDR_STR_LEN], tmp_str[ADDR_STR_LEN], gw_str[ADDR_STR_LEN];
@@ -141,7 +474,7 @@ uint32_t handle_tun_ip_reply(
 
 		if ( *pref_addr == 0 ) {
 
-			if (add_dev_tun( tp->LEASE_IP, tun_if, sizeof(tun_if), tun_fd, tun_ifi ) <= 0 ) {
+			if (add_dev_tun( tp->LEASE_IP, tun_if, sizeof(tun_if), tun_fd, tun_ifi, mtu_min ) <= 0 ) {
 		
 				curr_gw_data->gw_node->last_failure = current_time;
 				curr_gw_data->gw_node->unavail_factor++;
@@ -213,7 +546,7 @@ void *client_to_gw_tun( void *arg ) {
 	uint16_t dns_port = htons( 53 );
 	uint8_t disconnect = NO, which_tunnel = 0, which_tunnel_max = 0;
 	
-	current_time = get_time_msec();
+	current_time = batman_time;
 
 	// init debug connection...
 	unix_tunnel_sock = socket( AF_LOCAL, SOCK_STREAM, 0 );
@@ -310,7 +643,7 @@ void *client_to_gw_tun( void *arg ) {
 	if ( which_tunnel & ONE_WAY_TUNNEL_FLAG ) {
 		
 		if ( add_dev_tun(  curr_gw_data->outgoing_src ? curr_gw_data->outgoing_src : curr_gw_data->batman_if->addr.sin_addr.s_addr, 
-		    tun_if, sizeof(tun_if), &tun_fd, &tun_ifi ) <= 0 ) {
+		    tun_if, sizeof(tun_if), &tun_fd, &tun_ifi, curr_gw_data->mtu_min ) <= 0 ) {
 		
 			curr_gw_data->gw_node->last_failure = current_time;
 			curr_gw_data->gw_node->unavail_factor++;
@@ -367,7 +700,7 @@ void *client_to_gw_tun( void *arg ) {
 		
 		res = select( max_sock + 1, &wait_sockets, NULL, NULL, &tv );
 
-		current_time = get_time_msec();
+		current_time = batman_time;
 	
 		if ( ( res < 0 ) && ( errno != EINTR ) ) {
 
@@ -436,7 +769,7 @@ void *client_to_gw_tun( void *arg ) {
 							
 							debug_tunnel( 3, "Gateway client - gateway (%s) replyed with virtual IP \n", gw_str );
 		
-							if ( (ip_lease_duration = handle_tun_ip_reply( curr_gw_data, &gw_addr, udp_sock, &my_tun_addr, &ip_lease_stamp, &new_ip_stamp, tun_if, &tun_fd, &tun_ifi, &tp, &sender_addr, tp_len, current_time )) < MIN_TUNNEL_IP_LEASE_TIME ) {
+							if ( (ip_lease_duration = handle_tun_ip_reply( curr_gw_data, &gw_addr, udp_sock, &my_tun_addr, &ip_lease_stamp, &new_ip_stamp, tun_if, &tun_fd, &tun_ifi, &tp, &sender_addr, tp_len, current_time, curr_gw_data->mtu_min )) < MIN_TUNNEL_IP_LEASE_TIME ) {
 		
 								
 								disconnect = YES;
@@ -620,7 +953,7 @@ void cleanup_leased_tun_ips( uint32_t lt, struct gw_client **gw_client_list, uin
 	char str[ADDR_STR_LEN], cl_addr[ADDR_STR_LEN];
 	uint32_t i, i_max, current_time;
 	
-	current_time = get_time_msec();
+	current_time = batman_time;
 	
 	i_max = ntohl( ~my_tun_netmask );
 
@@ -777,7 +1110,7 @@ void *gw_listen( void *arg ) {
 
 	if ( debug_tunnel( DBGL_CHANGES, "gw_listen() started... \n" ) < 0 ) {
 
-		printf( "Error - can't write to unix_tunel_sock: %s\n", strerror(errno) );
+		printf( "Error - can't write to unix_tunnel_sock: %s\n", strerror(errno) );
 		close( unix_tunnel_sock );
 		debugFree( gw_client_list, 1210);
 		close( gw_listen_arg->sock );
@@ -802,14 +1135,14 @@ void *gw_listen( void *arg ) {
 	my_tun_suffix_mask_h = ntohl( ~my_tun_netmask );
 	
 	addr_len = sizeof (struct sockaddr_in);
-	purge_timeout = get_time_msec();
+	purge_timeout = batman_time;
 
 
 	client_addr.sin_family = AF_INET;
 	client_addr.sin_port = htons(gw_listen_arg->port);
 
 	
-	if ( add_dev_tun( my_tun_ip, tun_dev, sizeof(tun_dev), &tun_fd, &tun_ifi ) < 0 ) {
+	if ( add_dev_tun( my_tun_ip, tun_dev, sizeof(tun_dev), &tun_fd, &tun_ifi, gw_listen_arg->mtu_min ) < 0 ) {
 		close( unix_tunnel_sock );
 		debugFree( gw_client_list, 1210);
 		close( gw_listen_arg->sock );
@@ -834,7 +1167,7 @@ void *gw_listen( void *arg ) {
 
 		res = select( max_sock + 1, &tmp_wait_sockets, NULL, NULL, &tv );
 		
-		c_time_ms = get_time_msec();
+		c_time_ms = batman_time;
 
 		if ( res > 0 ) {
 
@@ -1038,3 +1371,5 @@ void *gw_listen( void *arg ) {
 	return NULL;
 
 }
+
+

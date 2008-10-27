@@ -18,6 +18,7 @@
  */
 
 #include <stdio.h>
+#include <string.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <stdlib.h>
@@ -30,9 +31,8 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 
-#include "../os.h"
 #include "../batman.h"
-#include "../metrics.h"
+#include "../os.h"
 #include "../control.h"
 
 int netlink_sock = -1;

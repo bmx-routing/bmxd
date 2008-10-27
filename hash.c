@@ -20,6 +20,7 @@
 
 #include <stdio.h>		/* NULL */
 #include <string.h>
+
 #include "hash.h"
 #include "allocate.h"
 

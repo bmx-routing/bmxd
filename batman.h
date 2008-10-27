@@ -25,10 +25,7 @@
 #include <stdint.h>
 #include <sys/types.h>
 #include <netinet/in.h>
-#include <pthread.h>
-#include <sys/un.h>
 #include <linux/if.h>
-
 
 #include "list-batman.h"
 #include "hash.h"
@@ -43,6 +40,7 @@
 //#define EXT_DBG
 //#define NODEBUGALL
 //#define NODEBUG
+//#define METRICTABLE
 
 #define SOURCE_VERSION "0.3-alpha" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
 
@@ -120,13 +118,12 @@ extern char unix_path[];
 
 #define WARNING_PERIOD 20000
 
-#define BATMAN_TUN_PREFIX "bat"
-#define MAX_BATMAN_TUN_INDEX 20 
 
 #define TEST_SWITCH            "test"
 
 #define MAX_PACKET_OUT_SIZE 256
 #define MAX_AGGREGATION_INTERVAL_MS 250
+#define MAX_MTU 1500
 
 
 enum {
@@ -544,7 +541,7 @@ extern int ifevent_sk;
 
 
 
-extern uint32_t 		batman_time;
+extern uint32_t batman_time;
 
 
 
@@ -895,6 +892,7 @@ struct batman_if
 	int16_t if_ttl_conf;
 	int8_t if_send_clones_conf;
 	int8_t send_ogm_only_via_owning_if_conf;
+	int if_mtu;
 };
 
 struct orig_node                 /* structure for orig_list maintaining nodes of mesh */
@@ -982,8 +980,10 @@ struct link_node_dev
 	/* used for unicast probing/measuring of link quality to neighboring node */
 	SQ_TYPE curr_probe_interval;
 	
+#ifdef METRICTABLE
 	SQ_TYPE last_up_sqn;
 	struct sq_record up_sqr;
+#endif
 /*
 #define PROBE_RECORD_ARRAY_SIZE 30
 	struct probe_record probe_records[PROBE_RECORD_ARRAY_SIZE];
@@ -1119,6 +1119,7 @@ struct gw_listen_arg
 	int32_t owt;
 	int32_t twt;
 	int32_t lease_time;
+	int mtu_min;
 };
 	
 
@@ -1138,6 +1139,7 @@ struct curr_gw_data {
 	struct gw_node *gw_node;
 	struct batman_if *batman_if;
 	uint32_t outgoing_src;
+	int mtu_min;
 };
 
 

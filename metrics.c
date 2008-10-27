@@ -20,10 +20,10 @@
 
 #define _GNU_SOURCE
 #include <stdio.h>
+#include <string.h>
 #include <sys/time.h>
 
-
-//#include "batman.h"
+#include "batman.h"
 #include "os.h"
 #include "originator.h"
 #include "control.h"
@@ -32,6 +32,7 @@
 
 
 
+#ifdef METRICTABLE
 struct metric_table *global_mt = NULL;
 
 struct metric_table *init_metric_table( int size, int base_m, int min ) {
@@ -52,7 +53,7 @@ struct metric_table *init_metric_table( int size, int base_m, int min ) {
 		
 		mt->t[i] = ( rate *= base );
 		
-		if ( prev >= mt->t[i] ) {
+		if ( prev >= rate ) {
 			
 			debug_output( DBGL_SYSTEM, "ERROR - init_metric_table(): invalid parameters: size %d, base_m %d, min %d \n", size, base_m, min );
 			
@@ -61,11 +62,11 @@ struct metric_table *init_metric_table( int size, int base_m, int min ) {
 			return NULL;
 		}
 		
-		prev = mt->t[i];
+		prev = rate;
 			
 			
 #ifdef EXT_DBG
-		debug_output( DBGL_ALL, "init_metric_table(): %4d  %10u bps  %13.4f bps  %13.4f kbps  %13.4f Mbps\n", i, mt->t[i], rate, rate/1000, rate/1000000 );
+		debug_all( "init_metric_table(): %4d  %10u bps  %13.4f bps  %13.4f kbps  %13.4f Mbps\n", i, mt->t[i], rate, rate/1000, rate/1000000 );
 #endif
 	}
 	
@@ -74,6 +75,9 @@ struct metric_table *init_metric_table( int size, int base_m, int min ) {
 }
 
 void cleanup_metric_table( struct metric_table *mt ) {
+	
+	if ( mt == NULL )
+		return;
 	
 	debugFree( mt->t, 1722 );
 	debugFree( mt, 1721 );
@@ -87,11 +91,21 @@ void print_metric_table( int fd, struct metric_table *mt ) {
 		return;
 	
 	int i;
+	
 	for ( i=0; i < mt->t_size; i++ ) {
-		dprintf( fd, " %4d  %10u bps  %10u kbps  %10u Mbps\n", i, mt->t[i],mt->t[i]/1000, mt->t[i]/1000000);
+		
+		uint32_t y = mt->t[mt->t_size-1-i];
+		//float max = mt->t[mt->t_size-1];
+		
+		dprintf( fd, " %4d      %10u -> %10u ns  %10.4f   \n",
+			i, mt->t[i], y, 1000000000 / ((float)(y)) ) ; 
+		
+		//((float)mt->t[i])/1000000, y, (((float)(y))/(mt->t_min*max)) * 1000000, 1 / (((float)(y))/(mt->t_min*max)) / 1000000, 
 	}
 	
 }
+
+#endif
 
 
 void flush_sq_record( struct sq_record *sqr, int num_words )
@@ -554,7 +568,7 @@ uint32_t send_unicast_probes( void ) {
 				uprq->probe_interval = htons( (ln->lndev[bif->if_num].curr_probe_interval)++ );
 
 				
-				debug_output( DBGL_ALL, " send_unicast_probes(): probing NB %s on %s rtq %d, size %d\n", orig_str, bif->dev, rtq, bh->size );
+				debug_all( " send_unicast_probes(): probing NB %s on %s rtq %d, size %d\n", orig_str, bif->dev, rtq, bh->size );
 				
 				int probe_num;
 				for ( probe_num = 0; probe_num <= unicast_probes_num ; probe_num++ ) {
@@ -591,7 +605,7 @@ void process_unicast_probe( struct msg_buff *mb ) {
 	mb->uprq->probe_num      = ntohs( mb->uprq->probe_num );
 	mb->uprq->probe_max      = ntohs( mb->uprq->probe_max );
 
-	debug_output( DBGL_ALL, "Received unicast link probe request: %s %s probe_ival %6d %2d/%2d, total bytes %4d, %s, time: %6d %6ld:%6ld, \n", 
+	debug_all( "Received unicast link probe request: %s %s probe_ival %6d %2d/%2d, total bytes %4d, %s, time: %6d %6ld:%6ld, \n", 
 		      mb->neigh_str, mb->iif->dev, mb->uprq->probe_interval, mb->uprq->probe_num, mb->uprq->probe_max, mb->total_length, 
 			mb->unicast?"UNICAST":"BRCAST" , batman_time, mb->tv_stamp.tv_sec, mb->tv_stamp.tv_usec );
 
@@ -696,18 +710,16 @@ void process_unicast_probe( struct msg_buff *mb ) {
 				
 			}
 			
-			
+#ifdef METRICTABLE
+
 			SQ_TYPE up_sqn = OGM_BITS_SIZE * (mb->uprq->probe_interval);
 			
-			uint16_t prev_vcnt = lndev->up_sqr.vcnt;
+			uint16_t prev_vcnt;
+			prev_vcnt = lndev->up_sqr.vcnt;
 			
 			lndev->last_up_sqn = update_bits( 0, up_sqn,  &lndev->up_sqr, lndev->last_up_sqn, OGM_BITS_SIZE, unicast_probes_ws,  DBGL_ALL );
 			
-
-			
-			uint16_t tmp_vcnt = lndev->up_sqr.vcnt;
-			uint16_t diff_vcnt = prev_vcnt - tmp_vcnt;
-					
+								
 			// find upper boundary of average setBits per OGM to represent measured throughut
 			uint16_t b, f = MAX_BITS_RANGE / unicast_probes_ws;
 			OGM_BITS_TYPE bits;
@@ -730,8 +742,8 @@ void process_unicast_probe( struct msg_buff *mb ) {
 				update_bits( bits, up_sqn,  &lndev->up_sqr, lndev->last_up_sqn, OGM_BITS_SIZE, unicast_probes_ws,  DBGL_CHANGES );
 			
 			}
-			
-			debug_output( DBGL_ALL, "U_PROBE  %s %s #%5d %2d/%2d,"
+		
+			debug_all( "U_PROBE  %s %s #%5d %2d/%2d,"
 					" %4d bits in %4d us -> %5d Kbps avg %5d, mt[%4d-%2d+%2d=%4d (%3d)] = %5d ([%d*%2d->%4d]=%6d [%2d]=%5d  )\n", 
 					mb->neigh_str, mb->iif->dev, mb->uprq->probe_interval,
 					lndev->pr.rcvd_nums, mb->uprq->probe_max,
@@ -739,11 +751,14 @@ void process_unicast_probe( struct msg_buff *mb ) {
 					lndev->pr.latency,
 					lndev->pr.throughput,
 					lndev->sum_probe_tp / PROBE_HISTORY,
-					prev_vcnt, diff_vcnt, get_set_bits( bits ), lndev->up_sqr.vcnt, (int)get_set_bits( bits ) - (int)diff_vcnt,
+					prev_vcnt, prev_vcnt-lndev->up_sqr.vcnt, get_set_bits( bits ), 
+					lndev->up_sqr.vcnt, (int)get_set_bits( bits ) - (int)(prev_vcnt-lndev->up_sqr.vcnt),
 					global_mt->t[ f*lndev->up_sqr.vcnt ]/1000,
 					f, b, f*b*(unicast_probes_ws/OGM_BITS_SIZE), global_mt->t[ f*b*(unicast_probes_ws/OGM_BITS_SIZE) ]/1000,
 					b-1, global_mt->t[ f*(b-1)*(unicast_probes_ws/OGM_BITS_SIZE) ]/1000
 				    );
+			
+#endif
 			
 		}
 	

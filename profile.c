@@ -20,10 +20,7 @@
 #define _GNU_SOURCE
 #include <stdio.h>
 
-
-#include "os.h"
-#include "batman.h"
-#include "control.h"
+#include "profile.h"
 
 
 
