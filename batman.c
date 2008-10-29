@@ -615,7 +615,7 @@ void add_del_other_hna( struct orig_node *orig_node, struct ext_packet *hna_arra
 					//	orig_node->router->if_incoming->addr.sin_addr.s_addr,
 						orig_node->router->if_incoming->if_index,
 						orig_node->router->if_incoming->dev,
-						rt_table, 0, del, NO/*no track*/ );
+						rt_table, 0, del, NO/*no track*/, YES  );
 				
 				hash_node->status = HNA_HASH_NODE_EMPTY;
 				hash_node->orig = NULL;
@@ -627,7 +627,7 @@ void add_del_other_hna( struct orig_node *orig_node, struct ext_packet *hna_arra
 						outgoing_src ? outgoing_src : ((struct batman_if *)if_list.next)->addr.sin_addr.s_addr,
 						orig_node->router->if_incoming->if_index, 
 						orig_node->router->if_incoming->dev, 
-						rt_table, 0, del, NO/*no track*/ );
+						rt_table, 0, del, NO/*no track*/, YES  );
 				
 				hash_node->status = HNA_HASH_NODE_OTHER;
 				hash_node->orig = orig_node;
@@ -714,10 +714,10 @@ void add_del_own_hna( uint8_t purge ) {
 		if ( hash_node->status == HNA_HASH_NODE_MYONE ) {
 			
 			/* del throw routing entries for own hna */
-			add_del_route( hna_node->key.addr, hna_node->key.KEY_FIELD_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_INTERFACES, 1, 1, YES/*track*/ );
-			add_del_route( hna_node->key.addr, hna_node->key.KEY_FIELD_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS,   1, 1, YES/*track*/ );
-			add_del_route( hna_node->key.addr, hna_node->key.KEY_FIELD_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS,      1, 1, YES/*track*/ );
-			add_del_route( hna_node->key.addr, hna_node->key.KEY_FIELD_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL,     1, 1, YES/*track*/ );
+			add_del_route( hna_node->key.addr, hna_node->key.KEY_FIELD_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_INTERFACES, 1, 1, YES, YES );
+			add_del_route( hna_node->key.addr, hna_node->key.KEY_FIELD_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_NETWORKS,   1, 1, YES, YES );
+			add_del_route( hna_node->key.addr, hna_node->key.KEY_FIELD_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_HOSTS,      1, 1, YES, YES );
+			add_del_route( hna_node->key.addr, hna_node->key.KEY_FIELD_ANETMASK, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL,     1, 1, YES, YES );
 			
 			hash_node->status = HNA_HASH_NODE_EMPTY;
 		}
@@ -772,10 +772,10 @@ void add_del_own_hna( uint8_t purge ) {
 					my_hna_ext_array_len++;
 					
 					/* add throw routing entries for own hna */  
-					add_del_route( hna_node->key.addr, hna_node->key.KEY_FIELD_ANETMASK, 0,0,0, "unknown", BATMAN_RT_TABLE_INTERFACES, 1, 0, YES/*track*/ );
-					add_del_route( hna_node->key.addr, hna_node->key.KEY_FIELD_ANETMASK, 0,0,0, "unknown", BATMAN_RT_TABLE_NETWORKS,   1, 0, YES/*track*/ );
-					add_del_route( hna_node->key.addr, hna_node->key.KEY_FIELD_ANETMASK, 0,0,0, "unknown", BATMAN_RT_TABLE_HOSTS,      1, 0, YES/*track*/ );
-					add_del_route( hna_node->key.addr, hna_node->key.KEY_FIELD_ANETMASK, 0,0,0, "unknown", BATMAN_RT_TABLE_TUNNEL,     1, 0, YES/*track*/ );
+					add_del_route( hna_node->key.addr, hna_node->key.KEY_FIELD_ANETMASK, 0,0,0, "unknown", BATMAN_RT_TABLE_INTERFACES, 1, 0, YES, YES );
+					add_del_route( hna_node->key.addr, hna_node->key.KEY_FIELD_ANETMASK, 0,0,0, "unknown", BATMAN_RT_TABLE_NETWORKS,   1, 0, YES, YES );
+					add_del_route( hna_node->key.addr, hna_node->key.KEY_FIELD_ANETMASK, 0,0,0, "unknown", BATMAN_RT_TABLE_HOSTS,      1, 0, YES, YES );
+					add_del_route( hna_node->key.addr, hna_node->key.KEY_FIELD_ANETMASK, 0,0,0, "unknown", BATMAN_RT_TABLE_TUNNEL,     1, 0, YES, YES );
 					
 				} else {
 					
@@ -1036,7 +1036,7 @@ void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, 
 			if ( orig_node->hna_array_len > 0 )
 				add_del_other_hna( orig_node, NULL, 0 );
 
-			add_del_route( orig_node->orig, 32, orig_node->router->addr, 0, orig_node->router->if_incoming->if_index, orig_node->router->if_incoming->dev, BATMAN_RT_TABLE_HOSTS, 0, 1, NO/*no track*/ );
+			add_del_route( orig_node->orig, 32, orig_node->router->addr, 0, orig_node->router->if_incoming->if_index, orig_node->router->if_incoming->dev, BATMAN_RT_TABLE_HOSTS, 0, 1, NO, YES );
 
 		}
 
@@ -1058,7 +1058,7 @@ void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, 
 				//	neigh_node->if_incoming->addr.sin_addr.s_addr, 
 					neigh_node->if_incoming->if_index, 
 					neigh_node->if_incoming->dev, 
-					BATMAN_RT_TABLE_HOSTS, 0, 0, NO/*no track*/ );
+					BATMAN_RT_TABLE_HOSTS, 0, 0, NO, YES );
 
 //			orig_node->batman_if = neigh_node->if_incoming;
 			orig_node->router = neigh_node;

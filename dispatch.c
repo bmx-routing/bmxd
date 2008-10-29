@@ -1023,30 +1023,30 @@ void process_packet( struct msg_buff *mb, unsigned char *pos, uint32_t rcvd_neig
 	unsigned char *check_pos;
 	
 	
-	if ( mb->total_length <= 0 ) {
-		debug_output( 0, "Error - Invalid packet (%d): %s\n", mb->total_length );
-		cleanup_all( CLEANUP_FAILURE );
+	if ( mb->total_length < (sizeof(struct bat_header) + sizeof(struct bat_packet_common)) ) {
+		debug_output( 0, "Error - Invalid packet length: %d \n", mb->total_length);
+
+		prof_stop( PROF_process_packet );
+		return;
 	}
-	
-	addr_to_string( rcvd_neighbor, mb->neigh_str, sizeof(mb->neigh_str) );
 	
 	// immediately drop my own packets
 	if ( rcvd_neighbor == mb->iif->addr.sin_addr.s_addr ) {
 		
-		debug_all( "Drop packet: received my own broadcast iif %s, %s \n", mb->iif->dev , mb->neigh_str );
+		debug_all( "Drop packet: received my own broadcast iif %s \n", mb->iif->dev );
 
 		prof_stop( PROF_process_packet );
 		return;
 	}
 
-
+	addr_to_string( rcvd_neighbor, mb->neigh_str, sizeof(mb->neigh_str) );
+	
 	
 	// immediately drop invalid packets...
 	// we acceppt longer packets than specified by pos->size to allow padding for equal packet sizes
-	if ( mb->total_length < (sizeof(struct bat_header) + sizeof(struct bat_packet_common))  ||
-		    ((((struct bat_header *)pos)->size)<<2) < (sizeof(struct bat_header) + sizeof(struct bat_packet_common)) ||
-		    (((struct bat_header *)pos)->version) != COMPAT_VERSION  ||
-		    ((((struct bat_header *)pos)->size)<<2) > mb->total_length )
+	if ( 	((((struct bat_header *)pos)->size)<<2) < (sizeof(struct bat_header) + sizeof(struct bat_packet_common)) ||
+		(((struct bat_header *)pos)->version) != COMPAT_VERSION  ||
+		((((struct bat_header *)pos)->size)<<2) > mb->total_length )
 	{
 	
 		if ( mb->total_length >= (sizeof(struct bat_header) /*+ sizeof(struct bat_packet_common) */) )
@@ -1087,15 +1087,10 @@ void process_packet( struct msg_buff *mb, unsigned char *pos, uint32_t rcvd_neig
 
 	while ( check_done < check_len ) {
 
-		if ( check_len < sizeof( struct bat_packet_common ) ) {
-
-			debug_output(0, "ERROR - Recvfrom returned with absolutely to small packet length %d !!!! \n", check_len );
-			cleanup_all( CLEANUP_FAILURE );
-		}
 
 		if ( 	(((struct bat_packet_common *)check_pos)->ext_msg) != 0 ||
-						(((struct bat_packet_common *)check_pos)->size)    == 0 ||
-						((((struct bat_packet_common *)check_pos)->size)<<2) > check_len  ) 
+			(((struct bat_packet_common *)check_pos)->size)    == 0 ||
+			((((struct bat_packet_common *)check_pos)->size)<<2) > check_len  ) 
 		{
 
 			if (	(((struct bat_packet_common *)check_pos)->ext_msg) == 0 &&

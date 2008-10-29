@@ -33,14 +33,35 @@
 #include "profile.h"
 #include "vis-types.h"
 
-/**
- * Global Variables and definitions 
- */
-
+/***
+ *
+ * Things you should enable via your make file:
+ *
+ * DEBUG_MALLOC   enables malloc() / free() wrapper functions to detect memory leaks / buffer overflows / etc
+ * MEMORY_USAGE   allows you to monitor the internal memory usage (needs DEBUG_MALLOC to work)
+ * PROFILE_DATA   allows you to monitor the cpu usage for each function
+ *
+ ***/
 //#define EXT_DBG
 //#define NODEBUGALL
 //#define NODEBUG
 //#define METRICTABLE
+
+
+/**
+ * Some often used variable acronyms:
+ * mb			struct msg_buff*	contians metainformation about received packet
+ * iif / oif / bif	struct batman_if*	incoming-/outgoing-/batman- interface
+ * ln			struct link_node*
+ * tn			struct todo_node*
+ * ogm			struct bat_packet_ogm*
+ *
+ */
+
+/**
+ * Global Variables and definitions 
+ */
+
 
 #define SOURCE_VERSION "0.3-alpha" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
 
@@ -60,18 +81,6 @@ extern char unix_path[];
 #define OUT_SEQNO_OFFSET 2
 #define YES 1
 #define NO 0
-
-
-/***
- *
- * Things you should enable via your make file:
- *
- * DEBUG_MALLOC   enables malloc() / free() wrapper functions to detect memory leaks / buffer overflows / etc
- * MEMORY_USAGE   allows you to monitor the internal memory usage (needs DEBUG_MALLOC to work)
- * PROFILE_DATA   allows you to monitor the cpu usage for each function
- *
- ***/
-
 
 #ifndef REVISION_VERSION
 #define REVISION_VERSION "0"

@@ -486,7 +486,7 @@ uint32_t handle_tun_ip_reply(
 				return 0;
 			}
 	
-			add_del_route( 0, 0, 0, 0, *tun_ifi, tun_if, BATMAN_RT_TABLE_TUNNEL, 0, 0, NO/*no track - otherwise needs mutex exclude*/ );
+			add_del_route( 0, 0, 0, 0, *tun_ifi, tun_if, BATMAN_RT_TABLE_TUNNEL, 0, 0, NO/*no track - otherwise needs mutex exclude*/, NO  );
 			*new_ip_stamp = current_time;
 
 		} else if ( *pref_addr != tp->LEASE_IP ) {
@@ -504,7 +504,7 @@ uint32_t handle_tun_ip_reply(
 			}
 	
 			/* kernel deletes routes after resetting the interface ip */
-			add_del_route( 0, 0, 0, 0, *tun_ifi, tun_if, BATMAN_RT_TABLE_TUNNEL, 0, 0, NO/*no track - otherwise needs mutex exclude*/ );
+			add_del_route( 0, 0, 0, 0, *tun_ifi, tun_if, BATMAN_RT_TABLE_TUNNEL, 0, 0, NO/*no track - otherwise needs mutex exclude*/, NO );
 			*new_ip_stamp = current_time;
 		}
 
@@ -662,7 +662,7 @@ void *client_to_gw_tun( void *arg ) {
 		curr_gw_data->gw_node->last_failure = current_time;
 		curr_gw_data->gw_node->unavail_factor = 0;
 
-		add_del_route( 0, 0, 0, 0, tun_ifi, tun_if, BATMAN_RT_TABLE_TUNNEL, 0, 0, NO/*no track - otherwise needs mutex exclude*/ );
+		add_del_route( 0, 0, 0, 0, tun_ifi, tun_if, BATMAN_RT_TABLE_TUNNEL, 0, 0, NO/*no track - otherwise needs mutex exclude*/, NO );
 
 		my_tun_addr = curr_gw_data->outgoing_src ? curr_gw_data->outgoing_src : curr_gw_data->batman_if->addr.sin_addr.s_addr;
 		tun_ip_request_stamp = 0;
@@ -937,7 +937,7 @@ void *client_to_gw_tun( void *arg ) {
 	debug_tunnel( 3, "terminating client_to_gw_tun thread: is_aborted(): %s, curr_gateway: %ld, deleted: %d \n", (is_aborted()? "YES":"NO"), curr_gateway, curr_gw_data->gw_node->deleted );
 	
 	
-	add_del_route( 0, 0, 0, 0, tun_ifi, tun_if, BATMAN_RT_TABLE_TUNNEL, 0, 1, NO/*no track - otherwise needs mutex exclude*/ );
+	add_del_route( 0, 0, 0, 0, tun_ifi, tun_if, BATMAN_RT_TABLE_TUNNEL, 0, 1, NO/*no track - otherwise needs mutex exclude*/, NO );
 	del_dev_tun( tun_fd );
 
 	close( unix_tunnel_sock );
@@ -1151,7 +1151,7 @@ void *gw_listen( void *arg ) {
 		return NULL;
 	}
 
-	add_del_route( my_tun_ip, gw_listen_arg->netmask, 0, 0, tun_ifi, tun_dev, 254, 0, 0, NO/*no track - otherwise needs mutex exclude*/ );
+	add_del_route( my_tun_ip, gw_listen_arg->netmask, 0, 0, tun_ifi, tun_dev, 254, 0, 0, NO/*no track - otherwise needs mutex exclude*/, NO );
 
 	FD_ZERO(&wait_sockets);
 	FD_SET(gw_listen_arg->sock, &wait_sockets);
@@ -1175,6 +1175,9 @@ void *gw_listen( void *arg ) {
 			if ( FD_ISSET( gw_listen_arg->sock, &tmp_wait_sockets ) ) {
 
 				while ( ( tp_len = recvfrom( gw_listen_arg->sock, (unsigned char*)&tp.start, TX_DP_SIZE, 0, (struct sockaddr *)&addr, &addr_len ) ) > 0 ) {
+					
+					//addr_to_string( addr.sin_addr.s_addr, str2, sizeof(str2) );
+					//debug_tunnel( 3, "INFO - Gateway: received packet type %d from %s ...\n", tp.TP_VERS, str2 );
 
 					if ( tp_len < TX_RP_SIZE ) {
 						
@@ -1274,6 +1277,11 @@ void *gw_listen( void *arg ) {
 
 						}
 
+					} else {
+						
+						addr_to_string( addr.sin_addr.s_addr, str2, sizeof(str2) );
+						debug_tunnel( 0, "Error - Gateway: received unknown packet type %d from %s ...\n", tp.TP_VERS, str2 );
+
 					}
 
 				}
@@ -1357,7 +1365,7 @@ void *gw_listen( void *arg ) {
 	}
 
 	/* delete tun device and routes on exit */
-	add_del_route( my_tun_ip, gw_listen_arg->netmask, 0, 0, tun_ifi, tun_dev, 254, 0, 1, NO/*no track - otherwise needs mutex exclude*/ );
+	add_del_route( my_tun_ip, gw_listen_arg->netmask, 0, 0, tun_ifi, tun_dev, 254, 0, 1, NO/*no track - otherwise needs mutex exclude*/, NO );
 
 	del_dev_tun( tun_fd );
 

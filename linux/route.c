@@ -156,7 +156,7 @@ void cleanup_route( void ) {
  
 
 
-void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t source, int32_t ifi, char *dev, uint8_t rt_table, int8_t route_type, int8_t del, int8_t track ) {
+void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t source, int32_t ifi, char *dev, uint8_t rt_table, int8_t route_type, int8_t del, int8_t track, int8_t debug ) {
 
 	int len;
 	uint32_t my_router;
@@ -231,7 +231,8 @@ void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t so
 			
 		}
 	
-		debug_output( DBGL_CHANGES, "%s route to %s via %s src %s dev %s, table %d, type %d \n", 
+		if( debug )
+			debug_output( DBGL_CHANGES, "%s route to %s via %s src %s dev %s, table %d, type %d \n", 
 			      del?"del":"add", str1, str2, str3, dev, rt_table, route_type );
 
 		
@@ -244,17 +245,21 @@ void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t so
 
 		if ( dest == 0 ) {
 
-			debug_all( "%s default route via %s %s (table %i)\n", del ? "Deleting" : "Adding", dev, str3, rt_table );
+			if( debug )
+				debug_all( "%s default route via %s %s (table %i)\n", del ? "Deleting" : "Adding", dev, str3, rt_table );
 
 		} else {
 
-			debug_all( "%s route to %s via 0.0.0.0 (table %i - %s %s )\n", del ? "Deleting" : "Adding", str1, rt_table, dev, str3 );
+			if( debug )
+				debug_all( "%s route to %s via 0.0.0.0 (table %i - %s %s )\n", del ? "Deleting" : "Adding", str1, rt_table, dev, str3 );
 
 		}
 
 	} else {
 
-		debug_all( "%s %s to %s/%i via %s (table %i - %s %s )\n", del ? "Deleting" : "Adding", ( route_type == 1 ? "throw route" : ( route_type == 2 ? "unreachable route" : "route" ) ), str1, netmask, str2, rt_table, dev, str3 );
+		if( debug )
+			debug_all( "%s %s to %s/%i via %s (table %i - %s %s )\n", del ? "Deleting" : "Adding", ( route_type == 1 ? "throw route" : ( route_type == 2 ? "unreachable route" : "route" ) ), str1, netmask, str2, rt_table, dev, str3 );
+		
 		my_router = router;
 
 	}
@@ -331,7 +336,9 @@ void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t so
 
 	if ( sendto( netlink_sock, &req, req.nlh.nlmsg_len, 0, (struct sockaddr *)&nladdr, sizeof(struct sockaddr_nl) ) < 0 ) {
 
-		debug_output( 0, "Error - can't send message to kernel via netlink socket for routing table manipulation: %s", strerror(errno) );
+		if( debug )
+			debug_output( 0, "Error - can't send message to kernel via netlink socket for routing table manipulation: %s", strerror(errno) );
+		
 		return;
 
 	}
@@ -353,23 +360,29 @@ void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t so
 		if ( len < 0 ) {
 			
 			if ( errno == EINTR ) {
-				debug_output( DBGL_SYSTEM, "WARNING - add_del_route(): (EINTR) %s \n", strerror(errno) );
+				
+				if( debug )
+					debug_output( DBGL_SYSTEM, "WARNING - add_del_route(): (EINTR) %s \n", strerror(errno) );
+				
 				continue;
 			}
 			
 			if ( errno == EWOULDBLOCK || errno == EAGAIN ) {
-				//debug_output( DBGL_SYSTEM, "WARNING - add_del_route(): (EWOULDBLOCK || EAGAIN) %s \n", strerror(errno) );
+				//if( debug ) debug_output( DBGL_SYSTEM, "WARNING - add_del_route(): (EWOULDBLOCK || EAGAIN) %s \n", strerror(errno) );
 				break;
 			}
 			
-			debug_output( DBGL_SYSTEM, "Error - add_del_route(): %s \n", strerror(errno) );
+			if( debug )
+				debug_output( DBGL_SYSTEM, "Error - add_del_route(): %s \n", strerror(errno) );
 			
 			continue;
 				
 		}
 		
-		if ( len == 0 ) 
-			debug_output( DBGL_SYSTEM, "Error - add_del_route(): netlink EOF\n" );
+		if ( len == 0 ) {
+			if( debug )
+				debug_output( DBGL_SYSTEM, "Error - add_del_route(): netlink EOF\n" );
+		}
 		
 		
 		nh = (struct nlmsghdr *)buf;
@@ -379,8 +392,10 @@ void add_del_route( uint32_t dest, uint8_t netmask, uint32_t router, uint32_t so
 			if ( nh->nlmsg_type == NLMSG_DONE )
 				return;
 	
-			if ( ( nh->nlmsg_type == NLMSG_ERROR ) && ( ((struct nlmsgerr*)NLMSG_DATA(nh))->error != 0 ) )
-				debug_output( 0, "Error - can't %s %s to %s/%i via %s (table %i): %s\n", del ? "delete" : "add", ( route_type == 1 ? "throw route" : ( route_type == 2 ? "unreachable route" : "route" ) ), str1, netmask, str2, rt_table, strerror(-((struct nlmsgerr*)NLMSG_DATA(nh))->error) );
+			if ( ( nh->nlmsg_type == NLMSG_ERROR ) && ( ((struct nlmsgerr*)NLMSG_DATA(nh))->error != 0 ) ) {
+				if( debug )
+					debug_output( 0, "Error - can't %s %s to %s/%i via %s (table %i): %s\n", del ? "delete" : "add", ( route_type == 1 ? "throw route" : ( route_type == 2 ? "unreachable route" : "route" ) ), str1, netmask, str2, rt_table, strerror(-((struct nlmsgerr*)NLMSG_DATA(nh))->error) );
+			}
 	
 			nh = NLMSG_NEXT( nh, len );
 	
@@ -743,7 +758,7 @@ int add_del_interface_rules( int8_t del, uint8_t setup_tunnel, uint8_t setup_net
 		netmask = get_set_bits( ((struct sockaddr_in *)&ifr_tmp.ifr_addr)->sin_addr.s_addr );
 
 		if( !no_throw_rules && setup_tunnel )
-			add_del_route( netaddr, netmask, 0, 0, 0, ifr->ifr_name, BATMAN_RT_TABLE_TUNNEL,   1, del, YES/*track*/ );
+			add_del_route( netaddr, netmask, 0, 0, 0, ifr->ifr_name, BATMAN_RT_TABLE_TUNNEL,   1, del, YES/*track*/, YES );
 
 		
 		if( !no_prio_rules && setup_tunnel ) {
@@ -773,7 +788,7 @@ int add_del_interface_rules( int8_t del, uint8_t setup_tunnel, uint8_t setup_net
 			}
 			
 			if ( !no_lo_rule && strncmp( ifr->ifr_name, "lo", IFNAMSIZ - 1 ) == 0 )
-				add_del_rule( 0, 0, BATMAN_RT_TABLE_TUNNEL, BATMAN_RT_PRIO_TUNNEL, lo_dev_string, 2, del, YES /*track*/);
+				add_del_rule( 0, 0, BATMAN_RT_TABLE_TUNNEL, BATMAN_RT_PRIO_TUNNEL, lo_dev_string, 2, del, YES /*track*/ );
 
 
 		}
@@ -783,7 +798,7 @@ int add_del_interface_rules( int8_t del, uint8_t setup_tunnel, uint8_t setup_net
 		
 		
 		if( !no_throw_rules && setup_networks)
-			add_del_route( netaddr, netmask, 0, 0, 0, ifr->ifr_name, BATMAN_RT_TABLE_NETWORKS, 1, del, YES/*track*/ );
+			add_del_route( netaddr, netmask, 0, 0, 0, ifr->ifr_name, BATMAN_RT_TABLE_NETWORKS, 1, del, YES/*track*/, YES  );
 		
 
 	}
@@ -794,7 +809,7 @@ int add_del_interface_rules( int8_t del, uint8_t setup_tunnel, uint8_t setup_net
 				
 		no_netmask = htonl( 0xFFFFFFFF<<(32 - notun_node->netmask ) );
 
-		add_del_route( (notun_node->addr & no_netmask), notun_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL, 1, del, YES/*track*/ );
+		add_del_route( (notun_node->addr & no_netmask), notun_node->netmask, 0, 0, 0, "unknown", BATMAN_RT_TABLE_TUNNEL, 1, del, YES/*track*/, YES  );
 
 	}
 
@@ -820,7 +835,7 @@ void flush_tracked_rules_and_routes( void ) {
 		
 		struct routes_node *rn = list_entry( (&routes_list)->next, struct routes_node, list );
 		
-		add_del_route( rn->dest, rn->netmask, rn->router, rn->source, 0, 0, rn->rt_table, rn->route_type, YES, YES );
+		add_del_route( rn->dest, rn->netmask, rn->router, rn->source, 0, 0, rn->rt_table, rn->route_type, YES, YES, YES  );
 		
 	}
 
@@ -967,7 +982,7 @@ int flush_routes_rules( int8_t is_rule ) {
 			inet_ntop( AF_INET, &dest, str1, sizeof (str1) );
 			inet_ntop( AF_INET, &router, str2, sizeof (str2) );
 
-			add_del_route( dest, rtm->rtm_dst_len, router, 0, ifi, "unknown", rtm->rtm_table, rtm->rtm_type, 1, NO/*no track*/ );
+			add_del_route( dest, rtm->rtm_dst_len, router, 0, ifi, "unknown", rtm->rtm_table, rtm->rtm_type, 1, NO/*no track*/, YES  );
 			debug_output( DBGL_SYSTEM, "WARNING - flushing orphan route to %s via %s type %d, table %d \n", str1, str2, rtm->rtm_type, rtm->rtm_table );
 		
 		}
