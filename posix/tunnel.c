@@ -1129,7 +1129,7 @@ void *gw_listen( void *arg ) {
 	
 	addr_to_string( my_tun_ip, str, sizeof(str) );
 	addr_to_string( my_tun_netmask, str2, sizeof(str2) );
-	debug_tunnel( 3, "gw_listen(): my_tun_ip %s, my_tun_netmask: %s \n", str, str2);
+	debug_tunnel( 0, "gw_listen(): my_tun_ip %s, my_tun_netmask: %s \n", str, str2);
 	
 	my_tun_ip_h = ntohl( my_tun_ip );
 	my_tun_suffix_mask_h = ntohl( ~my_tun_netmask );
@@ -1150,7 +1150,7 @@ void *gw_listen( void *arg ) {
 		debugFree( gw_listen_arg, 1223 );
 		return NULL;
 	}
-
+	
 	add_del_route( my_tun_ip, gw_listen_arg->netmask, 0, 0, tun_ifi, tun_dev, 254, 0, 0, NO/*no track - otherwise needs mutex exclude*/, NO );
 
 	FD_ZERO(&wait_sockets);

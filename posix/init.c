@@ -1615,9 +1615,6 @@ void apply_init_args( int argc, char *argv[] ) {
 		}		
 
 
-		if ( gateway_class != 0 )
-			start_gw_service( );
-		
 		/* daemonize */
 		if ( debug_level == -1 ) {
 
@@ -1633,6 +1630,8 @@ void apply_init_args( int argc, char *argv[] ) {
 		activate_debug_system( );
 		
 
+		if ( gateway_class != 0 )
+			start_gw_service( );
 
 	/* connect to running batmand via unix socket */
 	} else {
