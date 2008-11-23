@@ -57,7 +57,7 @@ void init_control( void ) {
 	
 	// just to check if sizeof( struct xyz { char[] }__attribute__((packed)); ) is zero for all compilers...
 	if ( sizeof( struct cntl_msg ) != 20 ) {
-		printf( "sizeof cntl_msg %d MUST BE 20 !!!\n", sizeof( struct cntl_msg ) ); 
+		printf( "sizeof cntl_msg %zu MUST BE 20 !!!\n", sizeof( struct cntl_msg ) ); 
 		exit(EXIT_FAILURE);
 	}
 

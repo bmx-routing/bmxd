@@ -17,10 +17,11 @@
 #
 
 
-CFLAGS =	-Wall -O2 -g -pg  -DDEBUG_MALLOC -DMEMORY_USAGE -DPROFILE_DATA 
+# JoW: "-pg" results in "gcrt1.o: No such file" ?!
+CFLAGS =	-Wall -O2 -g  -DDEBUG_MALLOC -DMEMORY_USAGE -DPROFILE_DATA
 # -DEXT_DBG # WARNING: this one eats your CPU. Do NOT use it for embedded devices!
 
-LDFLAGS =	-lpthread -static -g -pg
+LDFLAGS =	-lpthread -static -g
 
 
 
@@ -63,7 +64,7 @@ $(BINARY_NAME):	$(SRC_C) $(SRC_H) Makefile
 
 install:	all
 		mkdir -p $(SBINDIR)
-		install -m 0755 $(BINARY_NAME) $(SBINDIR)/bmxd
+		install -m 0755 $(BINARY_NAME) $(SBINDIR)
 
 
 clean:
