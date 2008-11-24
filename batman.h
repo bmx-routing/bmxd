@@ -568,7 +568,7 @@ extern struct list_head_first notun_list;
 
 extern struct unix_if unix_if;
 
-struct vis_if *vis_if;
+extern struct vis_if *vis_if;
 
 extern pthread_t gw_thread_id;
 
