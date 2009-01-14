@@ -30,7 +30,7 @@ downloads.open-mesh.net is likely to offer precompiled packages
 for your system.
 
 Download and compile the latest stable sources from the download 
-section http://open-mesh.net/batman/downloads by executing eg.:
+section http://www.open-mesh.net/wiki/Download by executing eg.:
 
  $ wget http://downloads.open-mesh.net/batman/stable/sources/batmand_0.2-current_sources.tgz
  $ tar xzvf batmand_0.2-current_sources.tgz
@@ -94,7 +94,7 @@ batman for one (or several) interfaces and specify the netmask and IP address
 as well as other optionally parameters.
 
 Alternatively you can get the latest stable release (as well as development) 
-versions from  http://open-mesh.net/batman/downoads/
+versions from  http://www.open-mesh.net/wiki/Download
 
 For example to install batmand-0.2 on a freifunk WRT do:
 
