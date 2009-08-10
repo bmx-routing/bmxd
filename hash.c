@@ -21,12 +21,11 @@
 #include <stdio.h>		/* NULL */
 #include <string.h>
 
-#include "hash.h"
-#include "allocate.h"
+#include "batman.h"
 
 /* needed for hash, compares 2 struct orig_node, but only their ip-addresses. assumes that
  * the ip address is the first field in the struct */
-int compare_key( void *data1, void *data2, int key_size ) {
+int compare_key( void *data1, void *data2, size_t key_size ) {
 
 	return ( memcmp( data1, data2, key_size ) );
 
@@ -36,7 +35,7 @@ int compare_key( void *data1, void *data2, int key_size ) {
 
 /* hashfunction to choose an entry in a hash table of given size */
 /* hash algorithm from http://en.wikipedia.org/wiki/Hash_table */
-int choose_key( void *data, int size, int key_size ) {
+int choose_key( void *data, int size, size_t key_size ) {
 
 	unsigned char *key= data;
 	uint32_t hash = 0;
@@ -114,6 +113,10 @@ void hash_destroy(struct hashtable_t *hash) {
 struct hash_it_t *hash_iterate(struct hashtable_t *hash, struct hash_it_t *iter_in) {
 	struct hash_it_t *iter;
 
+	if ( hash == NULL )
+		return NULL;
+	
+	
 	if (iter_in == NULL) {
 		iter= debugMalloc(sizeof(struct hash_it_t), 301);
 		iter->index =  -1;
@@ -277,7 +280,7 @@ void *hash_remove_bucket(struct hashtable_t *hash, struct hash_it_t *hash_it_t) 
 }
 
 
-/* removes data from hash, if found. returns pointer do data on success,
+/* removes data from hash, if found. returns pointer to data on success,
  * so you can remove the used structure yourself, or NULL on error .
  * data could be the structure you use with just the key filled,
  * we just need the key for comparing. */
@@ -329,6 +332,7 @@ struct hashtable_t *hash_resize(struct hashtable_t *hash, int size) {
 
 
 /* print the hash table for debugging */
+/*
 void hash_debug(struct hashtable_t *hash) {
 	int i;
 	struct element_t *bucket;
@@ -347,4 +351,4 @@ void hash_debug(struct hashtable_t *hash) {
 	}
 	printf("\n");
 }
-
+*/

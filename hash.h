@@ -18,8 +18,8 @@
  */
 
 
-typedef int (*hashdata_compare_cb)(void *, void *, int);
-typedef int (*hashdata_choose_cb)(void *, int, int);
+typedef int (*hashdata_compare_cb)(void *, void *, size_t);
+typedef int (*hashdata_choose_cb)(void *, int, size_t);
 typedef void (*hashdata_free_cb)(void *);
 
 struct element_t {
@@ -47,8 +47,8 @@ struct hashtable_t {
 					 * and the size the second */
 };
 
-int compare_key( void *data1, void *data2, int key_size );
-int choose_key( void *data, int size, int key_size );
+int compare_key( void *data1, void *data2, size_t key_size );
+int choose_key( void *data, int size, size_t key_size );
 
 
 /* clears the hash */
@@ -86,7 +86,9 @@ void 				*hash_find(struct hashtable_t *hash, void *keydata);
 struct hashtable_t	*hash_resize(struct hashtable_t *hash, int size);
 
 /* print the hash table for debugging */
+/*
 void 				 hash_debug( struct hashtable_t *hash);
+*/
 
 /* iterate though the hash. first element is selected with iter_in NULL.
  * use the returned iterator to access the elements until hash_it_t returns NULL. */

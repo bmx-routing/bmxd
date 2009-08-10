@@ -22,38 +22,16 @@
 
 
 #define MAX_BITS_RANGE 1024
-#define MAX_UNICAST_PROBING_WORDS (( MAX_BITS_RANGE / REC_BITS_SIZE ) + ( ( MAX_BITS_RANGE % REC_BITS_SIZE > 0)? 1 : 0 )) 
+
+#define OGI_WAVG_EXP 3
 
 
+void flush_sq_record( struct sq_record *sqr );
 
-struct metric_table {
-	
-	int t_size;
-	int t_base_m;
-	int t_min;
-	uint32_t *t;
-	
-};
+void update_queued_metric( uint8_t probe, uint8_t lounge_size, SQ_TYPE seqno, struct sq_record *sqr, uint8_t ws,
+                           uint32_t orig, uint32_t neigh, struct batman_if *bif, char* who );
 
-
-extern struct metric_table *global_mt;
-
-struct metric_table *init_metric_table( int size, int base_m, int min );
-
-void print_metric_table( int fd, struct metric_table *mt );
-		
-
-void flush_sq_record( struct sq_record *sqr, int num_words );
-
-SQ_TYPE update_bits(  OGM_BITS_TYPE bits_upd, SQ_TYPE sq_upd, 
-		      struct sq_record *sqr, SQ_TYPE sq_rec, uint16_t blocked_sq_offset, uint16_t vws, 
-		      uint8_t dbgl );
-
-void cleanup_metric_table( struct metric_table *mt );
-
-void init_link_probes( struct link_node *ln );
-void stop_link_probes( struct link_node *ln );
-uint32_t send_unicast_probes( void );
-void process_unicast_probe( struct msg_buff *mb );
+uint32_t get_wavg( uint32_t wavg, uint8_t weight_exp );
+uint32_t upd_wavg( uint32_t *wavg, uint32_t probe, uint8_t weight_exp );
 
 #endif

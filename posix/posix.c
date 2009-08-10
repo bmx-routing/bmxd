@@ -17,50 +17,43 @@
  *
  */
 
-
-
+#define _GNU_SOURCE
 #include <arpa/inet.h>
 #include <stdio.h>
 #include <errno.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/time.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 
-#include "../batman.h"
-#include "../os.h"
-#include "../originator.h"
-#include "../metrics.h"
-#include "../control.h"
-#include "../dispatch.h"
-
-
-
-
-#define BAT_LOGO_PRINT(x,y,z) printf( "\x1B[%i;%iH%c", y + 1, x, z )                      /* write char 'z' into column 'x', row 'y' */
-#define BAT_LOGO_END(x,y) printf("\x1B[8;0H");fflush(NULL);bat_wait( x, y );              /* end of current picture */
-#define IOCREMDEV 2
+#include "batman.h"
+#include "os.h"
+#include "originator.h"
+#include "metrics.h"
+#include "plugin.h"
+#include "schedule.h"
 
 # define timercpy(d, a) (d)->tv_sec = (a)->tv_sec; (d)->tv_usec = (a)->tv_usec; 
 
-
+static int8_t stop = 0;
 
 //static clock_t start_time;
 static struct timeval start_time_tv;
 static struct timeval ret_tv, new_tv, diff_tv, acceptable_m_tv, acceptable_p_tv, max_tv = {0,(2000*MAX_SELECT_TIMEOUT_MS)};
 
-
-
-
+#ifndef NODEPRECATED
 void fake_start_time( int32_t fake ) {
 	start_time_tv.tv_sec-= fake;
 }
+#endif
 
-
-uint32_t get_time( uint8_t msec, struct timeval *precise_tv ) {
+void update_batman_time( struct timeval *precise_tv ) {
 	
 	timeradd( &max_tv, &new_tv, &acceptable_p_tv );
 	timercpy( &acceptable_m_tv, &new_tv );
@@ -71,14 +64,18 @@ uint32_t get_time( uint8_t msec, struct timeval *precise_tv ) {
 		timersub( &new_tv, &acceptable_p_tv, &diff_tv );
 		timeradd( &start_time_tv, &diff_tv, &start_time_tv );
 		
-		debug_log( "WARNING: Critical system time drift detected: ++ca %ld s, %ld us! Correcting reference! \n", diff_tv.tv_sec, diff_tv.tv_usec );
+		dbg( DBGL_SYS, DBGT_WARN, 
+		     "critical system time drift detected: ++ca %ld s, %ld us! Correcting reference!",
+		     diff_tv.tv_sec, diff_tv.tv_usec );
 		
 	} else 	if ( timercmp( &new_tv, &acceptable_m_tv, < ) ) {
 		
 		timersub( &acceptable_m_tv, &new_tv, &diff_tv );
 		timersub( &start_time_tv, &diff_tv, &start_time_tv );
 		
-		debug_log( "WARNING: Critical system time drift detected: --ca %ld s, %ld us! Correcting reference! \n", diff_tv.tv_sec, diff_tv.tv_usec );
+		dbg( DBGL_SYS, DBGT_WARN, 
+		     "critical system time drift detected: --ca %ld s, %ld us! Correcting reference!",
+		     diff_tv.tv_sec, diff_tv.tv_usec );
 
 	}
 	
@@ -89,16 +86,58 @@ uint32_t get_time( uint8_t msec, struct timeval *precise_tv ) {
 		precise_tv->tv_usec = ret_tv.tv_usec;
 	}		
 	
-	if (  msec )
-		return ( (ret_tv.tv_sec * 1000) + (ret_tv.tv_usec / 1000) );
-	else
-		return ret_tv.tv_sec;
-
+	batman_time = ( (ret_tv.tv_sec * 1000) + (ret_tv.tv_usec / 1000) );
+	batman_time_sec = ret_tv.tv_sec;
+	
 }
 
 
+
+char *get_human_uptime( uint32_t reference ) {
+	//                  DD:HH:MM:SS
+	static char ut[32]="00:00:00:00";
+	
+	sprintf( ut, "%2i:%i%i:%i%i:%i%i",
+	         (((batman_time_sec-reference)/86400)), 
+	         (((batman_time_sec-reference)%86400)/36000)%10,
+	         (((batman_time_sec-reference)%86400)/3600)%10,
+	         (((batman_time_sec-reference)%3600)/600)%10,
+	         (((batman_time_sec-reference)%3600)/60)%10,
+	         (((batman_time_sec-reference)%60)/10)%10,
+	         (((batman_time_sec-reference)%60))%10
+	       );
+	
+	return ut;
+}
+
+
+void bat_wait( uint32_t sec, uint32_t msec ) {
+	
+	struct timeval time;
+	
+	//no debugging here because this is called from debug_output() -> dbg_fprintf() which may case a loop!
+	//dbgf_all( DBGT_INFO, "%d sec %d msec...", sec, msec ); 
+	
+	time.tv_sec = sec + (msec/1000) ;
+	time.tv_usec = ( msec * 1000 ) % 1000000;
+	
+	select( 0, NULL, NULL, NULL, &time );
+	
+	//update_batman_time( NULL ); //this will cause critical system time drift message from the client 
+	//dbgf_all( DBGT_INFO, "bat_wait(): done");
+	
+	return;
+}
+
+
+#ifndef NOTRAILER
+
+#define BAT_LOGO_PRINT(x,y,z) printf( "\x1B[%i;%iH%c", y + 1, x, z )                      /* write char 'z' into column 'x', row 'y' */
+#define BAT_LOGO_END(x,y) printf("\x1B[8;0H");fflush(NULL);bat_wait( x, y );              /* end of current picture */
+#define IOCREMDEV 2
+
 /* batman animation */
-void sym_print( char x, char y, char *z ) {
+static void sym_print( char x, char y, char *z ) {
 
 	char i = 0, Z;
 
@@ -135,51 +174,34 @@ void sym_print( char x, char y, char *z ) {
 
 }
 
-
-
-void bat_wait( int32_t T, int32_t t ) {
-
-	struct timeval time;
-
-	time.tv_sec = T;
-	time.tv_usec = ( t * 10000 );
-
-	select( 0, NULL, NULL, NULL, &time );
-
-	return;
-
-}
-
-
-
 void print_animation( void ) {
 
-	system( "clear" );
-	BAT_LOGO_END( 0, 50 );
+	Trash = system( "clear" );
+	BAT_LOGO_END( 0, 500 );
 
 	sym_print( 0, 3, "." );
 	BAT_LOGO_END( 1, 0 );
 
 	sym_print( 0, 4, "v" );
-	BAT_LOGO_END( 0, 20 );
+	BAT_LOGO_END( 0, 200 );
 
 	sym_print( 1, 3, "^" );
-	BAT_LOGO_END( 0, 20 );
+	BAT_LOGO_END( 0, 200 );
 
 	sym_print( 1, 4, "/" );
 	sym_print( 0, 5, "/" );
-	BAT_LOGO_END( 0, 10 );
+	BAT_LOGO_END( 0, 100 );
 
 	sym_print( 2, 3, "\\" );
 	sym_print( 2, 5, "/" );
 	sym_print( 0, 6, ")/" );
-	BAT_LOGO_END( 0, 10 );
+	BAT_LOGO_END( 0, 100 );
 
 	sym_print( 2, 3, "_\\" );
 	sym_print( 4, 4, ")" );
 	sym_print( 2, 5, " /" );
 	sym_print( 0, 6, " )/" );
-	BAT_LOGO_END( 0, 10 );
+	BAT_LOGO_END( 0, 100 );
 
 	sym_print( 4, 2, "'\\" );
 	sym_print( 2, 3, "__/ \\" );
@@ -187,57 +209,48 @@ void print_animation( void ) {
 	sym_print( 1, 5, "   " );
 	sym_print( 2, 6, "   /" );
 	sym_print( 3, 7, "\\" );
-	BAT_LOGO_END( 0, 15 );
+	BAT_LOGO_END( 0, 150 );
 
 	sym_print( 6, 3, " \\" );
 	sym_print( 3, 4, "_ \\   \\" );
 	sym_print( 10, 5, "\\" );
 	sym_print( 1, 6, "          \\" );
 	sym_print( 3, 7, " " );
-	BAT_LOGO_END( 0, 20 );
+	BAT_LOGO_END( 0, 200 );
 
 	sym_print( 7, 1, "____________" );
 	sym_print( 7, 3, " _   \\" );
 	sym_print( 3, 4, "_      " );
 	sym_print( 10, 5, " " );
 	sym_print( 11, 6, " " );
-	BAT_LOGO_END( 0, 25 );
+	BAT_LOGO_END( 0, 250 );
 
 	sym_print( 3, 1, "____________    " );
 	sym_print( 1, 2, "'|\\   \\" );
 	sym_print( 2, 3, " /         " );
 	sym_print( 3, 4, " " );
-	BAT_LOGO_END( 0, 25 );
+	BAT_LOGO_END( 0, 250 );
 
 	sym_print( 3, 1, "    ____________" );
 	sym_print( 1, 2, "    '\\   " );
 	sym_print( 2, 3, "__/  _   \\" );
 	sym_print( 3, 4, "_" );
-	BAT_LOGO_END( 0, 35 );
+	BAT_LOGO_END( 0, 350 );
 
 	sym_print( 7, 1, "            " );
 	sym_print( 7, 3, " \\   " );
 	sym_print( 5, 4, "\\    \\" );
 	sym_print( 11, 5, "\\" );
 	sym_print( 12, 6, "\\" );
-	BAT_LOGO_END( 0 ,35 );
+	BAT_LOGO_END( 0 ,350 );
 
 }
-
-
-
-void addr_to_string( uint32_t addr, char *str, int32_t len ) {
-
-	inet_ntop( AF_INET, &addr, str, len );
-
-}
-
-
+#endif /* NOANIMATION */
 
 int32_t rand_num( uint32_t limit ) {
-
+	
 	return ( limit == 0 ? 0 : rand() % limit );
-
+	
 }
 
 
@@ -249,11 +262,17 @@ int8_t is_aborted() {
 }
 
 
+static void handler( int32_t sig ) {
 
-void handler( int32_t sig ) {
-
+	if ( !Client_mode ) {
+		dbgf( DBGL_SYS, DBGT_ERR, "called with signal %d", sig);
+	}
+	
+	printf("\n");// to have a newline after ^C
+	
 	stop = 1;
-
+	cb_plugin_hooks( NULL, PLUGIN_CB_TERM );
+	
 }
 
 
@@ -261,7 +280,7 @@ void handler( int32_t sig ) {
 
 static unsigned char BitsSetTable256[256];
 
-void init_set_bits_table256( void ) {
+static void init_set_bits_table256( void ) {
 	BitsSetTable256[0] = 0;
 	int i;
 	for (i = 0; i < 256; i++)
@@ -288,6 +307,8 @@ int8_t send_udp_packet( unsigned char *packet_buff, int32_t packet_buff_len, str
 	
 	int status;
 	
+	dbgf_all( DBGT_INFO, "len %d", packet_buff_len );
+
 	if ( send_sock == 0 )
 		return 0;
 	
@@ -308,11 +329,13 @@ int8_t send_udp_packet( unsigned char *packet_buff, int32_t packet_buff_len, str
 		
 		if ( errno == 1 ) {
 
-			debug_output(0, "Error - can't send udp packet: %s.\nDoes your firewall allow outgoing packets on port %i ?\n", strerror(errno), ntohs(dst->sin_port));
+			dbg_mute( 60, DBGL_SYS, DBGT_ERR, 
+			     "can't send udp packet: %s. Does your firewall allow outgoing packets on port %i ?",
+			     strerror(errno), ntohs(dst->sin_port));
 
 		} else {
 
-			debug_output(0, "Error - can't send udp packet: %s\n", strerror(errno));
+			dbg_mute( 60, DBGL_SYS, DBGT_ERR, "can't send udp packet via fd %d: %s", send_sock, strerror(errno));
 
 		}
 		
@@ -326,171 +349,158 @@ int8_t send_udp_packet( unsigned char *packet_buff, int32_t packet_buff_len, str
 
 
 
-void segmentation_fault( int32_t sig ) {
+static void segmentation_fault( int32_t sig ) {
 
 	signal( SIGSEGV, SIG_DFL );
 
-	debug_output( 0, "Error - SIGSEGV received, trying to clean up ... \n" );
-
-	cleanup_all( CLEANUP_CONTINUE );
-
-	raise( SIGSEGV );
-
+	dbg( DBGL_SYS, DBGT_ERR, "SIGSEGV received, try cleaning up (%s%s)...",
+	     SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ) );
+	
+	if ( !on_the_fly )
+		dbg( DBGL_SYS, DBGT_ERR, 
+		     "check up-to-dateness of bmx libs in default lib path %s or customized lib path defined by %s !",
+		     BMX_DEF_LIB_PATH, BMX_ENV_LIB_PATH );
+	
+	
+	cleanup_all( CLEANUP_RETURN );
+	
+	dbg( DBGL_SYS, DBGT_ERR, "raising SIGSEGV again ..." );
+	
+	errno=0;
+	if ( raise( SIGSEGV ) ) {
+		dbg( DBGL_SYS, DBGT_ERR, "raising SIGSEGV failed: %s...", strerror(errno) );
+	}
+	
 }
 
-static int cleaning_up = NO;
 
 void cleanup_all( int status ) {
+	
+	static int cleaning_up = NO;
+	
+	if ( status < 0 ) {
+			/*
+	 * Negative numbers are used as SIGSEV error codes !
+	 * Currently used numbers are 
+	 * for core programs:		-500000 ... -500153
+	 */
+		dbg( DBGL_SYS, DBGT_ERR, 
+		     "Terminating with error code %d ! Please notify a developer", status );
+		
+		raise( SIGSEGV );
+	}
 	
 	if ( !cleaning_up ) {
 	
 		cleaning_up = YES;
 	
 		// first, restore defaults...
-
+		
 		stop = 1;
 		
-		stop_gw_service();
-		gateway_class = 0;
-	
-		del_default_route();
-		routing_class = 0;
+		cleanup_schedule();
 		
+		purge_orig( 0, NULL );
 
-		flush_tracked_rules_and_routes();
-	
-		purge_orig( 0 );
+		cleanup_plugin();
 		
-		restore_kernel_config( NULL );
-
-		// if ever started succesfully in daemon mode...
-		if ( !client_mode && batman_time > 0 ) {
-			
-			// flush orphan rules (and do warning in case)
-			if ( !no_prio_rules )
-				flush_routes_rules(1 /* flush rule */);
-			
-			// flush orphan routes (and do warning in case)
-			flush_routes_rules(0 /* flush route */ );
+		cleanup_config(); //cleanup_init()
 		
-		}
-
-		// second, cleanup stuff which would be eliminated anyway...
-		
-		/* cleanup: gw_list,  my_hna_list,  my_srv_list 
-		
-		init_originator();
-		init_profile();
-		*/
-		
-		cleanup_dispatch();
-	
-		if ( vis_if )
-			cleanup_vis();
-	
-#ifdef METRICTABLE
-		cleanup_metric_table( global_mt );
-#endif
+		cleanup_route();
 		
 		struct list_head *list_pos, *list_tmp;
-		
-		list_for_each_safe( list_pos, list_tmp, &notun_list ) {
-	
-			list_del( (struct list_head *)&notun_list, list_pos, &notun_list );
-	
-			debugFree( list_pos, 1224 );
-	
-		}
-		
 		list_for_each_safe( list_pos, list_tmp, &if_list ) {
 			
-			struct batman_if *batman_if = list_entry( list_pos, struct batman_if, list );
+			struct batman_if *bif = list_entry( list_pos, struct batman_if, list );
 			
-			if ( batman_if->if_active )
-				deactivate_interface( batman_if );
-	
+			if ( bif->if_active )
+				if_deactivate( bif );
+			
+			remove_outstanding_ogms( bif );
+			
 			list_del( (struct list_head *)&if_list, list_pos, &if_list );
+			
 			debugFree( list_pos, 1214 );
-	
 		}
-	
-		add_del_own_hna( YES /*purge*/ );
-		
-		add_del_own_srv( YES /*purge*/ );
-
-		purge_empty_hna_nodes( );
-	
-		cleanup_route();
-
-		hash_destroy( hna_hash );
 
 		hash_destroy( orig_hash );
-
+		
 		
 		// last, close debugging system and check for forgotten resources...
-		
 		cleanup_control();
-	
-		checkLeak();
-	
-	}
 		
+		checkLeak();
+	}
+	
 
 	if ( status == CLEANUP_SUCCESS ) {
 		
 		exit( EXIT_SUCCESS );
-
-	} else if ( status == CLEANUP_FAILURE ) {
 		
-		exit ( EXIT_FAILURE );
-	
-	} else if ( status == CLEANUP_CONTINUE ) {
-		return;
-	
-	}
+	} else if ( status == CLEANUP_FAILURE ) {
+			
+		exit( EXIT_FAILURE );
+			
+	} else if ( status == CLEANUP_RETURN ) {
 
-	exit ( EXIT_FAILURE );
+		return;
+		
+	}
 	
+	exit ( EXIT_FAILURE );
 }
 
 
 int main( int argc, char *argv[] ) {
 
-	/* check if user is root */
-	if ( ( getuid() ) || ( getgid() ) ) {
-
-		fprintf( stderr, "Error - you must be root to run %s !\n", argv[0] );
-		exit(EXIT_FAILURE);
-
-	}
-	
 	gettimeofday( &start_time_tv, NULL );
 	gettimeofday( &new_tv, NULL );
+	
+	update_batman_time( NULL );
 
-	srand( getpid() );
+	My_pid = getpid();
+
+	
+	char *d = getenv(BMX_ENV_DEBUG);
+	if ( d  &&  strtol(d, NULL , 10) >= DBGL_MIN  &&  strtol(d, NULL , 10) <= DBGL_MAX )
+		debug_level = strtol(d, NULL , 10);
+	
+	
+	srand( My_pid );
 
 	init_set_bits_table256();
 	
-#ifdef METRICTABLE
-	global_mt = init_metric_table( MAX_BITS_RANGE, 1010, 1000 );
-#endif
+	orig_hash = hash_new( 128, compare_key, choose_key, 4 );
 	
-	init_originator();
-	init_control();
-	init_dispatch();
+	signal( SIGINT, handler );
+	signal( SIGTERM, handler );
+	signal( SIGPIPE, SIG_IGN );
+	signal( SIGSEGV, segmentation_fault );
+	
 	init_profile();
+	
 	init_route();
 	
+	init_control();
+	
+	init_route_args();
+	
+	init_originator();
+	
+	init_schedule();
+	
+	init_plugin();
 	
 	apply_init_args( argc, argv );
-
-	check_kernel_config( NULL, YES/*init*/ );
+	
+	check_kernel_config( NULL );
+	
+	start_schedule();
 	
 	batman();
 
 	cleanup_all( CLEANUP_SUCCESS );
 	
-	//should never reach here !!
 	return -1;
 }
 

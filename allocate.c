@@ -18,24 +18,19 @@
  */
 
 
-#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <syslog.h>
-#include <pthread.h>
 
 #include "batman.h"
 #include "os.h"
-#include "control.h"
-#include "allocate.h"
 
 
 #define MAGIC_NUMBER 0x12345678
 
 #if defined DEBUG_MALLOC
 
-static pthread_mutex_t chunk_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 struct chunkHeader *chunkList = NULL;
 
@@ -57,7 +52,6 @@ struct chunkTrailer
 #if defined MEMORY_USAGE
 
 struct memoryUsage *memoryList = NULL;
-static pthread_mutex_t memory_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 
 struct memoryUsage
@@ -73,16 +67,13 @@ void addMemory( uint32_t length, int32_t tag ) {
 
 	struct memoryUsage *walker;
 
-	pthread_mutex_lock(&memory_mutex);
 	for ( walker = memoryList; walker != NULL; walker = walker->next ) {
 
 		if ( walker->tag == tag ) {
 
 			walker->counter++;
 			break;
-
 		}
-
 	}
 
 	if ( walker == NULL ) {
@@ -95,10 +86,8 @@ void addMemory( uint32_t length, int32_t tag ) {
 
 		walker->next = memoryList;
 		memoryList = walker;
-
 	}
 
-	pthread_mutex_unlock(&memory_mutex);
 }
 
 
@@ -106,16 +95,16 @@ void removeMemory( int32_t tag, int32_t freetag ) {
 
 	struct memoryUsage *walker;
 
-	pthread_mutex_lock(&memory_mutex);
 	for ( walker = memoryList; walker != NULL; walker = walker->next ) {
 
 		if ( walker->tag == tag ) {
 
 			if ( walker->counter == 0 ) {
 
-				debug_output( 0, "Freeing more memory than was allocated: malloc tag = %d, free tag = %d\n", tag, freetag );
-				pthread_mutex_unlock(&memory_mutex);
-				cleanup_all( CLEANUP_FAILURE );
+				dbg( DBGL_SYS, DBGT_ERR, 
+				     "Freeing more memory than was allocated: malloc tag = %d, free tag = %d", 
+				     tag, freetag );
+				cleanup_all( -500069 );
 
 			}
 
@@ -128,33 +117,32 @@ void removeMemory( int32_t tag, int32_t freetag ) {
 
 	if ( walker == NULL ) {
 
-		debug_output( 0, "Freeing memory that was never allocated: malloc tag = %d, free tag = %d\n", tag, freetag );
-		pthread_mutex_unlock(&memory_mutex);
-		cleanup_all( CLEANUP_FAILURE );
-
+		dbg( DBGL_SYS, DBGT_ERR, 
+		     "Freeing memory that was never allocated: malloc tag = %d, free tag = %d",
+		     tag, freetag );
+		cleanup_all( -500070 );
 	}
-
-	pthread_mutex_unlock(&memory_mutex);
 }
 
 #endif
 
 #if defined MEMORY_USAGE
 
-void debugMemory( int fd ) {
+void debugMemory( struct ctrl_node *cn ) {
 	
 	struct memoryUsage *memoryWalker;
 
-	dprintf( fd, " \nMemory usage information:\n" );
+	dbg_printf( cn, "\nMemory usage information:\n" );
 
-	pthread_mutex_lock(&memory_mutex);
 	for ( memoryWalker = memoryList; memoryWalker != NULL; memoryWalker = memoryWalker->next ) {
 
 		if ( memoryWalker->counter != 0 )
-			dprintf( fd, "   tag: %4i, num malloc: %4i, bytes per malloc: %4i, total: %6i\n", memoryWalker->tag, memoryWalker->counter, memoryWalker->length, memoryWalker->counter * memoryWalker->length );
+			dbg_printf( cn, "   tag: %4i, num malloc: %4i, bytes per malloc: %4i, total: %6i\n", 
+			         memoryWalker->tag, memoryWalker->counter, memoryWalker->length, 
+			         memoryWalker->counter * memoryWalker->length );
 
 	}
-	pthread_mutex_unlock(&memory_mutex);
+	dbg_printf( cn, "\n" );
 	
 }
 
@@ -167,15 +155,15 @@ void checkIntegrity(void)
 	struct chunkTrailer *chunkTrailer;
 	unsigned char *memory;
 
-	pthread_mutex_lock(&chunk_mutex);
 
 	for (walker = chunkList; walker != NULL; walker = walker->next)
 	{
 		if (walker->magicNumber != MAGIC_NUMBER)
 		{
-			debug_output( 0, "checkIntegrity - invalid magic number in header: %08x, malloc tag = %d\n", walker->magicNumber, walker->tag );
-			pthread_mutex_unlock(&chunk_mutex);
-			cleanup_all( CLEANUP_FAILURE );
+			dbgf( DBGL_SYS, DBGT_ERR, 
+			     "invalid magic number in header: %08x, malloc tag = %d", 
+			     walker->magicNumber, walker->tag );
+			cleanup_all( -500073 );
 		}
 
 		memory = (unsigned char *)walker;
@@ -184,55 +172,52 @@ void checkIntegrity(void)
 
 		if (chunkTrailer->magicNumber != MAGIC_NUMBER)
 		{
-			debug_output( 0, "checkIntegrity - invalid magic number in trailer: %08x, malloc tag = %d\n", chunkTrailer->magicNumber, walker->tag );
-			pthread_mutex_unlock(&chunk_mutex);
-			cleanup_all( CLEANUP_FAILURE );
+			dbgf( DBGL_SYS, DBGT_ERR, 
+			     "invalid magic number in trailer: %08x, malloc tag = %d", 
+			     chunkTrailer->magicNumber, walker->tag );
+			cleanup_all( -500075 );
 		}
 	}
 
-	pthread_mutex_unlock(&chunk_mutex);
 }
 
 void checkLeak(void)
 {
 	struct chunkHeader *walker;
 	
-	pthread_mutex_lock(&chunk_mutex);
-	
 	if ( chunkList != NULL ) {
 		
-		openlog( "bmxd", LOG_PID, LOG_DAEMON );
+		openlog( "bmx", LOG_PID, LOG_DAEMON );
 		
 		
 		for (walker = chunkList; walker != NULL; walker = walker->next) {
-			syslog( LOG_ERR, "ERROR -  Memory leak detected, malloc tag = %d\n", walker->tag );
+			syslog( LOG_ERR, "Memory leak detected, malloc tag = %d\n", walker->tag );
 		
 			if (debug_level >= 0)
-				fprintf( stderr, "ERROR -  Memory leak detected, malloc tag = %d \n", walker->tag );
+				fprintf( stderr, "Memory leak detected, malloc tag = %d \n", walker->tag );
 			
 		}
 		
 		closelog();
 	}
 
-	pthread_mutex_unlock(&chunk_mutex);
 }
 
-void *debugMalloc(uint32_t length, int32_t tag)
-{
+void *debugMalloc(uint32_t length, int32_t tag) {
+	
+	prof_start( PROF_debugMalloc );
 	unsigned char *memory;
 	struct chunkHeader *chunkHeader;
 	struct chunkTrailer *chunkTrailer;
 	unsigned char *chunk;
 
-// 	printf("sizeof(struct chunkHeader) = %u, sizeof (struct chunkTrailer) = %u\n", sizeof (struct chunkHeader), sizeof (struct chunkTrailer));
-
 	memory = malloc(length + sizeof(struct chunkHeader) + sizeof(struct chunkTrailer));
 
 	if (memory == NULL)
 	{
-		debug_output( 0, "Cannot allocate %u bytes, malloc tag = %d\n", (unsigned int)(length + sizeof(struct chunkHeader) + sizeof(struct chunkTrailer)), tag );
-		cleanup_all( CLEANUP_FAILURE );
+		dbg( DBGL_SYS, DBGT_ERR, "Cannot allocate %u bytes, malloc tag = %d", 
+		     (unsigned int)(length + sizeof(struct chunkHeader) + sizeof(struct chunkTrailer)), tag );
+		cleanup_all( -500076 );
 	}
 
 	chunkHeader = (struct chunkHeader *)memory;
@@ -245,10 +230,8 @@ void *debugMalloc(uint32_t length, int32_t tag)
 
 	chunkTrailer->magicNumber = MAGIC_NUMBER;
 
-	pthread_mutex_lock(&chunk_mutex);
 	chunkHeader->next = chunkList;
 	chunkList = chunkHeader;
-	pthread_mutex_unlock(&chunk_mutex);
 
 #if defined MEMORY_USAGE
 
@@ -256,11 +239,14 @@ void *debugMalloc(uint32_t length, int32_t tag)
 
 #endif
 
+	prof_stop( PROF_debugMalloc );
 	return chunk;
 }
 
-void *debugRealloc(void *memoryParameter, uint32_t length, int32_t tag)
-{
+void *debugRealloc(void *memoryParameter, uint32_t length, int32_t tag) {
+	
+	prof_start( PROF_debugRealloc );
+
 	unsigned char *memory;
 	struct chunkHeader *chunkHeader=NULL;
 	struct chunkTrailer *chunkTrailer;
@@ -273,16 +259,20 @@ void *debugRealloc(void *memoryParameter, uint32_t length, int32_t tag)
 
 		if (chunkHeader->magicNumber != MAGIC_NUMBER)
 		{
-			debug_output( 0, "debugRealloc - invalid magic number in header: %08x, malloc tag = %d\n", chunkHeader->magicNumber, chunkHeader->tag );
-			cleanup_all( CLEANUP_FAILURE );
+			dbgf( DBGL_SYS, DBGT_ERR, 
+			     "invalid magic number in header: %08x, malloc tag = %d", 
+			     chunkHeader->magicNumber, chunkHeader->tag );
+			cleanup_all( -500078 );
 		}
 
 		chunkTrailer = (struct chunkTrailer *)(memory + chunkHeader->length);
 
 		if (chunkTrailer->magicNumber != MAGIC_NUMBER)
 		{
-			debug_output( 0, "debugRealloc - invalid magic number in trailer: %08x, malloc tag = %d\n", chunkTrailer->magicNumber, chunkHeader->tag );
-			cleanup_all( CLEANUP_FAILURE );
+			dbgf( DBGL_SYS, DBGT_ERR, 
+			     "invalid magic number in trailer: %08x, malloc tag = %d", 
+			     chunkTrailer->magicNumber, chunkHeader->tag );
+			cleanup_all( -500079 );
 		}
 	}
 
@@ -298,11 +288,14 @@ void *debugRealloc(void *memoryParameter, uint32_t length, int32_t tag)
 		debugFree(memoryParameter, 9999);
 	}
 
+	prof_stop( PROF_debugRealloc );
 	return result;
 }
 
-void debugFree(void *memoryParameter, int tag)
-{
+void debugFree(void *memoryParameter, int tag) {
+	
+	prof_start( PROF_debugFree );
+	
 	unsigned char *memory;
 	struct chunkHeader *chunkHeader;
 	struct chunkTrailer *chunkTrailer;
@@ -314,13 +307,14 @@ void debugFree(void *memoryParameter, int tag)
 
 	if (chunkHeader->magicNumber != MAGIC_NUMBER)
 	{
-		debug_output( 0, "debugFree - invalid magic number in header: %08x, malloc tag = %d, free tag = %d\n", chunkHeader->magicNumber, chunkHeader->tag, tag );
-		cleanup_all( CLEANUP_FAILURE );
+		dbgf( DBGL_SYS, DBGT_ERR, 
+		     "invalid magic number in header: %08x, malloc tag = %d, free tag = %d", 
+		     chunkHeader->magicNumber, chunkHeader->tag, tag );
+		cleanup_all( -500080 );
 	}
 
 	previous = NULL;
 
-	pthread_mutex_lock(&chunk_mutex);
 	for (walker = chunkList; walker != NULL; walker = walker->next)
 	{
 		if (walker == chunkHeader)
@@ -331,9 +325,9 @@ void debugFree(void *memoryParameter, int tag)
 
 	if (walker == NULL)
 	{
-		debug_output( 0, "Double free detected, malloc tag = %d, free tag = %d\n", chunkHeader->tag, tag );
-		pthread_mutex_unlock(&chunk_mutex);
-		cleanup_all( CLEANUP_FAILURE );
+		dbg( DBGL_SYS, DBGT_ERR, "Double free detected, malloc tag = %d, free tag = %d", 
+		     chunkHeader->tag, tag );
+		cleanup_all( -500081 );
 	}
 
 	if (previous == NULL)
@@ -342,14 +336,15 @@ void debugFree(void *memoryParameter, int tag)
 	else
 		previous->next = walker->next;
 
-	pthread_mutex_unlock(&chunk_mutex);
 
 	chunkTrailer = (struct chunkTrailer *)(memory + chunkHeader->length);
 
 	if (chunkTrailer->magicNumber != MAGIC_NUMBER)
 	{
-		debug_output( 0, "debugFree - invalid magic number in trailer: %08x, malloc tag = %d, free tag = %d\n", chunkTrailer->magicNumber, chunkHeader->tag, tag );
-		cleanup_all( CLEANUP_FAILURE );
+		dbgf( DBGL_SYS, DBGT_ERR, 
+		     "invalid magic number in trailer: %08x, malloc tag = %d, free tag = %d",
+		     chunkTrailer->magicNumber, chunkHeader->tag, tag );
+		cleanup_all( -500082 );
 	}
 
 #if defined MEMORY_USAGE
@@ -359,6 +354,9 @@ void debugFree(void *memoryParameter, int tag)
 #endif
 
 	free(chunkHeader);
+	
+	prof_stop( PROF_debugFree );
+
 }
 
 #else
@@ -371,7 +369,7 @@ void checkLeak(void)
 {
 }
 
-void debugMemory( int fd )
+void debugMemory( struct ctrl_node *cn )
 {
 }
 
@@ -383,8 +381,8 @@ void *debugMalloc(uint32_t length, int32_t tag)
 
 	if (result == NULL)
 	{
-		debug_output( 0, "Cannot allocate %u bytes, malloc tag = %d\n", length, tag );
-		cleanup_all( CLEANUP_FAILURE );
+		dbg( DBGL_SYS, DBGT_ERR, "Cannot allocate %u bytes, malloc tag = %d", length, tag );
+		cleanup_all( -500072 );
 	}
 
 	return result;
@@ -396,10 +394,9 @@ void *debugRealloc(void *memory, uint32_t length, int32_t tag)
 
 	result = realloc(memory, length);
 
-	if (result == NULL)
-	{
-		debug_output( 0, "Cannot re-allocate %u bytes, malloc tag = %d\n", length, tag );
-		cleanup_all( CLEANUP_FAILURE );
+	if (result == NULL) {
+		dbg( DBGL_SYS, DBGT_ERR, "Cannot re-allocate %u bytes, malloc tag = %d", length, tag );
+		cleanup_all( -500071 );
 	}
 
 	return result;

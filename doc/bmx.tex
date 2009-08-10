@@ -210,9 +210,9 @@ OGMs flooded via good and uncongested links will propagate further, faster, and 
 
 %Nodes with two interfaces propagate two different sequences of OGMs, one for each interface IP.
 %
-Every node selects one of its neighbors as the best neighbor and gateway towards a specific other node.
+Every node selects one of its neighbors as the best next hop towards a specific other node.
 %
-This process of identifying the best neighbor towards a distant node is called neighbor ranking. 
+This process of identifying the best next hop towards a distant node is called neighbor ranking. 
 %
 The selected neighbor is referred as the best-ranking neighbor. 
 %
@@ -1040,23 +1040,21 @@ The following switch can be used to change the default IP-address range used for
 
 \end{verbatim} \end{small}
 
-\subsection{Hiding local topology information beyond the neighborhood}
+\subsection{Hiding redundant topology information beyond the local neighborhood}
 \label{sec:hiding-topology}
-Nodes may alter (i.e. reduce) the default TTL of their own OGMs to limit the number of hops that these OGMs are propagated through the mesh. 
-This can be done for all OGMS or just for OGMs propagating the existence of particular interfaces. 
-This does not affect the routing between other nodes in the mesh, but may be used to limit the range of presence (existence) of individual nodes. 
-For example, a node with three interfaces may be configured to send OGMs with a high TTL only for the first interface and a TTL of one for OGMs representing the second and third interface. 
-%
-This way, the node is still reachable via the IP of it's first interface. 
-But it does not burden the nodes beyond its neighbor horizon with the efforts of maintaining and re-broadcasting OGMs from it's second and third interface.
 
-One side effect of the one-TTL OGMs is that packets generated on these nodes may leave the node with a source address of such a secondary interface. 
-%which is not known beyond the neighbor horizon of the node.
-%
-This has the consequence that non-neighboring nodes could not reply to this source address, simply because the OGMs for this source address have never been propagated that fare.
-A Solution to counter the above problem is to automatically make an HNA announcement for all "hidden interfaces". 
-%Because of the policy-routing (enabled since 0.3) this approach could easily be integration in the current code. 
-This behavior is can be enabled using the interface-specific \emph{/a} switch. 
+Nodes may reduce the default TTL of their own OGMs to limit the number of hops that these OGMs are propagated through the mesh. This can be done for all OGMs or just for OGMs propagating the existence of particular interfaces. This does not affect the routing between other nodes in the mesh, but may be used to limit the range of presence (existence) of individual interfaces. For example, a node with three interfaces may be configured to send OGMs with a 
+high TTL only for the first (primary) interface and a small TTL for OGMs representing the second and third (all non-primary) interfaces. This way, the node is always reachable via the IP of it's first interface. But it does not burden the nodes beyond its neighbor horizon with the efforts of processing, maintaining, and re-broadcasting OGMs from it's second and third interface.
+
+One side effect of the one-TTL OGMs is that data-packets generated on these nodes may leave the node with a source address of such a secondary interface. This has the consequence that non-neighboring nodes could not reply to this source address, simply because the OGMs for this source address have never been propagated that fare. 
+
+The Solution to counter the above problem is that each multi-homed node  automatically makes an HNA announcement for all non-primary (hidden) interfaces and propagates this HNAs with the OGM representing its primary interface. This way the IP addresses of the non-primary interfaces are also reachable beyond the local neighbor horizon.
+All HNA announcements end up in routing table 65. It tells the network stack to route packets with a destination address of a non-primary interface towards the IP address of the  corresponding primary interface.
+
+This is now the default behavior in 0.3
+
+
+This behavior is can be controlled using the interface-specific \emph{/a} and \emph{/A}switch. 
 
 The following parameters can be used to reduce the TTL of OGMs representing specific interfaces.
 
@@ -1074,6 +1072,9 @@ The following parameters can be used to reduce the TTL of OGMs representing spec
           to add the IP address of this interface to the HNA list. Also
           reduces the TTL for OGMs representing this interface to 1 and
           broadcasts the OGMs representing this interface only via this interface
+
+        /A : attached after an interface name
+          to remove the IP address of this interface from the HNA list.
 \end{verbatim} \end{small}
  
 A small TTL for all self-initiated OGMs has some additional advantages for back-bone nodes. Nodes, which are not supposed to generate pay-load traffic itself and which were only installed to improve the connectivity and coverage of the mesh by relaying other nodes traffic.
@@ -1904,7 +1905,115 @@ rtt min/avg/max/mdev = 2.264/2.494/2.811/0.238 ms
 %Running the old and the new protocol implementations in parallel has also an advantage during the migration phase.  This allows extensive testing of the new version before any functinality of the old version must be disabled.
 
 
+\begin{small} \begin{verbatim}
+root@ng1e:~# killall udhcpc udhcpd batmand bmxd
+root@ng1e:~# udhcpc -i eth0.0
+root@ng1e:~# iptables -F
+root@ng1e:~# iptables -t mangle -F
+root@ng1e:~# iptables -t nat -F
+root@ng1e:~# iptables -t nat -A POSTROUTING -o eth0.0 -j MASQUERADE  # eth0.0 is default
+root@ng1e:~# ifconfig ath0     104.130.30.201 netmask 255.0.0.0
+root@ng1e:~# ifconfig ath0:bat 105.130.30.201 netmask 255.0.0.0
+root@ng1e:~# ifconfig ath0:bmx 103.130.30.201 netmask 255.0.0.0
+root@ng1e:~# iwconfig ath0 channel 10 essid olsr.freifunk.net ap 02:CA:FF:EE:BA:BE
+root@ng1e:~# batmand -g 5000 ath0:bat
 
+root@ng2e:~# killall udhcpc udhcpd batmand bmxd
+root@ng2e:~# iptables -F
+root@ng2e:~# iptables -t mangle -F
+root@ng2e:~# iptables -t nat -F
+root@ng2e:~# ifconfig eth0.0   192.168.123.1  netmask 255.255.255.0
+root@ng2e:~# vi /etc/udhcpd.conf # control interface, router, and ip range
+root@ng2e:~# udhcpd  /etc/udhcpd.conf
+
+root@ng2e:~# ifconfig ath0     104.130.30.202 netmask 255.0.0.0
+root@ng2e:~# ifconfig ath0:bat 105.130.30.202 netmask 255.0.0.0
+root@ng2e:~# ifconfig ath0:bmx 103.130.30.202 netmask 255.0.0.0
+root@ng2e:~# ifconfig eth0.1     104.130.30.212 netmask 255.0.0.0
+root@ng2e:~# ifconfig eth0.1:bat 105.130.30.212 netmask 255.0.0.0
+root@ng2e:~# ifconfig eth0.1:bmx 103.130.30.212 netmask 255.0.0.0
+root@ng2e:~# iwconfig ath0 channel 10 essid olsr.freifunk.net ap 02:CA:FF:EE:BA:BE
+#make shure all interfaces are configured before batmand starts (even eth0.0)
+root@ng2e:~# batmand -r 3 ath0:bat eth0.1:bat
+
+root@ng2e:~# iptables -t nat -A POSTROUTING -o bat0 -j MASQUERADE
+root@ng2e:~# iptables -t nat -A POSTROUTING -o ath0   -s 192.168.123.0/24 -d 103.0.0.0/8 -j SNAT --to 103.130.30.202
+root@ng2e:~# iptables -t nat -A POSTROUTING -o ath0   -s 192.168.123.0/24 -d 104.0.0.0/8 -j SNAT --to 104.130.30.202
+root@ng2e:~# iptables -t nat -A POSTROUTING -o ath0   -s 192.168.123.0/24 -d 105.0.0.0/8 -j SNAT --to 105.130.30.202
+root@ng2e:~# iptables -t nat -A POSTROUTING -o eth0.1 -s 192.168.123.0/24 -d 103.0.0.0/8 -j SNAT --to 103.130.30.212
+root@ng2e:~# iptables -t nat -A POSTROUTING -o eth0.1 -s 192.168.123.0/24 -d 104.0.0.0/8 -j SNAT --to 104.130.30.212
+root@ng2e:~# iptables -t nat -A POSTROUTING -o eth0.1 -s 192.168.123.0/24 -d 105.0.0.0/8 -j SNAT --to 105.130.30.212
+
+# now you may connect a dhcp-client to eth0.0 of node B and surfe the web as well as access all 103/104 mesh nodes.
+# do the same for node C
+\end{verbatim} \end{small}
+
+
+\begin{small} \begin{verbatim}
+
+root@ng1e:~# bmxd --base-port 14305 --rt-table-offset 165 --prio-rules-offset 16600 --gw-tunnel-network 10.111.0.0/16 -g 5000 --window-size 10 ath0:bmx 
+
+root@ng2e:~# bmxd --base-port 14305 --rt-table-offset 165 --prio-rules-offset 16600 --window-size 10 ath0:bmx eth0.1:bmx
+
+root@ng3e:~# bmxd --base-port 14305 --rt-table-offset 165 --prio-rules-offset 16600 --window-size 10 ath0:bmx eth0.1:bmx
+
+root@ng3e:~# bmxd -c --base-port 14305 -d 1 -b
+WARNING: You are using the experimental batman branch!
+--base-port 14305 \
+BatMan-eXperimental 0.3-alpha rv751, IF: ath0:bmx 103.130.30.203, WindSize: 10, BLT: 20, OGI: 1500, UT: 0d 0h 0m
+Neighbor        outgoingIF        bestLink (brc rcvd lseq lvld) [     viaIF RTQ  RQ  TQ]..
+103.130.30.201    ath0:bmx  103.130.30.201 ( 10  10    15    0) [  ath0:bmx  10  10  10]
+103.130.30.212  eth0.1:bmx  103.130.30.212 ( 10  10    18    1) [eth0.1:bmx  10  10  10]
+103.130.30.202    ath0:bmx  103.130.30.202 ( 10  10    18    1) [  ath0:bmx  10  10  10]
+
+Originator      outgoingIF     bestNextHop (brc rcvd lseq lvld) alternative next hops...
+103.130.30.201    ath0:bmx  103.130.30.201 ( 10  10    15    0)  103.130.30.202 (  9)  103.130.30.212 (  9)
+103.130.30.212  eth0.1:bmx  103.130.30.212 ( 10  10    18    1)
+103.130.30.202    ath0:bmx  103.130.30.202 ( 10  10    18    1)  103.130.30.212 ( 10)  103.130.30.201 (  0)
+
+Originator      HNAs...
+103.130.30.202   103.130.30.212/32
+root@ng3e:~#  
+root@ng3e:~# bmxd -c  -d 1 -b
+WARNING: You are using the experimental batman branch!
+BatMan-eXperimental 0.3-alpha rv751, IF: ath0:bat 105.130.30.203, WindSize: 100, BLT: 20, OGI: 1500, UT: 0d 0h14m
+Neighbor        outgoingIF        bestLink (brc rcvd lseq lvld) [     viaIF RTQ  RQ  TQ]..
+105.130.30.212  eth0.1:bat  105.130.30.212 (100 100  1045    1) [eth0.1:bat 100 100 100]
+105.130.30.202  eth0.1:bat  105.130.30.212 (100 100  1045    0) [  ath0:bat  97  99  97]
+105.130.30.201    ath0:bat  105.130.30.201 ( 99 100  2816    0) [  ath0:bat  99  98 100]
+
+Originator      outgoingIF     bestNextHop (brc rcvd lseq lvld) alternative next hops...
+105.130.30.212  eth0.1:bat  105.130.30.212 (100 100  1045    1)
+105.130.30.202  eth0.1:bat  105.130.30.212 (100 100  1045    0)  105.130.30.202 ( 98)  105.130.30.201 ( 99)
+105.130.30.201    ath0:bat  105.130.30.201 ( 99 100  2816    0)  105.130.30.212 ( 97)  105.130.30.202 ( 95)
+
+Originator      HNAs...
+105.130.30.202   105.130.30.212/32
+root@ng3e:~# 
+
+\end{verbatim} \end{small}
+
+Do some extensive testing now. All nodes can be contacted using the 103/105 netmask.
+
+\begin{small} \begin{verbatim}
+root@ng5e:~# real-ping -f -c 100 -s 1300  105.130.30.201
+PING 105.130.30.201 (105.130.30.201) 1300(1328) bytes of data.
+--- 105.130.30.201 ping statistics ---
+100 packets transmitted, 100 received, 0% packet loss, time 765ms
+rtt min/avg/max/mdev = 5.494/6.703/16.865/2.146 ms, pipe 2, ipg/ewma 7.729/6.875 ms
+
+root@ng5e:~# real-ping -f -c 100 -s 1300  103.130.30.201
+PING 103.130.30.201 (103.130.30.201) 1300(1328) bytes of data.
+--- 103.130.30.201 ping statistics ---
+100 packets transmitted, 100 received, 0% packet loss, time 913ms
+rtt min/avg/max/mdev = 6.475/8.378/20.180/1.881 ms, pipe 2, ipg/ewma 9.228/8.751 ms
+root@ng5e:~# 
+\end{verbatim} \end{small}
+
+
+\begin{small} \begin{verbatim}
+
+\end{verbatim} \end{small}
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
