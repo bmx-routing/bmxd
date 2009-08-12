@@ -206,7 +206,7 @@ static void activate_debug_system( void ) {
 	
 		} else {
 			
-			struct ctrl_node *cn = create_ctrl_node( STDOUT_FILENO, NO/*admin rights not necessary*/ );
+			struct ctrl_node *cn = create_ctrl_node( STDOUT_FILENO, NULL, NO/*admin rights not necessary*/ );
 			
 			add_dbgl_node( cn, debug_level );
 			
@@ -227,7 +227,7 @@ static void activate_debug_system( void ) {
 	}
 }
 
-struct ctrl_node *create_ctrl_node( int fd, uint8_t authorized ) {
+struct ctrl_node *create_ctrl_node( int fd, void (*cn_fd_handler) (struct ctrl_node *), uint8_t authorized ) {
 	
 	struct ctrl_node *cn = debugMalloc( sizeof(struct ctrl_node), 201 );
 	memset( cn, 0, sizeof(struct ctrl_node) );
@@ -235,6 +235,7 @@ struct ctrl_node *create_ctrl_node( int fd, uint8_t authorized ) {
 	list_add_tail( &cn->list, &ctrl_list );
 	
 	cn->fd = fd;
+	cn->cn_fd_handler = cn_fd_handler;
 	cn->dbgl = -1;
 	cn->authorized = authorized;
 	
@@ -252,25 +253,25 @@ void close_ctrl_node( uint8_t cmd, struct ctrl_node *ctrl_node ) {
 
 		struct ctrl_node *cn = list_entry(list_pos, struct ctrl_node, list);
 		
-		if ( ( cmd == CTRL_CLOSE_ERROR || cmd == CTRL_CLOSE_SUCCESS )  &&  cn == ctrl_node ) {
+		if ( ( cmd == CTRL_CLOSE_ERROR || cmd == CTRL_CLOSE_SUCCESS || cmd == CTRL_CLOSE_DELAY )  &&  cn == ctrl_node ) {
 			
 			if ( cn->fd > 0  &&  cn->fd != STDOUT_FILENO ) {
 				
-				cn->closing_stamp = batman_time;
+				cn->closing_stamp = MAX(batman_time,1);
 				remove_dbgl_node( cn );
 				
 				//leaving this after remove_dbgl_node() prevents debugging via broken -d4 pipe
-				dbgf_all( DBGT_INFO, "closed ctrl node fd %d with %s", 
-				      cn->fd, cmd == CTRL_CLOSE_ERROR ? "ERROR" : "SUCCESS" );
+				dbgf_all( DBGT_INFO, "closed ctrl node fd %d with cmd %d", cn->fd, cmd );
 				
 				
 				if ( cmd == CTRL_CLOSE_SUCCESS )
 					Trash = write( cn->fd, CONNECTION_END_STR, strlen(CONNECTION_END_STR) );
 				
-				close( cn->fd );
-				cn->fd = 0;
-				
-				change_selects();
+				if ( cmd != CTRL_CLOSE_DELAY ) {
+					close( cn->fd );
+					cn->fd = 0;
+					change_selects();
+				}
 				
 			}
 			
@@ -278,19 +279,18 @@ void close_ctrl_node( uint8_t cmd, struct ctrl_node *ctrl_node ) {
 			
 		} else if ( ( cmd == CTRL_CLOSE_STRAIGHT  &&  cn == ctrl_node )  ||  
 		            ( cmd == CTRL_PURGE_ALL )  ||  
-		            ( cmd == CTRL_CLEANUP  &&  cn->fd <= 0  &&
+		            ( cmd == CTRL_CLEANUP  &&  cn->closing_stamp  &&/* cn->fd <= 0  && */
 		              GREAT_U32( batman_time, cn->closing_stamp + CTRL_CLOSING_TIMEOUT ) ) )
 		{
 			
 			if ( cn->fd > 0  &&  cn->fd != STDOUT_FILENO ) {
 				remove_dbgl_node( cn );
 				//leaving this after remove_dbgl_node() prevents debugging via broken -d4 pipe
-				dbgf_all( DBGT_INFO, "closed ctrl node fd %d (straight)", cn->fd );
+				dbgf_all( DBGT_INFO, "closed ctrl node fd %d", cn->fd );
 				
 				close( cn->fd );
 				cn->fd = 0;
 				change_selects();
-				
 			}
 			
 			list_del( list_prev, list_pos, &ctrl_list );
@@ -318,19 +318,11 @@ void accept_ctrl_node( void ) {
 		return;
 	}
 	
-	struct ctrl_node *cn = debugMalloc( sizeof(struct ctrl_node), 201 );
-	memset( cn, 0, sizeof(struct ctrl_node) );
-	INIT_LIST_HEAD( &cn->list );
-
-	cn->fd=fd;
-	
-	cn->authorized = YES; //everything connecting via unix socket is authorized
-
 	/* make unix socket non blocking */
-	unix_opts = fcntl( cn->fd, F_GETFL, 0 );
-	fcntl( cn->fd, F_SETFL, unix_opts | O_NONBLOCK );
-
-	list_add_tail( &cn->list, &ctrl_list );
+	unix_opts = fcntl( fd, F_GETFL, 0 );
+	fcntl( fd, F_SETFL, unix_opts | O_NONBLOCK );
+	
+	create_ctrl_node( fd, NULL, YES );
 	
 	change_selects();
 	
@@ -342,6 +334,11 @@ void accept_ctrl_node( void ) {
 
 void handle_ctrl_node( struct ctrl_node *cn ) {
 	char buff[MAX_UNIX_MSG_SIZE+1];
+	
+	if ( cn->cn_fd_handler ) {
+		(cn->cn_fd_handler) (cn);
+		return;
+	}
 	
 	errno=0;
 	int input = read( cn->fd, buff, MAX_UNIX_MSG_SIZE );
@@ -2772,7 +2769,7 @@ void apply_init_args( int argc, char *argv[] ) {
 	
 	char *stream_opts = nextword( init_string );
 	
-	struct ctrl_node *cn = create_ctrl_node( STDOUT_FILENO, (getuid() | getgid())/*are we root*/ ? NO : YES );
+	struct ctrl_node *cn = create_ctrl_node( STDOUT_FILENO, NULL, (getuid() | getgid())/*are we root*/ ? NO : YES );
 	
 	
 	if ( ( apply_stream_opts( stream_opts, ARG_DEV, OPT_CHECK, YES/*load cfg*/, cn ) == FAILURE )  ||
@@ -3107,6 +3104,7 @@ static int32_t opt_debug ( uint8_t cmd, uint8_t _save, struct opt_type *opt, str
 			
 		} else if ( ival == DBGL_DETAILS ) {
 			
+			check_apply_parent_option( ADD, OPT_APPLY, 0, get_option( 0, 0, ARG_STATUS ), 0, cn );
 			check_apply_parent_option( ADD, OPT_APPLY, _save, get_option( 0, 0, ARG_LINKS ), 0, cn );
 			check_apply_parent_option( ADD, OPT_APPLY, _save, get_option( 0, 0, ARG_ORIGINATORS ), 0, cn );
 			

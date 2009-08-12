@@ -63,6 +63,7 @@ enum {
 	CTRL_CLOSE_ERROR,
 	CTRL_CLOSE_SUCCESS,
 	CTRL_CLOSE_STRAIGHT,
+	CTRL_CLOSE_DELAY,
 	CTRL_CLEANUP,
 	CTRL_PURGE_ALL
 };
@@ -74,6 +75,7 @@ struct ctrl_node
 {
 	struct list_head list;
 	int fd;
+	void (*cn_fd_handler) (struct ctrl_node *);
 	uint32_t closing_stamp;
 	uint8_t authorized;
 	int8_t dbgl;
@@ -151,8 +153,7 @@ void dbg_printf( struct ctrl_node *cn, char *last, ...  );
 void accept_ctrl_node( void );
 void handle_ctrl_node( struct ctrl_node *cn );
 void close_ctrl_node( uint8_t cmd, struct ctrl_node *cn );
-struct ctrl_node *create_ctrl_node( int fd, uint8_t authorized );
-
+struct ctrl_node *create_ctrl_node( int fd, void (*cn_fd_handler) (struct ctrl_node *), uint8_t authorized );
 
 
 
