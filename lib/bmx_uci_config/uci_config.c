@@ -51,7 +51,7 @@ static void signal_hup_handler( int32_t sig ) {
 	
 	dbgf( DBGL_SYS, DBGT_INFO, "reloading config" );
 	
-	struct ctrl_node *cn = create_ctrl_node( STDOUT_FILENO, YES/*we are root*/ );
+	struct ctrl_node *cn = create_ctrl_node( STDOUT_FILENO, NULL, YES/*we are root*/ );
 	
 	if ( (apply_stream_opts( ARG_RELOAD_CONFIG, NULL, OPT_CHECK, NO/*no cfg by default*/, cn ) == FAILURE)  ||
 	     (apply_stream_opts( ARG_RELOAD_CONFIG, NULL, OPT_APPLY, NO/*no cfg by default*/, cn ) == FAILURE)  ) 
