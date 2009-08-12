@@ -1118,10 +1118,8 @@ loop4Event:
 	prof_stop( PROF_wait4Event_5 );
 
 	while ( GREAT_U32(return_time, batman_time) ) {
-			
 		
 		prof_start( PROF_wait4Event_select );
-		
 		
 		check_selects();
 		

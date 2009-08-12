@@ -382,7 +382,7 @@ void cleanup_all( int status ) {
 			/*
 	 * Negative numbers are used as SIGSEV error codes !
 	 * Currently used numbers are 
-	 * for core programs:		-500000 ... -500153
+	 * for core programs:		-500000 ... -500155
 	 */
 		dbg( DBGL_SYS, DBGT_ERR, 
 		     "Terminating with error code %d ! Please notify a developer", status );

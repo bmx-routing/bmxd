@@ -94,7 +94,7 @@ static int32_t opt_howto_get ( uint8_t cmd, uint8_t _save, struct opt_type *opt,
 }
 
 static struct opt_type howto_plugin_options[]= {
-//        ord parent long_name          shrt Attributes			*ival		min		max		default		*func,*syntax,*help
+//        ord parent long_name          shrt Attributes				*ival		min		max		default		*func,*syntax,*help
 	
 	{ODI,5,0,0,			0,   0,0,0,0,0,				0,		0,		0,		0,		0,0,
 			"\nDemo-plugin options:"},
