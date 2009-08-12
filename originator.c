@@ -1571,10 +1571,8 @@ static int32_t opt_show_origs ( uint8_t cmd, uint8_t _save, struct opt_type *opt
 			            (nodes_count > 0 ? ( sum_hops / nodes_count ) : -1),
 			            (nodes_count > 0 ? ( sum_route_changes / nodes_count ) : -1)      ); 
 			
-			
-		} else if ( !strcmp( opt->long_name, ARG_LINKS ) ) {
-			
-			struct list_head *link_pos;
+		
+		} else if ( !strcmp( opt->long_name, ARG_STATUS ) ) {
 			
 			dbg_printf( cn, "BatMan-eXp %s%s, "
 			            "%s %s, LWS %i, PWS %i, OGI %4ims, SQN %5d, "
@@ -1588,6 +1586,10 @@ static int32_t opt_show_origs ( uint8_t cmd, uint8_t _save, struct opt_type *opt
 			            get_human_uptime( 0 ),
 			            s_curr_avg_cpu_load/10, s_curr_avg_cpu_load%10
 			          );
+			
+		} else if ( !strcmp( opt->long_name, ARG_LINKS ) ) {
+			
+			struct list_head *link_pos;
 			
 			dbg_printf( cn, "Neighbor        outgoingIF     bestNextHop brc "
 			            "(~rcvd  knownSince  lseq lvld rid nid ) [     viaIF RTQ  RQ  TQ]\n");
@@ -1964,6 +1966,9 @@ static struct opt_type originator_options[]=
 	{ODI,5,0,0,			0,  0,0,0,0,0,				0,		0,		0,		0,		0,
 			0,		"\nProtocol options:"},
 		
+	{ODI,5,0,ARG_STATUS,		0,  A_PS0,A_USR,A_DYN,A_ARG,A_ANY,	0,		0, 		0,		0, 		opt_show_origs,
+			0,		"show status\n"},
+	
 	{ODI,5,0,ARG_ROUTES,		0,  A_PS0,A_USR,A_DYN,A_ARG,A_ANY,	0,		0, 		0,		0, 		opt_show_origs,
 			0,		"show routes\n"},
 		
@@ -1988,7 +1993,7 @@ static struct opt_type originator_options[]=
 	{ODI,5,ARG_DEV,ARG_DEV_HIDE,	'h',A_CS1,A_ADM,A_DYI,A_CFA,A_ANY,	0,		0,		1,		0,		opt_dev,
 			ARG_VALUE_FORM,	"disable/enable hiding of OGMs generated to non link-neighboring nodes. Default for non-primary interfaces"},
 		
-	{ODI,5,0,"interfaces",		0,  A_PS0,A_ADM,A_DYI,A_ARG,A_ANY,	0,		0,		1,		0,		opt_dev_show,
+	{ODI,5,0,ARG_INTERFACES,	0,  A_PS0,A_USR,A_DYI,A_ARG,A_ANY,	0,		0,		1,		0,		opt_dev_show,
 			0,		"show configured interfaces"},
 		
 	{ODI,5,0,ARG_OGI_INTERVAL, 	'o',A_PS1,A_ADM,A_DYI,A_CFA,A_ANY,	&my_ogi,	MIN_OGI,	MAX_OGI,	DEF_OGI,	0,

@@ -219,9 +219,10 @@ extern uint32_t My_pid;
 
 
 #define ARG_ORIGINATORS "originators"
+#define ARG_STATUS "status"
 #define ARG_LINKS "links"
 #define ARG_ROUTES "routes"
-
+#define ARG_INTERFACES "interfaces"
 
 
 #define ARG_NETA "neta"

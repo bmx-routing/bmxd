@@ -115,6 +115,7 @@ void batman( void ) {
 				
 				debug_send_list( cn );
 				
+				check_apply_parent_option( ADD, OPT_APPLY, 0, get_option( 0, 0, ARG_STATUS ), 0, cn );
 				check_apply_parent_option( ADD, OPT_APPLY, 0, get_option( 0, 0, ARG_LINKS ), 0, cn );
 				check_apply_parent_option( ADD, OPT_APPLY, 0, get_option( 0, 0, ARG_ORIGINATORS ), 0, cn );
 				check_apply_parent_option( ADD, OPT_APPLY, 0, get_option( 0, 0, ARG_HNAS ), 0, cn );
