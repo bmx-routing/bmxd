@@ -5,6 +5,26 @@ Important changes should be listed in the following, most recent changes on top:
 
 
 ---------------------------------------------------------------------------------------------------
+2009-08-18 - bmx_http_info and bmx_gsf_map plugin, ...
+
+- simple http_info plugin. See lib/bmx_http_info/HOWTO
+
+- decentral-openstreetmap-json-based map plugin from http://graciasensefils.net (GSF) folks
+
+- add symbolic links from lib/bmx_*.so to lib/bmx_*/bmx_*.so.1 to 
+  facilitate execution and debugging of local bmx libraries by 
+  overwriting bmx plugin-library path. E.g.:
+  BMX_LIB_PATH=$(pwd)/lib ./bmxd -d3
+
+- Antenna-diversity support for bmxd seems working but unfortunately there are few wireless drivers which support 
+  my understanding of the typical antenna-diversity implementation. This is what I hoped (maybe I am wrong): 
+  - The RX-antenna is detected on-the-fly on a per-packet basis by comparing 
+    the rcvd signal-strength via each antenna during reception of the phy-preamble.
+  - The TX-antenna is determined per MAC-address based on the last detected best RX-antenna for this MAC.
+  - Broadcast packets should be send round-robin like via each enabled TX-antenna (e.g. alternating via ant1 and ant2). 
+
+
+---------------------------------------------------------------------------------------------------
 2009-08-10 - bmx_uci_config plugin for openWrt universial configuraton interface (UCI)
 
 - plugin for dynamic interaction with uci http://downloads.openwrt.org/sources/uci-0.7.3.tar.gz
