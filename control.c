@@ -945,7 +945,7 @@ int8_t func_for_each_opt( struct ctrl_node *cn, void *data, struct opt_type *opt
 		
 		struct opt_type *opt = (struct opt_type *)list_entry( list_pos, struct opt_data, list );
 		
-		if ( !opt->help  ||  !opt->long_name )
+		if ( /* !opt->help  || we are also interested in uncommented configurations*/ !opt->long_name )
 			continue;
 		
 		if ( !( /*proceed if:*/ !opt_tmpl  ||  opt_tmpl == opt  ||  !list_empty(&opt->d.childs_type_list) )  )
@@ -1063,6 +1063,9 @@ static void show_opts_help( uint8_t all_opts, uint8_t verbose, struct ctrl_node 
 			struct opt_type *c_opt = (struct opt_type *)list_entry( pos, struct opt_data, list );
 			
 			if ( !c_opt->parent_name )
+				continue;
+			
+			if ( !c_opt->help )
 				continue;
 			
 #ifndef NODEPRECATED
@@ -3171,7 +3174,6 @@ static int32_t opt_help ( uint8_t cmd, uint8_t _save, struct opt_type *opt, stru
 		
 		print_animation();
 		
-		printf( "\x1B[9;0H \t May the bat guide your path...\n\n\n" );
 #endif	
 	} else {
 		
@@ -3256,12 +3258,12 @@ static struct opt_type control_options[]=
 			0,		"show trailer"},
 #endif
 	
-	{ODI,0,0,ARG_TEST,		0,  A_PS0,A_USR,A_DYI,A_ARG,A_ANY,	&Testing,	0, 		1,		0, 		0,
+	{ODI,0,0,ARG_TEST,		0,  A_PS0,A_ADM,A_DYI,A_ARG,A_ANY,	&Testing,	0, 		1,		0, 		0,
 			0,		"test remaining args and provide feedback about projected success (without applying them)"},
 		
 	{ODI,0,0,ARG_NO_FORK,		'd',A_PS1,A_ADM,A_INI,A_ARG,A_ANY,	0,		DBGL_MIN, 	DBGL_MAX,	-1, 		opt_no_fork,
 			ARG_VALUE_FORM,	"print debug information instead of forking to background\n" },
-	{ODI,0,0,ARG_DEBUG,		'd',A_PS1,A_USR,A_DYN,A_ARG,A_ETE,	0,		DBGL_MIN, 	DBGL_MAX,	-1, 		opt_debug,
+	{ODI,0,0,ARG_DEBUG,		'd',A_PS1,A_ADM,A_DYN,A_ARG,A_ETE,	0,		DBGL_MIN, 	DBGL_MAX,	-1, 		opt_debug,
 			ARG_VALUE_FORM,	"show debug information:\n"
 			"	 0  : system\n"
 			"	 1  : originators\n"
@@ -3297,7 +3299,7 @@ static struct opt_type control_options[]=
 
 //config.c	
 	//order=5: so when used during startup it also shows the config-file options	
-	{ODI,5,0,ARG_SHOW_CHANGED,	'i',A_PS0,A_USR,A_DYI,A_ARG,A_ANY,	0,		0,		0,		0, 		opt_show_info,
+	{ODI,5,0,ARG_SHOW_CHANGED,	'i',A_PS0,A_ADM,A_DYI,A_ARG,A_ANY,	0,		0,		0,		0, 		opt_show_info,
 			0,		"inform about configured options" },
 		
 //config.c				
