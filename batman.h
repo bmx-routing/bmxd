@@ -209,6 +209,7 @@ extern uint32_t My_pid;
 #define ARG_DEV  		"dev"
 #define ARG_DEV_TTL		"ttl"
 #define ARG_DEV_CLONE		"clone"
+#define ARG_DEV_ANTDVSTY	"ant_diversity"
 #define ARG_DEV_LL		"linklayer"
 #define ARG_DEV_HIDE		"hide"
 //#define ARG_DEV_ANNOUNCE	"announce"
@@ -527,9 +528,13 @@ struct batman_if
 	int8_t if_linklayer;
 	
 	int16_t if_ttl_conf;
-	int16_t if_send_clones_conf;
 	
+	int16_t if_send_clones_conf;
 	int16_t if_send_clones;
+	
+	int16_t if_ant_diversity_conf;
+	int16_t if_ant_diversity;
+	
 	int8_t if_singlehomed_conf;
 	int8_t if_singlehomed;
 	int if_mtu;

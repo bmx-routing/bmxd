@@ -462,7 +462,7 @@ static void send_outstanding_ogms( void *unused ) {
 			if (  aggregated_size <= (int32_t)sizeof( struct bat_header ) ) {
 				
 				dbg_mute( 30, DBGL_SYS, DBGT_ERR,
-				          "Drop OGM, single packet (own=%d) to large to fit legal paxket size"
+				          "Drop OGM, single packet (own=%d) to large to fit legal packet size"
 				          "scheduled %d, agg_size %d, next_len %d, pref_udpd_size %d  !!",
 				          send_node->own_if, send_node->send_time, 
 				          aggregated_size, send_node->ogm_buff_len, pref_udpd_size );
@@ -475,7 +475,7 @@ static void send_outstanding_ogms( void *unused ) {
 				send_node->send_bucket =  ((int32_t)(rand_num( 100 )));
 
 			// keep care to not aggregate more packets than would fit into max packet size
-			aggregated_size+= send_node->ogm_buff_len;
+			aggregated_size += send_node->ogm_buff_len;
 
 			directlink =     (((struct bat_packet_ogm *)send_node->ogm_buff)->flags & DIRECTLINK_FLAG );
 			unidirectional = (((struct bat_packet_ogm *)send_node->ogm_buff)->flags & UNIDIRECTIONAL_FLAG );
@@ -484,34 +484,36 @@ static void send_outstanding_ogms( void *unused ) {
 			ttl = ((struct bat_packet_ogm *)send_node->ogm_buff)->ogm_ttl;
 			if_singlehomed = ( (send_node->own_if && send_node->if_outgoing->if_singlehomed) ? 1 : 0 );
 			
+			
 			//can't forward packet with IDF: outgoing iface not specified
 			paranoia( -500015, ( directlink  &&  !send_node->if_outgoing ) );
 			
 			if ( !send_node->if_outgoing->if_active ) {
-				dbg_if_out = dbg_if_out + 
-					snprintf( (dbg_if_str + dbg_if_out), (MAX_DBG_IF_SIZE - dbg_if_out), " (down)" );
+				dbg_if_out += snprintf( (dbg_if_str + dbg_if_out), (MAX_DBG_IF_SIZE - dbg_if_out), " (down)" );
 			} 
 			
 			/* rebroadcast only to allow neighbor to detect bidirectional link */
 			if ( send_node->if_outgoing->if_active  &&
-			     send_node->iteration == 1  &&  
-			     directlink  &&  
+			     send_node->iteration <= send_node->if_outgoing->if_ant_diversity  && 
+			     directlink  &&
 			     !cloned  && 
-			     ( unidirectional || ttl == 0 ) ) 
+			     ( unidirectional || ttl == 0 ) )
 			{
 				
-				dbg_if_out = dbg_if_out + 
-					snprintf( (dbg_if_str + dbg_if_out), (MAX_DBG_IF_SIZE - dbg_if_out),
-							" %-12s  (NBD)", send_node->if_outgoing->dev );
-
+				dbg_if_out += snprintf( (dbg_if_str + dbg_if_out), (MAX_DBG_IF_SIZE - dbg_if_out),
+				                        " %-12s  (NBD)", send_node->if_outgoing->dev );
+				
+				if ( (send_node->send_bucket + 100) < send_node->if_outgoing->if_send_clones )
+					send_node_done = NO;
+				
 				//TODO: send only pure bat_packet_ogm, no extension headers.
-				memcpy( send_node->if_outgoing->aggregation_out +
+				memcpy( send_node->if_outgoing->aggregation_out + 
 					send_node->if_outgoing->aggregation_len,
 						send_node->ogm_buff, send_node->ogm_buff_len );
 
-				send_node->if_outgoing->aggregation_len+= send_node->ogm_buff_len;
+				send_node->if_outgoing->aggregation_len += send_node->ogm_buff_len;
 			
-
+				
 			/* (re-) broadcast to propagate existence of path to OG*/
 			} else if ( !unidirectional && ttl > 0 ) {
 	
@@ -534,42 +536,35 @@ static void send_outstanding_ogms( void *unused ) {
 						send_node->ogm_buff, send_node->ogm_buff_len );
 					
 					
-					if ( ( directlink ) && ( send_node->if_outgoing == bif ) ) {
-						
+					if ( send_node->iteration > bif->if_ant_diversity )
 						((struct bat_packet_ogm *)
-						 (bif->aggregation_out + bif->aggregation_len))->flags =
-							((struct bat_packet_ogm *)
-							 (bif->aggregation_out +
-							  bif->aggregation_len))->flags | DIRECTLINK_FLAG;
-					} else {
+						 (bif->aggregation_out + bif->aggregation_len))->flags |= CLONED_FLAG;
+					
+					
+					if ( ( directlink ) && ( send_node->if_outgoing == bif ) )
 						((struct bat_packet_ogm *)
-						 (bif->aggregation_out + bif->aggregation_len))->flags = 
-							((struct bat_packet_ogm *)
-							 (bif->aggregation_out + bif->aggregation_len))->flags &
-							~DIRECTLINK_FLAG;
-					}
+						 (bif->aggregation_out + bif->aggregation_len))->flags |= DIRECTLINK_FLAG; 
 					
-					bif->aggregation_len+= send_node->ogm_buff_len;
+					else
+						((struct bat_packet_ogm *)
+						 (bif->aggregation_out + bif->aggregation_len))->flags &= ~DIRECTLINK_FLAG;
 					
-					dbg_if_out = dbg_if_out + 
-						snprintf( (dbg_if_str + dbg_if_out), 
-						          (MAX_DBG_IF_SIZE - dbg_if_out), " %-12s",
-						          bif->dev );
+					
+					bif->aggregation_len += send_node->ogm_buff_len;
+					
+					dbg_if_out += snprintf( (dbg_if_str + dbg_if_out), 
+					                        (MAX_DBG_IF_SIZE - dbg_if_out), " %-12s", bif->dev );
 					
 					if (if_singlehomed && send_node->if_outgoing == bif)
-						dbg_if_out = dbg_if_out + 
-						snprintf( (dbg_if_str + dbg_if_out), 
-								(MAX_DBG_IF_SIZE - dbg_if_out), "  (npIF)" );
+						dbg_if_out += snprintf( (dbg_if_str + dbg_if_out), 
+						                        (MAX_DBG_IF_SIZE - dbg_if_out), "  (npIF)" );
 
-						
 				}
-				
-				((struct bat_packet_ogm *)send_node->ogm_buff)->flags = 
-					((struct bat_packet_ogm *)send_node->ogm_buff)->flags | CLONED_FLAG;
 				
 			}
 			
-			send_node->send_bucket = send_node->send_bucket + 100;
+			
+			send_node->send_bucket += 100;
 			
 			dbgf_all( DBGT_INFO, 
 			         "OG %-16s, seqno %5d, TTL %2d, IDF %d, UDF %d, CLF %d "
@@ -581,6 +576,8 @@ static void send_outstanding_ogms( void *unused ) {
 				
 			*dbg_if_str = '\0';
 			dbg_if_out = 0;
+			
+			
 		}
 		
 		// trigger next seqno now where the first one of the current seqno has been send
@@ -651,70 +648,61 @@ void schedule_rcvd_ogm( uint16_t oCtx, uint16_t neigh_id, struct msg_buff *mb ) 
 	struct send_node *send_node_new, *send_packet_tmp = NULL;
 	struct list_head *list_pos, *prev_list_head;
 	
-	uint8_t cloned = oCtx & HAS_CLONED_FLAG ? YES : NO;
 	uint8_t with_unidirectional_flag = 0;
 	uint8_t directlink = 0;
 	
-	if ( !(oCtx & IS_ASOCIAL) ) {
 
-		/* is single hop (direct) neighbour */
-		if ( oCtx & IS_DIRECT_NEIGH ) {
+	/* is single hop (direct) neighbour */
+	if ( oCtx & IS_DIRECT_NEIGH ) {
 
-			directlink = 1;
-			
-			/* it is our best route towards him */
-			if ( (oCtx & IS_ACCEPTED) && (oCtx & IS_BEST_NEIGH_AND_NOT_BROADCASTED) ) {
+		directlink = 1;
+		
+		/* it is our best route towards him */
+		if ( (oCtx & IS_ACCEPTED) && (oCtx & IS_BEST_NEIGH_AND_NOT_BROADCASTED) ) {
 
-				/* mark direct link on incoming interface */
-				dbgf_all( DBGT_INFO, "rebroadcast neighbour packet with direct link flag" );
-
-			/* if an unidirectional direct neighbour sends us a packet or
-			 * if a bidirectional neighbour sends us a packet who is not our best link to him: 
-			*	- retransmit it with unidirectional flag to tell him that we get his packets */
-			} else if ( !(oCtx & HAS_CLONED_FLAG) ) {
-
+			if (oCtx & IS_ASOCIAL) {
 				dbgf_all( DBGT_INFO, "re-brc neighb OGM with direct link and unidirect flag" );
 				with_unidirectional_flag = 1;
-
-			} else {
-
-				dbgf_all( DBGT_INFO, "drop OGM: no reason to re-brc!" );
-				prof_stop( PROF_schedule_rcvd_ogm );
-				return;
-
+			
+			} else {// mark direct link on incoming interface
+				dbgf_all( DBGT_INFO, "rebroadcast neighbour packet with direct link flag" );
 			}
 
-		/* multihop originator */
-		} else if ( (oCtx & IS_ACCEPTED) && (oCtx & IS_BEST_NEIGH_AND_NOT_BROADCASTED) ) {
+		/* if an unidirectional direct neighbour sends us a packet or
+		 * if a bidirectional neighbour sends us a packet who is not our best link to him:
+		 * retransmit it with unidirectional flag to tell him that we get his packets       */
+		} else if ( !(oCtx & HAS_CLONED_FLAG) ) {
 
-			dbgf_all( DBGT_INFO, "re-brc OGM" );
+			dbgf_all( DBGT_INFO, "re-brc neighb OGM with direct link and unidirect flag" );
+			with_unidirectional_flag = 1;
 
 		} else {
 
-			dbgf_all( DBGT_INFO, "drop multihop OGM, not accepted or not via best link !");
+			dbgf_all( DBGT_INFO, "drop OGM: no reason to re-brc!" );
 			prof_stop( PROF_schedule_rcvd_ogm );
 			return;
 
 		}
+
+	} else if (oCtx & IS_ASOCIAL) {
+		
+		dbgf_all( DBGT_INFO, "drop OGM, asocial devices re-brc almost nothing :-(" );
+		prof_stop( PROF_schedule_rcvd_ogm );
+		return;
+		
+	/* multihop originator */
+	} else if ( (oCtx & IS_ACCEPTED)  &&  (oCtx & IS_BEST_NEIGH_AND_NOT_BROADCASTED) ) {
+
+		dbgf_all( DBGT_INFO, "re-brc OGM" );
 
 	} else {
-		/* we are an asocial mobile device and dont want to forward other nodes packet */
-		if( oCtx & IS_DIRECT_UNDUPL_NEIGH ) {
 
-			dbgf_all( DBGT_INFO, "with asocial policy: "
-			         "re-brc neighb OGM with direct-link and unidirect flag" );
-			with_unidirectional_flag = 1; 
-			directlink = 1;
-
-
-		} else {
-			dbgf_all( DBGT_INFO, "drop OGM, asocial devices re-brc almost nothing :-(" );
-			prof_stop( PROF_schedule_rcvd_ogm );
-			return;
-
-		}
+		dbgf_all( DBGT_INFO, "drop multihop OGM, not accepted or not via best link !");
+		prof_stop( PROF_schedule_rcvd_ogm );
+		return;
 
 	}
+
 
 	
 	if ( !( ( (mb->bp.ogm)->ogm_ttl == 1 && directlink) || (mb->bp.ogm)->ogm_ttl > 1 ) ){
@@ -772,13 +760,13 @@ void schedule_rcvd_ogm( uint16_t oCtx, uint16_t neigh_id, struct msg_buff *mb ) 
 	((struct bat_packet_ogm *)send_node_new->ogm_buff)->flags = 0x00;
 	
 	if ( with_unidirectional_flag )
-		((struct bat_packet_ogm *)send_node_new->ogm_buff)->flags |= (UNIDIRECTIONAL_FLAG | DIRECTLINK_FLAG);
+		((struct bat_packet_ogm *)send_node_new->ogm_buff)->flags |= UNIDIRECTIONAL_FLAG;
 
-	else if ( directlink )
+	if ( directlink )
 		((struct bat_packet_ogm *)send_node_new->ogm_buff)->flags |= DIRECTLINK_FLAG;
 
 	
-	if ( cloned )
+	if ( oCtx & HAS_CLONED_FLAG )
 		((struct bat_packet_ogm *)send_node_new->ogm_buff)->flags |= CLONED_FLAG;
 
 	

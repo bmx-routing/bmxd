@@ -244,6 +244,8 @@ void print_animation( void ) {
 	sym_print( 12, 6, "\\" );
 	BAT_LOGO_END( 0 ,350 );
 
+	printf( "\x1B[9;0H \t May the bat guide your path...\n\n\n" );
+	
 }
 #endif /* NOANIMATION */
 
@@ -382,7 +384,7 @@ void cleanup_all( int status ) {
 			/*
 	 * Negative numbers are used as SIGSEV error codes !
 	 * Currently used numbers are 
-	 * for core programs:		-500000 ... -500155
+	 * for core programs:		-500000 ... -500156
 	 */
 		dbg( DBGL_SYS, DBGT_ERR, 
 		     "Terminating with error code %d ! Please notify a developer", status );

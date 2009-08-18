@@ -752,8 +752,13 @@ static void if_reconfigure_soft( struct batman_if *bif) {
 	bif->own_ogm_out->ogm_pws = my_pws;
 	//bif->own_ogm_out->ogm_path_lounge = Signal_lounge;
 	
+	bif->if_ant_diversity = 1;
+	
 	if ( bif->if_send_clones_conf != -1 )
 		bif->if_send_clones =  bif->if_send_clones_conf;
+	
+	if ( bif->if_ant_diversity_conf != -1 )
+		bif->if_ant_diversity = bif->if_ant_diversity_conf;
 	
 	if ( bif->if_ttl_conf != -1 )
 		bif->own_ogm_out->ogm_ttl = bif->if_ttl_conf;

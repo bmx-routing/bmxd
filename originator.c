@@ -55,7 +55,6 @@ static int32_t asym_weight;
 static int32_t asym_exp;
 
 
-
 static SIMPEL_LIST( pifnb_list );
 SIMPEL_LIST( link_list );
 
@@ -661,8 +660,11 @@ static int8_t validate_primary_orig( struct orig_node *orig_node, struct msg_buf
 
 static void update_link( struct orig_node *orig_node, SQ_TYPE sqn, struct batman_if *iif, uint16_t oCtx, uint8_t link_flags ) {
 	
+	if ( !( (oCtx & IS_DIRECT_NEIGH)  ||  orig_node->link_node ) )
+		return;
 	
-	if ( oCtx & IS_DIRECT_UNDUPL_NEIGH ) {
+	
+	if ( oCtx & IS_DIRECT_NEIGH ) {
 
 		orig_node->primary_orig_node->last_pog_link = batman_time;
 
@@ -680,9 +682,11 @@ static void update_link( struct orig_node *orig_node, SQ_TYPE sqn, struct batman
 	}
 	
 	
-	dbgf_all( DBGT_INFO, "OG %s  SQN %d  IF %s  ctx %x  link_flags %x  ln %s  DUN %s", 
+	dbgf_all( DBGT_INFO, "OG %s  SQN %d  IF %s  ctx %x  link_flags %x  ln %s  cloned %s  direct %s", 
 	          orig_node->orig_str, sqn, iif->dev, oCtx, link_flags, 
-	          orig_node->link_node?"YES":"NO", oCtx & IS_DIRECT_UNDUPL_NEIGH ? "YES":"NO" );
+	          orig_node->link_node ? "YES":"NO", 
+	          (oCtx & HAS_CLONED_FLAG) ? "YES":"NO",
+	          (oCtx & IS_DIRECT_NEIGH) ? "YES":"NO" );
 	
 	
 	
@@ -693,65 +697,60 @@ static void update_link( struct orig_node *orig_node, SQ_TYPE sqn, struct batman
 		return;
 	}
 	
-	if ( orig_node->link_node ) {
+	paranoia( -500156, !orig_node->link_node );
 		
-		struct list_head *lndev_pos;
-		struct link_node_dev *lndev, *this_lndev = NULL;
-		
-		dbgf_all( DBGT_INFO, "[%10s %3s %3s %3s]", "dev","RTQ","RQ","TQ" );
-		
-		list_for_each( lndev_pos, &orig_node->link_node->lndev_list ) {
-			
-			lndev = list_entry( lndev_pos, struct link_node_dev, list );
-				
-			dbgf_all( DBGT_INFO, "[%10s %3i %3i %3i] before", lndev->bif->dev,
-			          ((100*(lndev->rtq_sqr.wa_val))/my_lws),
-			          ((100*(lndev->rq_sqr.wa_val))/my_lws),
-			          ((100*(tq_rate( orig_node, lndev->bif, my_lws ))) / my_lws) ); 
-			
-			if ( lndev->bif == iif ) {
-			
-				this_lndev = lndev;
-			
-			} else {
-				update_queued_metric( 0, my_link_lounge, sqn, &lndev->rq_sqr, my_lws,
-				                      orig_node->orig, orig_node->orig, lndev->bif, 
-				                      "update_link( other link )" );
-				
-			}
-			
-		}
-		
-		if ( !this_lndev  &&  (oCtx & IS_DIRECT_UNDUPL_NEIGH) ) {
-			
-			this_lndev = get_lndev( orig_node->link_node, iif, YES/*create*/ );
-			
-			paranoia( -500148, !this_lndev );
-		}
-		
-		if ( this_lndev ) {
-			
-			update_queued_metric( (oCtx & IS_DIRECT_UNDUPL_NEIGH) ? my_lws : 0,
-			                      my_link_lounge, sqn, &this_lndev->rq_sqr, my_lws,
-			                      orig_node->orig, orig_node->orig, iif, 
-			                      "update_link( this link )" );
-			
-			this_lndev->last_lndev = batman_time;
-			
-		}
-		
-		//orig_node->link_node->last_rq_sqn = in_seqno;
+	struct list_head *lndev_pos;
+	struct link_node_dev *lndev, *this_lndev = NULL;
 	
-		/*
-		list_for_each( lndev_pos, &orig_node->link_node->lndev_list ) {
-			lndev = list_entry( lndev_pos, struct link_node_dev, list );
-			dbgf_all( DBGT_INFO, "[%10s %3i %3i %3i] afterwards", lndev->bif->dev, 
-			          ((100*(lndev->rtq_sqr.wa_val))/my_lws), 
-			          ((100*(lndev->rq_sqr.wa_val))/my_lws), 
-			          ((100*(tq_rate( orig_node, lndev->bif, my_lws )))/my_lws)  ); 
+	dbgf_all( DBGT_INFO, "[%10s %3s %3s %3s]", "dev","RTQ","RQ","TQ" );
+	
+	list_for_each( lndev_pos, &orig_node->link_node->lndev_list ) {
+		
+		lndev = list_entry( lndev_pos, struct link_node_dev, list );
+			
+		dbgf_all( DBGT_INFO, "[%10s %3i %3i %3i] before", lndev->bif->dev,
+				((100*(lndev->rtq_sqr.wa_val))/my_lws),
+				((100*(lndev->rq_sqr.wa_val))/my_lws),
+				((100*(tq_rate( orig_node, lndev->bif, my_lws ))) / my_lws) ); 
+		
+		if ( lndev->bif == iif ) {
+		
+			this_lndev = lndev;
+		
+		} else {
+			update_queued_metric( 0, my_link_lounge, sqn, &lndev->rq_sqr, my_lws,
+						orig_node->orig, orig_node->orig, lndev->bif, 
+						"update_link( other link )" );
+			
 		}
-		*/
+		
 	}
+	
+	if ( !this_lndev  &&  (oCtx & IS_DIRECT_NEIGH) )
+		this_lndev = get_lndev( orig_node->link_node, iif, YES/*create*/ );
+	
+	if ( this_lndev ) {
+		
+		uint8_t probe = ( (oCtx & IS_DIRECT_NEIGH) &&  !(oCtx & HAS_CLONED_FLAG) ) ? my_lws : 0;
+		
+		update_queued_metric( probe, my_link_lounge, sqn, &this_lndev->rq_sqr, my_lws,
+		                      orig_node->orig, orig_node->orig, iif, 
+		                      "update_link( this link )" );
+		
+		this_lndev->last_lndev = batman_time;
+	}		
+	
+	//orig_node->link_node->last_rq_sqn = in_seqno;
+
+	/*
+	list_for_each( lndev_pos, &orig_node->link_node->lndev_list ) {
+		lndev = list_entry( lndev_pos, struct link_node_dev, list );
+		dbgf_all( DBGT_INFO, "[%10s %3i %3i %3i] afterwards", lndev->bif->dev, 
+				((100*(lndev->rtq_sqr.wa_val))/my_lws), 
+				((100*(lndev->rq_sqr.wa_val))/my_lws), 
+				((100*(tq_rate( orig_node, lndev->bif, my_lws )))/my_lws)  ); 
+	}
+	*/
 	
 	
 	return;
@@ -1183,7 +1182,6 @@ void process_ogm( struct msg_buff *mb ) {
 	oCtx |= (ogm->flags & DIRECTLINK_FLAG) ? HAS_DIRECTLINK_FLAG : 0;
 	oCtx |= (ogm->flags & CLONED_FLAG) ? HAS_CLONED_FLAG : 0;
 	oCtx |= (ogm->orig == neigh) ? IS_DIRECT_NEIGH : 0;
-	oCtx |= ( !(oCtx & HAS_CLONED_FLAG) && (oCtx & IS_DIRECT_NEIGH) ) ? IS_DIRECT_UNDUPL_NEIGH : 0;
 	
 	
 	dbgf_all( DBGT_INFO, "OG %s  via IF %s %s  NB %s  "
@@ -1274,7 +1272,7 @@ void process_ogm( struct msg_buff *mb ) {
 		
 		/* neighbour has to indicate direct link and it has to come via the corresponding interface */
 		/* if received seqno equals last send seqno save new seqno for bidirectional check */
-		if ( ( !(oCtx & HAS_CLONED_FLAG) )  &&
+		if ( !(oCtx & HAS_CLONED_FLAG)  &&
 		     orig_node_neigh->link_node  &&
 		     orig_node_neigh->primary_orig_node && 
 		     lndev  )
@@ -1353,13 +1351,7 @@ void process_ogm( struct msg_buff *mb ) {
 	} 
 	
 	
-	if ( validate_primary_orig( orig_node, mb, oCtx ) == FAILURE )
-		/*if ( validate_primary_orig( orig_node, 
-	                            mb->rcv_ext_len[EXT_TYPE_64B_PIP] ? mb->rcv_ext_len[EXT_TYPE_64B_PIP]->EXT_PIP_FIELD_ADDR : 0,
-	                            mb->rcv_ext_len[EXT_TYPE_64B_PIP] ? ntohs( mb->rcv_ext_len[EXT_TYPE_64B_PIP]->EXT_PIP_FIELD_PIPSEQNO ) : 0,
-	                            (oCtx & IS_DIRECT_UNDUPL_NEIGH) ? YES : NO,
-	                          ) == FAILURE ) */
-	{
+	if ( validate_primary_orig( orig_node, mb, oCtx ) == FAILURE ) {
 		
 		dbg( DBGL_SYS, DBGT_WARN, "drop OGM: primary originator/if conflict!" );
 		goto process_ogm_end;
@@ -1381,8 +1373,7 @@ void process_ogm( struct msg_buff *mb ) {
 	addr_to_str( ogm->orig, mb->orig_str );
 	
 	//MUST be after validate_primary_orig()
-	if ( (oCtx & IS_DIRECT_UNDUPL_NEIGH)  ||  orig_node->link_node )
-		update_link( orig_node, ogm->ogm_seqno, iif, oCtx, mb->link_flags );
+	update_link( orig_node, ogm->ogm_seqno, iif, oCtx, mb->link_flags );
 	
 	
 	if ( orig_node_neigh->link_node  &&  lndev  &&  lndev->rtq_sqr.wa_val > 0 )
@@ -1471,8 +1462,8 @@ void process_ogm( struct msg_buff *mb ) {
 	          tq_rate_value, asym_weight, orig_node->last_accepted_sqn, ogm->ogm_seqno, rand_num_hundret );
 	
 	
-	// either it IS_DIRECTNEIGH, then validate_primary_orig() with orig_node=orig_neigh_node has been called
-	//or NOT IS_DIRECTNEIGH, then if orig_node_neigh->primary_orig_node == NULL it has been dropped
+	// either it IS_DIRECT_NEIGH, then validate_primary_orig() with orig_node=orig_neigh_node has been called
+	//or NOT IS_DIRECT_NEIGH, then if orig_node_neigh->primary_orig_node == NULL it has been dropped
 	paranoia( -500014, ( !orig_node_neigh->primary_orig_node ) );
 	
 	//paranoia( -5000151, (!orig_node_neigh->primary_orig_node->id4him) );	
@@ -1833,6 +1824,7 @@ static int32_t opt_dev ( uint8_t cmd, uint8_t _save, struct opt_type *opt, struc
 			// some configurable interface values - initialized to unspecified:
 			bif->if_ttl_conf  = -1;
 			bif->if_send_clones_conf  = -1;
+			bif->if_ant_diversity_conf = -1;
 			bif->if_linklayer_conf = -1;
 			bif->if_singlehomed_conf = -1;
 			
@@ -1863,6 +1855,10 @@ static int32_t opt_dev ( uint8_t cmd, uint8_t _save, struct opt_type *opt, struc
 			} else if ( !strcmp( c->c_opt->long_name, ARG_DEV_CLONE ) ) {
 				
 				bif->if_send_clones_conf = val;
+				
+			} else if ( !strcmp( c->c_opt->long_name, ARG_DEV_ANTDVSTY ) ) {
+				
+				bif->if_ant_diversity_conf = val;
 				
 			} else if ( !strcmp( c->c_opt->long_name, ARG_DEV_LL ) ) {
 				
@@ -1987,6 +1983,16 @@ static struct opt_type originator_options[]=
 	{ODI,5,ARG_DEV,ARG_DEV_CLONE,	'c',A_CS1,A_ADM,A_DYI,A_CFA,A_ANY,	0,		MIN_WL_CLONES,	MAX_WL_CLONES,	DEF_WL_CLONES,	opt_dev,
 			ARG_VALUE_FORM,	"broadcast OGMs per ogm-interval with given probability (e.g. 200% will broadcast the same OGM twice)"},
 		
+	/* Antenna-diversity support for bmxd seems working but unfortunately there are few wireless drivers which support 
+	 * my understanding of the typical antenna-diversity implementation. This is what I hoped (maybe I am wrong): 
+	 * - The RX-antenna is detected on-the-fly on a per-packet basis by comparing 
+	 *   the rcvd signal-strength via each antenna during reception of the phy-preamble.
+	 * - The TX-antenna is determined per MAC-address based on the last detected best RX-antenna for this MAC.
+	 * - Broadcast packets should be send round-robin like via each enabled TX-antenna (e.g. alternating via ant1 and ant2). */
+	{ODI,5,ARG_DEV,ARG_DEV_ANTDVSTY,0,  A_CS1,A_ADM,A_DYI,A_CFA,A_ANY,	0,		1,		2,		1,		opt_dev,
+			ARG_VALUE_FORM,	0/*"set number of broadcast antennas (e.g. for antenna-diversity use /d=2 /c=400 aggreg_interval=100)"*/},
+		
+		
 	{ODI,5,ARG_DEV,ARG_DEV_LL,	'l',A_CS1,A_ADM,A_DYI,A_CFA,A_ANY,	0,		VAL_DEV_LL_LAN,	VAL_DEV_LL_WLAN,0,		opt_dev,
 			ARG_VALUE_FORM,	"manually set device type for linklayer specific optimization (1=lan, 2=wlan)"},
 		
@@ -2037,6 +2043,7 @@ static struct opt_type originator_options[]=
 		
 	{ODI,5,0,"asocial_device",	0,  A_PS1,A_ADM,A_DYI,A_CFA,A_ANY,	&Asocial_device,NO,		YES,		NO,		0,
 			ARG_VALUE_FORM,	"disable/enable asocial mode for devices unwilling to forward other nodes' traffic"},
+		
 		
 	{ODI,5,0,"flush_all",		0,  A_PS0,A_ADM,A_DYN,A_ARG,A_ANY,	0,		0, 		0,		0, 		opt_purge,
 			0,		"purge all neighbors and routes on the fly"}
