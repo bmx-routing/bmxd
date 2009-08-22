@@ -107,7 +107,7 @@ static int32_t opt_gsf_map_local ( uint8_t cmd, uint8_t _save, struct opt_type *
 					dbg_printf( cn, ",\n");
 				
 				rq = lndev->rq_sqr.wa_val;
-				tq = tq_rate( orig_node, lndev->bif, my_lws );
+				tq = tq_rate( orig_node, lndev->bif, PROBE_RANGE );
 				rtq = lndev->rtq_sqr.wa_val;
 				
 				dbg_printf( cn, "    '%i' : {\n"
@@ -116,13 +116,13 @@ static int32_t opt_gsf_map_local ( uint8_t cmd, uint8_t _save, struct opt_type *
 				            "'rtq' : %3i, 'rq' : %3i, 'tq' : %3i} ",
 				            count_neigh++,
 				            orig_node->primary_orig_node->orig_str,
-				            (100 * orig_node->router->accepted_sqr.wa_val) / orig_node->pws, 
+				            orig_node->router->accepted_sqr.wa_val/PROBE_TO100, 
 				            orig_node->last_valid_sqn,
 				            ( batman_time - orig_node->last_valid_time)/1000,
 				            lndev->bif->if_ip_str,
 				            lndev->bif->dev, 
 				            orig_node->orig_str,
-				            ((100*rtq)/my_lws), ((100*rq)/my_lws), ((100*tq)/my_lws) ); 
+				            rtq/PROBE_TO100, rq/PROBE_TO100, tq/PROBE_TO100 ); 
 				
 			}
 		}
@@ -177,7 +177,7 @@ static int32_t opt_gsf_map_global ( uint8_t cmd, uint8_t _save, struct opt_type 
 				orig_node->router->iif->dev,
 				ipStr( orig_node->router->addr ),
 				ipStr( onn->primary_orig_node->orig ),
-				(( 100 * orig_node->router->accepted_sqr.wa_val ) / orig_node->pws ),
+		        	orig_node->router->accepted_sqr.wa_val/PROBE_TO100,
 				get_human_uptime( orig_node->first_valid_sec ),
 				orig_node->last_valid_sqn,
 				( batman_time - orig_node->last_valid_time)/1000,

@@ -235,21 +235,21 @@ extern uint32_t My_pid;
 #define ARG_THROW "throw"
 
 
-#define HAS_UNIDIRECT_FLAG	0x00000001
-#define HAS_DIRECTLINK_FLAG	0x00000002
-#define HAS_CLONED_FLAG		0x00000004
-#define IS_DIRECT_NEIGH		0x00000008
-#define IS_DIRECT_UNDUPL_NEIGH	0x00000010
-#define IS_MY_ADDR		0x00000020
-#define IS_MY_ORIG		0x00000040
-#define IS_BROADCAST		0x00000080
-#define IS_VALID		0x00000100
-#define IS_NEW			0x00000200
-#define IS_BIDIRECTIONAL	0x00000400
-#define IS_ACCEPTABLE		0x00000800
-#define IS_ACCEPTED		0x00001000
-#define IS_BEST_NEIGH_AND_NOT_BROADCASTED		0x00002000
-#define IS_ASOCIAL		0x00004000
+#define HAS_UNIDIRECT_FLAG			0x00000001
+#define HAS_DIRECTLINK_FLAG			0x00000002
+#define HAS_CLONED_FLAG				0x00000004
+#define IS_DIRECT_NEIGH				0x00000008
+#define IS_DIRECT_UNDUPL_NEIGH			0x00000010
+#define IS_MY_ADDR				0x00000020
+#define IS_MY_ORIG				0x00000040
+#define IS_BROADCAST				0x00000080
+#define IS_VALID				0x00000100
+#define IS_NEW					0x00000200
+#define IS_BIDIRECTIONAL			0x00000400
+#define IS_ACCEPTABLE				0x00000800
+#define IS_ACCEPTED				0x00001000
+#define IS_BEST_NEIGH_AND_NOT_BROADCASTED	0x00002000
+#define IS_ASOCIAL				0x00004000
 
 extern uint32_t batman_time;
 extern uint32_t batman_time_sec;
@@ -610,7 +610,6 @@ struct sq_record {
 	
 	SQ_TYPE wa_clr_sqn; 	// SQN upto which waightedAverageVal has been purged
 	SQ_TYPE wa_set_sqn; 	// SQN which has been applied (if equals wa_pos) then wa_unscaled MUST NO be set again!
-#define wa_scale_factor 1000	/* scale factor used to increase precision of integer division */
 	uint32_t wa_unscaled;	// unscaled summary value of processed SQNs
 	uint32_t wa_val;	// scaled and representative value of processed SQNs
 	

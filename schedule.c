@@ -1498,8 +1498,8 @@ void schedule_own_ogm( struct batman_if *batman_if ) {
 		
 		if ( lndev )
 			update_queued_metric( 0, my_link_lounge, batman_if->if_seqno - OUT_SEQNO_OFFSET,
-					&lndev->rtq_sqr, my_lws,
-			                batman_if->if_addr , ln->orig_node->orig, batman_if, "schedule_own_ogm()" );
+			                      &lndev->rtq_sqr, my_lws,
+			                      batman_if->if_addr , ln->orig_node->orig, batman_if, "schedule_own_ogm()" );
 		
 	}
 	

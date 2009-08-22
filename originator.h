@@ -85,6 +85,16 @@ extern int32_t wl_clones;
 #define MAX_ASYM_EXP	3
 #define ARG_ASYM_EXP	"asymmetric_exp"
 
+
+#define WA_SCALE_FACTOR 1000	/* scale factor used to increase precision of integer division */
+#define PROBE_TO100	1
+#define PROBE_RANGE	100
+
+#define MIN_PATH_HYST	0
+#define MAX_PATH_HYST	(PROBE_RANGE/PROBE_TO100)/2
+#define DEF_PATH_HYST	0
+
+
 extern struct batman_if *primary_if;
 extern uint32_t primary_addr;
 

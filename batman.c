@@ -30,7 +30,7 @@
 #include "batman.h"
 #include "os.h"
 #include "originator.h"
-//#include "metrics.h"
+#include "metrics.h"
 #include "plugin.h"
 #include "schedule.h"
 
@@ -235,7 +235,7 @@ static void send_vis_packet( void *unused ) {
 		
 				vis_data->ip = link_node->orig_node->orig;
 		
-				vis_data->data = q_max;
+				vis_data->data = q_max/PROBE_TO100;
 				vis_data->type = DATA_TYPE_NEIGH;
 			}
 		}

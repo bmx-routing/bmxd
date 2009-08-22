@@ -184,12 +184,12 @@ static void update_metric( uint8_t probe, SQ_TYPE sq_upd, struct sq_record *sqr,
 	
 	if ( probe  &&  sqr->wa_set_sqn != sq_upd ) {
 		
-		sqr->wa_unscaled += ( (probe * wa_scale_factor) / m_weight );
+		sqr->wa_unscaled += ( (probe * WA_SCALE_FACTOR) / m_weight );
 
 		sqr->wa_set_sqn = sq_upd;
 	}
 	
-	sqr->wa_val = sqr->wa_unscaled/wa_scale_factor;
+	sqr->wa_val = sqr->wa_unscaled/WA_SCALE_FACTOR;
 	
 	
 	dbgf_ext( DBGT_INFO, "probe %d, SQN %d, old_wa_val %d, new_wa_val %d", probe, sq_upd, old_wa_val, sqr->wa_val );

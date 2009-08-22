@@ -44,6 +44,8 @@ int32_t Default_lounge;
 static int32_t purge_to;
 static int32_t dad_to;
 
+static int32_t lateness_penalty;
+
 static int32_t Asocial_device;
 
 int32_t Ttl;
@@ -172,7 +174,7 @@ static struct neigh_node *init_neigh_node( struct orig_node *orig_node, uint32_t
 
 
 static struct neigh_node *update_orig( struct orig_node *orig_node, struct orig_node *orig_node_neigh, 
-                                uint16_t *oCtx, struct msg_buff *mb ) 
+                                       uint16_t *oCtx, struct msg_buff *mb )
 {
 
 	prof_start( PROF_update_originator );
@@ -201,14 +203,24 @@ static struct neigh_node *update_orig( struct orig_node *orig_node, struct orig_
 		if ( ( tmp_neigh->addr == mb->neigh ) && ( tmp_neigh->iif == mb->iif ) )
 			incoming_neigh = tmp_neigh;
 
-		update_queued_metric( ((incoming_neigh == tmp_neigh) && (*oCtx & IS_ACCEPTED)) ? orig_node->pws : 0,
-					orig_node->path_lounge, ogm->ogm_seqno, &tmp_neigh->accepted_sqr, orig_node->pws,
-					orig_node->orig, tmp_neigh->addr, mb->iif, 
-					(incoming_neigh == tmp_neigh) ? "update_orig( incoming NB )" : "update_orig( other NB )" );
+		uint8_t probe = 0;
+		
+		if ( incoming_neigh == tmp_neigh  && (*oCtx & IS_ACCEPTED)) {
+			
+			if ( *oCtx & IS_NEW )
+				probe = PROBE_RANGE;
+			else
+				probe = PROBE_RANGE - (lateness_penalty*PROBE_TO100);
+			
+		}
+		
+		update_queued_metric( probe,
+		                      orig_node->path_lounge, ogm->ogm_seqno, &tmp_neigh->accepted_sqr, orig_node->pws,
+		                      orig_node->orig, tmp_neigh->addr, mb->iif, 
+		                      (incoming_neigh == tmp_neigh) ? "update_orig( incoming NB )" : "update_orig( other NB )" );
 			
 	
-		if ( best_neigh_val <= tmp_neigh->accepted_sqr.wa_val )
-			best_neigh_val = tmp_neigh->accepted_sqr.wa_val;
+		best_neigh_val = MAX( best_neigh_val, tmp_neigh->accepted_sqr.wa_val );
 		
 	}
 
@@ -224,7 +236,7 @@ static struct neigh_node *update_orig( struct orig_node *orig_node, struct orig_
 	
 	if ( ( ( curr_router == NULL ) ||  
 	       ( curr_router->accepted_sqr.wa_val == 0  &&  incoming_neigh->accepted_sqr.wa_val )  ||
-	       ( curr_router->accepted_sqr.wa_val + path_hystere < incoming_neigh->accepted_sqr.wa_val) )  &&
+	       ( curr_router->accepted_sqr.wa_val + (path_hystere*PROBE_TO100) < incoming_neigh->accepted_sqr.wa_val) )  &&
 	     //( (uint16_t)( ogm->ogm_seqno - (orig_node->last_decided_sqn + 1) )  <=  MAX_SEQNO - orig_node->pws ) )
 	     ((SQ_TYPE)( orig_node->last_decided_sqn - ogm->ogm_seqno ) >= orig_node->pws ) )
 	{
@@ -238,7 +250,7 @@ static struct neigh_node *update_orig( struct orig_node *orig_node, struct orig_
 	*/
 	if ( curr_router == incoming_neigh ) {
 		
-		if ( ( curr_router->accepted_sqr.wa_val + path_hystere >= best_neigh_val ) &&
+		if ( ( curr_router->accepted_sqr.wa_val + (path_hystere*PROBE_TO100) >= best_neigh_val ) &&
 		     ((SQ_TYPE)( orig_node->last_decided_sqn - ogm->ogm_seqno ) >= orig_node->pws ) ) {
 			
 			orig_node->last_decided_sqn = ogm->ogm_seqno;
@@ -709,9 +721,9 @@ static void update_link( struct orig_node *orig_node, SQ_TYPE sqn, struct batman
 		lndev = list_entry( lndev_pos, struct link_node_dev, list );
 			
 		dbgf_all( DBGT_INFO, "[%10s %3i %3i %3i] before", lndev->bif->dev,
-				((100*(lndev->rtq_sqr.wa_val))/my_lws),
-				((100*(lndev->rq_sqr.wa_val))/my_lws),
-				((100*(tq_rate( orig_node, lndev->bif, my_lws ))) / my_lws) ); 
+		          (((lndev->rtq_sqr.wa_val))/PROBE_TO100),
+		          (((lndev->rq_sqr.wa_val))/PROBE_TO100),
+		          (((tq_rate( orig_node, lndev->bif, PROBE_RANGE )))/PROBE_TO100) ); 
 		
 		if ( lndev->bif == iif ) {
 		
@@ -731,7 +743,7 @@ static void update_link( struct orig_node *orig_node, SQ_TYPE sqn, struct batman
 	
 	if ( this_lndev ) {
 		
-		uint8_t probe = ( (oCtx & IS_DIRECT_NEIGH) &&  !(oCtx & HAS_CLONED_FLAG) ) ? my_lws : 0;
+		uint8_t probe = ( (oCtx & IS_DIRECT_NEIGH) &&  !(oCtx & HAS_CLONED_FLAG) ) ? PROBE_RANGE : 0;
 		
 		update_queued_metric( probe, my_link_lounge, sqn, &this_lndev->rq_sqr, my_lws,
 		                      orig_node->orig, orig_node->orig, iif, 
@@ -746,9 +758,9 @@ static void update_link( struct orig_node *orig_node, SQ_TYPE sqn, struct batman
 	list_for_each( lndev_pos, &orig_node->link_node->lndev_list ) {
 		lndev = list_entry( lndev_pos, struct link_node_dev, list );
 		dbgf_all( DBGT_INFO, "[%10s %3i %3i %3i] afterwards", lndev->bif->dev, 
-				((100*(lndev->rtq_sqr.wa_val))/my_lws), 
-				((100*(lndev->rq_sqr.wa_val))/my_lws), 
-				((100*(tq_rate( orig_node, lndev->bif, my_lws )))/my_lws)  ); 
+				(((lndev->rtq_sqr.wa_val))/PROBE_TO100), 
+				(((lndev->rq_sqr.wa_val))/PROBE_TO100), 
+				(((tq_rate( orig_node, lndev->bif, PROBE_RANGE )))/PROBE_TO100)  ); 
 	}
 	*/
 	
@@ -1006,54 +1018,6 @@ void purge_orig( uint32_t curr_time, struct batman_if *bif ) {
 						
 					}
 					
-					
-					/*
-					if ( lndev->rq_sqr.wa_val > 0  ||  lndev->rtq_sqr.wa_val > 0 ) {
-						free_ln = NO;
-						free_lndev = NO;
-					}
-					
-					if ( free_lndev ) {
-						SQ_TYPE i;
-						struct sq_record *sqr = &lndev->rtq_sqr;
-						
-						for( i = sqr->sqn_entry_queue_tip+1-my_link_lounge;
-						     i != ((SQ_TYPE)(sqr->sqn_entry_queue_tip+1)); i++ )
-						{
-							if ( sqr->sqn_entry_queue[i%SQN_LOUNGE_SIZE] ) {
-								free_ln = NO;
-								free_lndev = NO;
-								break;
-							}
-						}
-					}
-					
-					if ( free_lndev ) {
-						SQ_TYPE i;
-						struct sq_record *sqr = &lndev->rq_sqr;
-						
-						for( i = sqr->sqn_entry_queue_tip+1-my_link_lounge;
-						     i != ((SQ_TYPE)(sqr->sqn_entry_queue_tip+1)); i++ )
-						{
-							if ( sqr->sqn_entry_queue[i%SQN_LOUNGE_SIZE] ) {
-								free_ln = NO;
-								free_lndev = NO;
-								break;
-							}
-						}
-					}
-					
-					
-					if ( free_lndev ) {
-						dbgf( DBGL_CHANGES, DBGT_INFO, 
-						      "purging lndev %16s %10s %s",
-						      orig_node->orig_str, lndev->bif->dev, lndev->bif->if_ip_str );
-						list_del( lndev_prev, lndev_pos, &orig_node->link_node->lndev_list );
-						debugFree( lndev, 1429 );
-					} else {
-						lndev_prev = lndev_pos;
-					}
-					*/
 				}
 				
 				if ( free_ln )
@@ -1154,11 +1118,12 @@ int tq_rate( struct orig_node *orig_node_neigh, struct batman_if *iif, int range
 	
 	rq = lndev->rq_sqr.wa_val;
 	
-	if ( rtq <= 0 || rq <= 0 ) return 0;
+	if ( rtq <= 0 || rq <= 0 ) 
+		return 0;
 	
 	tq = ( (range * rtq ) / rq );
 	
-	return ( (tq >= ( range )) ? ( range ) : tq );
+	return MIN( tq, range );
 	
 }
 
@@ -1278,7 +1243,7 @@ void process_ogm( struct msg_buff *mb ) {
 		     lndev  )
 		{
 			
-			update_queued_metric( my_lws, my_link_lounge, ogm->ogm_seqno,
+			update_queued_metric( PROBE_RANGE, my_link_lounge, ogm->ogm_seqno,
 			                      &lndev->rtq_sqr, my_lws,
 			                      ogm->orig, orig_node_neigh->orig, iif, "process_ogm(own via NB)" );
 			
@@ -1368,7 +1333,7 @@ void process_ogm( struct msg_buff *mb ) {
 	// OK! OGM seems valid..
 	oCtx |= IS_VALID;
 	
-	uint16_t rand_num_hundret = rand_num( 100 );
+	uint16_t rand_100 = rand_num( 100 );
 	
 	addr_to_str( ogm->orig, mb->orig_str );
 	
@@ -1412,15 +1377,17 @@ void process_ogm( struct msg_buff *mb ) {
 	}
 	
 	
-	int tq_rate_value = tq_rate( orig_node_neigh, iif, my_lws );
+	int tq_rate_value = tq_rate( orig_node_neigh, iif, PROBE_RANGE );
 	
 	
-	if ( (oCtx & IS_BIDIRECTIONAL)  &&  ((oCtx & IS_NEW) || (oCtx & IS_ACCEPTABLE))  &&
-	     rand_num_hundret <= (tq_power( tq_rate_value, my_lws )*99)/my_lws + (MAX_ASYM_WEIGHT - asym_weight) ) 
+	if ( (oCtx & IS_BIDIRECTIONAL)  &&  
+	     ((oCtx & IS_NEW) || (oCtx & IS_ACCEPTABLE))  &&
+//	     rand_100  <=  (MAX_ASYM_WEIGHT - asym_weight)  +  ( (tq_power(tq_rate_value,PROBE_RANGE)/PROBE_TO100) * 99) / 100    ) 
+	     rand_100  <=  (MAX_ASYM_WEIGHT - asym_weight)  +  ( (tq_power(tq_rate_value,PROBE_RANGE)/PROBE_TO100) ) )
 	{
 		
 		// finally we only accept OGMs with probability TQ of its incoming link
-		// tq_power() returns value between [0..my_lws]. return value of my_lws means 100% acceptance 
+		// tq_power() returns value between [0..PROBE_RANGE]. return value of PROBE_RANGE means 100% acceptance 
 		oCtx |= IS_ACCEPTED;
 	}
 	
@@ -1459,7 +1426,7 @@ void process_ogm( struct msg_buff *mb ) {
 	          ( oCtx & IS_NEW ? "Y" : "N" ), 
 	          ( oCtx & IS_BEST_NEIGH_AND_NOT_BROADCASTED ? "Y" : "N" ), 
 	          ( oCtx & IS_ASOCIAL ? "Y" : "N" ), 
-	          tq_rate_value, asym_weight, orig_node->last_accepted_sqn, ogm->ogm_seqno, rand_num_hundret );
+	          tq_rate_value, asym_weight, orig_node->last_accepted_sqn, ogm->ogm_seqno, rand_100 );
 	
 	
 	// either it IS_DIRECT_NEIGH, then validate_primary_orig() with orig_node=orig_neigh_node has been called
@@ -1520,13 +1487,13 @@ static int32_t opt_show_origs ( uint8_t cmd, uint8_t _save, struct opt_type *opt
 				nodes_count++;
 				batman_count++;
 				
-				int estimated_rcvd = ((( 10000 * orig_node->router->accepted_sqr.wa_val ) / orig_node->pws )+99) / 
-					(((tq_power(tq_rate( onn, onn->router->iif, my_lws ), my_lws)*100)/my_lws)+1);
+				int estimated_rcvd = (( (100 * orig_node->router->accepted_sqr.wa_val)/PROBE_TO100 )+99) / 
+					(((tq_power( tq_rate( onn, onn->router->iif, PROBE_RANGE ), PROBE_RANGE ) )/PROBE_TO100)+1);
 				
 				dbg_printf( cn, "%-15s %-10s %15s %3i (  %3i %s %5i %4i %3i %3i %4i %4i %3i %6i )\n", 
 				            orig_node->orig_str, orig_node->router->iif->dev, 
 				            ipStr( orig_node->router->addr ),
-				            (( 100 * orig_node->router->accepted_sqr.wa_val ) / orig_node->pws ),
+				            orig_node->router->accepted_sqr.wa_val/PROBE_TO100,
 				            estimated_rcvd > 100 ? 100 : estimated_rcvd,
 				            get_human_uptime( orig_node->first_valid_sec ),
 				            orig_node->last_valid_sqn,
@@ -1539,7 +1506,7 @@ static int32_t opt_show_origs ( uint8_t cmd, uint8_t _save, struct opt_type *opt
 				            orig_node->rt_changes
 				          ); 
 				
-				sum_packet_count+=  (100 * orig_node->router->accepted_sqr.wa_val) / orig_node->pws; /* accepted */
+				sum_packet_count+= orig_node->router->accepted_sqr.wa_val/PROBE_TO100; /* accepted */
 				sum_rcvd_all_bits+= MIN( estimated_rcvd, 100 ); 
 				sum_lvld+= (batman_time - orig_node->last_valid_time)/1000;
 				sum_last_pws+= orig_node->pws;
@@ -1599,10 +1566,10 @@ static int32_t opt_show_origs ( uint8_t cmd, uint8_t _save, struct opt_type *opt
 				if ( !onn  ||  !onn->last_valid_time  ||  !onn->router )
 					continue;
 				
-				int estimated_rcvd =
-					((( 10000 * orig_node->router->accepted_sqr.wa_val ) / orig_node->pws )+99) / 
-					(((tq_power( tq_rate( onn, onn->router->iif, my_lws ),
-					             my_lws)*100)/my_lws)+1);
+				int estimated_rcvd = (( (100 * orig_node->router->accepted_sqr.wa_val)/PROBE_TO100 )+99) / 
+					(((tq_power( tq_rate( onn, onn->router->iif, PROBE_RANGE ), PROBE_RANGE ) )/PROBE_TO100)+1);
+				
+				
 				
 				struct list_head *lndev_pos;
 				
@@ -1611,7 +1578,7 @@ static int32_t opt_show_origs ( uint8_t cmd, uint8_t _save, struct opt_type *opt
 					struct link_node_dev *lndev = list_entry( lndev_pos, struct link_node_dev, list );
 					
 					rq = lndev->rq_sqr.wa_val;
-					tq = tq_rate( orig_node, lndev->bif, my_lws );
+					tq = tq_rate( orig_node, lndev->bif, PROBE_RANGE );
 					rtq = lndev->rtq_sqr.wa_val;
 					
 					dbg_printf( cn, "%-15s %-10s %15s %3i (  %3i %s %5i %4i %3d %3d ) "
@@ -1619,7 +1586,7 @@ static int32_t opt_show_origs ( uint8_t cmd, uint8_t _save, struct opt_type *opt
 					            orig_node->orig_str, orig_node->router->iif->dev, 
 					            ipStr( orig_node->router->addr ),
 						 // accepted and rebroadcasted:
-					            (100 * orig_node->router->accepted_sqr.wa_val) / orig_node->pws,
+					            orig_node->router->accepted_sqr.wa_val/PROBE_TO100,
 					            estimated_rcvd > 100 ? 100 : estimated_rcvd,
 					            get_human_uptime( orig_node->first_valid_sec ),
 					            orig_node->last_valid_sqn,
@@ -1629,7 +1596,7 @@ static int32_t opt_show_origs ( uint8_t cmd, uint8_t _save, struct opt_type *opt
 					            ( orig_node->primary_orig_node ?
 					              orig_node->primary_orig_node->id4him : -1 ),
 					            lndev->bif->dev, 
-					            ((100*rtq)/my_lws), ((100*rq)/my_lws), ((100*tq)/my_lws)  ); 
+					            rtq/PROBE_TO100, rq/PROBE_TO100, tq/PROBE_TO100  ); 
 					
 				}
 				
@@ -1662,7 +1629,7 @@ static int32_t opt_show_origs ( uint8_t cmd, uint8_t _save, struct opt_type *opt
 				
 				dbg_ogm_out = snprintf( dbg_ogm_str, MAX_DBG_STR_SIZE, "%-15s (%3i) %15s [%10s] ", 
 				                        orig_node->orig_str, 
-				                        ((100*orig_node->router->accepted_sqr.wa_val)/orig_node->pws), 
+				                        orig_node->router->accepted_sqr.wa_val/PROBE_TO100, 
 				                        ipStr( orig_node->router->addr ), 
 				                        orig_node->router->iif->dev );
 				
@@ -1675,7 +1642,7 @@ static int32_t opt_show_origs ( uint8_t cmd, uint8_t _save, struct opt_type *opt
 							snprintf( (dbg_ogm_str + dbg_ogm_out), (MAX_DBG_STR_SIZE - dbg_ogm_out), 
 							          " %15s (%3i)", 
 							          ipStr( neigh_node->addr ), 
-							          ((100*neigh_node->accepted_sqr.wa_val)/orig_node->pws) );
+							          neigh_node->accepted_sqr.wa_val/PROBE_TO100 );
 						
 					}
 				}
@@ -2011,7 +1978,7 @@ static struct opt_type originator_options[]=
 	{ODI,5,0,"link_window_size",	0,  A_PS1,A_ADM,A_DYI,A_CFA,A_ANY,	&my_lws,	MIN_LWS, 	MAX_LWS,	DEF_LWS,	opt_lws,
 			ARG_VALUE_FORM,	"set link window size (LWS) for link-quality calculation (link metric)"},
 	
-	{ODI,5,0,"path_hysteresis",	0,  A_PS1,A_ADM,A_DYI,A_CFA,A_ANY,	&path_hystere,	0,	 	10,		0,		0,
+	{ODI,5,0,"path_hysteresis",	0,  A_PS1,A_ADM,A_DYI,A_CFA,A_ANY,	&path_hystere,	MIN_PATH_HYST, 	MAX_PATH_HYST,	DEF_PATH_HYST,	0,
 			ARG_VALUE_FORM,	"use hysteresis to delay route switching to alternative next-hop neighbors with better path metric"},
 		
 	{ODI,5,0,"purge_timeout", 	0,  A_PS1,A_ADM,A_DYI,A_CFA,A_ANY,	&purge_to,	MIN_PURGE_TO,	MAX_PURGE_TO,	DEF_PURGE_TO,	0,
@@ -2028,6 +1995,9 @@ static struct opt_type originator_options[]=
 		
 	{ODI,5,0,ARG_ASYM_WEIGHT,	0,  A_PS1,A_ADM,A_DYI,A_CFA,A_ANY,	&asym_weight,	MIN_ASYM_WEIGHT,MAX_ASYM_WEIGHT,DEF_ASYM_WEIGHT,0,
 			ARG_VALUE_FORM,	"ignore OGMs (rcvd via asymmetric links) with given probability [%] to better reflect asymmetric-links"},
+		
+	{ODI,5,0,"lateness_penalty",	0,  A_PS1,A_ADM,A_DYI,A_CFA,A_ANY,	&lateness_penalty,0,		100,		2		,0,
+			ARG_VALUE_FORM,	"penalize non-firsr rcvd OGMs "},
 		
 	{ODI,5,0,"link_lounge_size", 	0,  A_PS1,A_ADM,A_DYI,A_CFA,A_ANY,	&my_link_lounge,MIN_LOUNGE_SIZE,3,		1,		0,
 			ARG_VALUE_FORM, "set local LLS buffer size to artificially delay OGM processing for ordered link-quality calulation"},

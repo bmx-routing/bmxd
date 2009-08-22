@@ -484,7 +484,7 @@ static int32_t cb_tun_ogm_hook( struct msg_buff *mb, uint16_t oCtx, struct neigh
 		curr_gateway->orig_node != on  &&
 		(	( pref_gateway == on->orig )  ||
 			( pref_gateway != curr_gateway->orig_node->orig  &&  
-			  curr_gateway->orig_node->router->accepted_sqr.wa_val + MIN(gw_hysteresis, (my_pws/2))
+			  curr_gateway->orig_node->router->accepted_sqr.wa_val + (gw_hysteresis*PROBE_TO100)
 				<= on->router->accepted_sqr.wa_val  ) ) ) {
 		
 		dbg( DBGL_CHANGES, DBGT_INFO, "Restart gateway selection. %s gw found! "
@@ -1636,7 +1636,7 @@ static void cb_choose_gw( void* unused ) {
 	struct gw_node *gw_node, *tmp_curr_gw = NULL;
 	/* TBD: check the calculations of this variables for overflows */
 	uint8_t max_gw_class = 0;
-	uint32_t norm1000_max_packets = 0;  
+	uint32_t best_wa_val = 0;  
 	uint32_t max_gw_factor = 0, tmp_gw_factor = 0;  
 	int download_speed, upload_speed; 
 	
@@ -1676,24 +1676,24 @@ static void cb_choose_gw( void* unused ) {
 				get_gw_speeds( tuno->tun_array[0].EXT_GW_FIELD_GWFLAGS, &download_speed, &upload_speed );
 
 		// is this voodoo ???
-				tmp_gw_factor = ( ( ( ( on->router->accepted_sqr.wa_val * 1000 ) / on->pws ) *
-						( ( on->router->accepted_sqr.wa_val * 1000 ) / on->pws ) ) / 100 ) * 
+			tmp_gw_factor = ( ( ( on->router->accepted_sqr.wa_val/PROBE_TO100 ) *
+			                    ( on->router->accepted_sqr.wa_val/PROBE_TO100 ) ) ) * 
 						( download_speed / 64 ) ;
 		
-				if ( ( tmp_gw_factor > max_gw_factor ) || 
-				( ( tmp_gw_factor == max_gw_factor ) && 
-				( ((on->router->accepted_sqr.wa_val * 1000) / on->pws) > norm1000_max_packets ) ) )
+				if ( tmp_gw_factor > max_gw_factor || 
+				     ( tmp_gw_factor == max_gw_factor  && 
+				       on->router->accepted_sqr.wa_val > best_wa_val ) )
 					tmp_curr_gw = gw_node;
 		
 				break;
 
 				case 2:   /* stable connection (use best statistic) */
-					if ( ((on->router->accepted_sqr.wa_val * 1000) / on->pws) > norm1000_max_packets )
-						tmp_curr_gw = gw_node;
+				     if ( on->router->accepted_sqr.wa_val > best_wa_val )
+					     tmp_curr_gw = gw_node;
 					break;
 
 					default:  /* fast-switch (use best statistic but change as soon as a better gateway appears) */
-						if ( ((on->router->accepted_sqr.wa_val * 1000) / on->pws) > norm1000_max_packets )
+				     if ( on->router->accepted_sqr.wa_val > best_wa_val )
 							tmp_curr_gw = gw_node;
 						break;
 
@@ -1702,9 +1702,9 @@ static void cb_choose_gw( void* unused ) {
 		if ( tuno->tun_array[0].EXT_GW_FIELD_GWFLAGS > max_gw_class )
 			max_gw_class = tuno->tun_array[0].EXT_GW_FIELD_GWFLAGS;
 
-		if ( ((on->router->accepted_sqr.wa_val * 1000) / on->pws) > norm1000_max_packets )
-			norm1000_max_packets = ((on->router->accepted_sqr.wa_val * 1000) / on->pws);
-
+		best_wa_val = MAX( best_wa_val, on->router->accepted_sqr.wa_val );
+		
+		
 		if ( tmp_gw_factor > max_gw_factor )
 			max_gw_factor = tmp_gw_factor;
 
@@ -1715,7 +1715,8 @@ static void cb_choose_gw( void* unused ) {
 	
 			dbg( DBGL_SYS, DBGT_INFO, 
 			     "Preferred gateway found: %s (gw_flags: %i, packet_count: %i, ws: %i, gw_product: %i)", 
-			     on->orig_str, tuno->tun_array[0].EXT_GW_FIELD_GWFLAGS, on->router->accepted_sqr.wa_val, on->pws, tmp_gw_factor );
+			     on->orig_str, tuno->tun_array[0].EXT_GW_FIELD_GWFLAGS, 
+			     on->router->accepted_sqr.wa_val/PROBE_TO100, on->pws, tmp_gw_factor );
 	
 			break;
 
@@ -1733,7 +1734,7 @@ static void cb_choose_gw( void* unused ) {
 		if ( tmp_curr_gw != NULL ) {
 
 			dbg( DBGL_SYS, DBGT_INFO, "using new default tunnel to GW %s (gw_flags: %i, packet_count: %i, gw_product: %i)",
-					tmp_curr_gw->orig_node->orig_str, max_gw_class, norm1000_max_packets, max_gw_factor );
+			     tmp_curr_gw->orig_node->orig_str, max_gw_class, best_wa_val/PROBE_TO100, max_gw_factor );
 
 		}
 
@@ -1792,7 +1793,7 @@ static int32_t opt_gateways ( uint8_t cmd, uint8_t _save, struct opt_type *opt, 
 			dbg_printf( cn, "%s %-15s %15s %3i, gw_class %2i - %i%s/%i%s, reliability: %i, supported tunnel types %s, %s \n",
 				curr_gateway == gw_node ? "=>" : "  ",
 				ipStr(on->orig) , ipStr(on->router->addr),
-				(100 * gw_node->orig_node->router->accepted_sqr.wa_val) / gw_node->orig_node->pws,
+			        gw_node->orig_node->router->accepted_sqr.wa_val/PROBE_TO100,
 				tuno->tun_array[0].EXT_GW_FIELD_GWFLAGS,
 				download_speed > 2048 ? download_speed / 1024 : download_speed,
 				download_speed > 2048 ? "MBit" : "KBit",
@@ -1993,7 +1994,7 @@ static struct opt_type tunnel_options[]= {
 			"	2 -> permanently select most stable GW accoridng to measurement \n"
 			"	3 -> dynamically switch to most stable GW"},
  
-	{ODI,5,0,ARG_GW_HYSTERESIS, 	0,  A_PS1,A_ADM,A_DYI,A_CFA,A_ANY,	&gw_hysteresis,	1, 		(MAX_PWS/2),	2, 		0,
+	{ODI,5,0,ARG_GW_HYSTERESIS, 	0,  A_PS1,A_ADM,A_DYI,A_CFA,A_ANY,	&gw_hysteresis,	MIN_GW_HYSTERE,	MIN_GW_HYSTERE,	DEF_GW_HYSTERE,	0,
 			ARG_VALUE_FORM,"set number of additional rcvd OGMs before changing to more stable GW (only relevant for -r3 GW-clients)"},
 	
 	{ODI,5,0,"preferred_gateway",	'p',A_PS1,A_ADM,A_DYI,A_CFA,A_ANY,	0,		0,		0,		0, 		opt_rt_pref,

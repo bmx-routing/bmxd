@@ -254,7 +254,9 @@ extern int32_t Gateway_class;
 #define ARG_ONE_WAY_TUNNEL "one_way_tunnel"
 
 #define ARG_GW_HYSTERESIS "gateway_hysteresis"
-
+#define MIN_GW_HYSTERE    1
+#define MAX_GW_HYSTERE    PROBE_RANGE/PROBE_TO100
+#define DEF_GW_HYSTERE    2
 
 
 #define BATMAN_TUN_PREFIX "bat"
