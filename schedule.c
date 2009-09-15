@@ -845,7 +845,7 @@ static void strip_packet(  struct msg_buff *mb, unsigned char *pos, int32_t udp_
 					if ( ((struct ext_packet*)(ext_a+ext_p))->EXT_FIELD_TYPE == ext_type  ) {
 					
 						if ( ext_attribute[ext_type] & EXT_ATTR_TLV )
-							ext_p+= 4*((struct ext_packet*)(ext_a+ext_p))->EXT_FIELD_LEN;
+							ext_p+= 4*((struct ext_packet*)(ext_a+ext_p))->EXT_FIELD_LEN_4B;
 						
 						else 
 							ext_p+= sizeof(struct ext_packet);

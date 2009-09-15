@@ -86,8 +86,31 @@ static void http_info_rcv_tcp_data( struct ctrl_node *cn ) {
 		
 		} else {
 			
-			dbgf( DBGL_CHANGES, DBGT_INFO, "rcvd illegal %d bytes long HTTP request via fd %d", 
+			dbg( DBGL_CHANGES, DBGT_INFO, "rcvd illegal %d bytes long HTTP request via fd %d", 
 			      tcp_req_len, cn->fd);
+			/*
+			dbg_cn( cn, DBGL_ALL, DBGT_INFO, "rcvd illegal %d bytes long HTTP request via fd %d:\n%s\n", 
+			        tcp_req_len, cn->fd, tcp_req_data);
+			*/
+			check_apply_parent_option( ADD, OPT_APPLY, 0, get_option( 0,0, ARG_STATUS), 0, cn );
+			
+			dbg_printf( cn, "\nillegal HTTP request! Valid requests are:\n\n" );
+			
+			struct list_head *list_pos;
+			
+			list_for_each( list_pos, &opt_list ) {
+				
+				struct opt_type *opt = (struct opt_type *)list_entry( list_pos, struct opt_data, list );
+				
+				if (  opt->auth_t == A_USR  &&
+				      opt->opt_t == A_PS0  &&
+				      opt->dyn_t != A_INI  &&
+				      opt->cfg_t == A_ARG )
+				{
+					dbg_printf( cn, "/%s\n\n", opt->long_name );
+					
+				}
+			}
 			
 		}
 		

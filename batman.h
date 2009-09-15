@@ -230,8 +230,6 @@ extern uint32_t My_pid;
 #define ARG_NETB "netb"
 
 
-
-
 #define ARG_THROW "throw"
 
 
@@ -315,8 +313,6 @@ struct bat_packet_common
 } __attribute__((packed));
 
 
-#define OGM_OGI_MAX 255
-
 struct bat_packet_ogm
 {
 #if __BYTE_ORDER == __LITTLE_ENDIAN
@@ -381,8 +377,8 @@ struct ext_packet
 #define EXT_FIELD_TYPE    	ext_type
 #define EXT_FIELD_MSG     	ext_msg
 
-#define EXT_FIELD_LEN     	def8 /* the size of this TLV extension header in 4 oktet blocks (including this first 4 oktets) */
-#define MIN_TLV_LEN_BYTES	4 /* the minimum size in bytes (1 octet) of a TLV extension message */
+#define EXT_FIELD_LEN_4B     	def8 /* the size of this TLV extension header in 4 oktet blocks (including this first 4 oktets) */
+#define MIN_TLV_LEN_1B		4    /* the minimum size in bytes (1 octet) of a TLV extension message */
 		
 // field accessor for primary interface announcement extension packets
 #define EXT_PIP_FIELD_RES1   	def8
