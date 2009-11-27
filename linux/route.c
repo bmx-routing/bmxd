@@ -947,10 +947,16 @@ static void if_activate( struct batman_if *bif ) {
 	
 	bif->if_conf_hard_changed = NO;
 	
-	//reschedule if_reconfigure_soft( bif ); done from check_interfaces()
 	bif->if_conf_soft_changed = YES;
-	
+
 	bif->if_active = YES;
+
+	//reschedule if_reconfigure_soft( bif ) also called from check_interfaces()
+	// but should also be called here
+	//	-  before first schedule_own_ogm()
+	// -   after if_active=YES
+	if_reconfigure_soft( bif );
+	
 	
 	if ( !bif->if_scheduling )
 		schedule_own_ogm( bif );

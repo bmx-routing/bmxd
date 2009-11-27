@@ -246,8 +246,8 @@ static void update_other_hna( struct orig_node *on, struct neigh_node *router, s
 	{
 		dbgf( DBGL_SYS, DBGT_ERR,
 		     "invalid hna information on %x, hal %d, ha %x, ohna_data %x ohal %d, oha %x!",
-		      (uint32_t)on, len, (uint32_t)array, (uint32_t)orig_hna, 
-		      orig_hna?orig_hna->hna_array_len:0, (uint32_t)(orig_hna?orig_hna->hna_array:0) );
+		      (uint64_t)on, len, (uint64_t)array, (uint64_t)orig_hna, 
+		      orig_hna?orig_hna->hna_array_len:0, (uint64_t)(orig_hna?orig_hna->hna_array:0) );
 		
 		cleanup_all( -500024 );
 	}

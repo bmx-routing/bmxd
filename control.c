@@ -486,7 +486,7 @@ void dbg_printf( struct ctrl_node *cn, char *last, ...  ) {
 			
 			if ( cn->dbgl != DBGL_ALL ) {
 				syslog( LOG_ERR, "failed %d times writing %d instead of %d/%d bytes (%s)! Giving up: %s\n", 
-				        i, w, strlen(s+out), strlen(s), strerror(errno), s+out );
+				        i, (int)w, (int)strlen(s+out), (int)strlen(s), strerror(errno), s+out );
 			}
 			
 			break;
@@ -1740,7 +1740,7 @@ static int32_t cleanup_patch( struct opt_type *opt, struct opt_parent *patch, st
 			
 			p_track = NULL;
 			
-			dbgf_all(  DBGT_INFO, "p_val:%s c:%x", patch->p_val, (uint32_t)c );
+			dbgf_all(  DBGT_INFO, "p_val:%s", patch->p_val );
 			
 			if ( (p_track = get_opt_parent_val( opt, val )) )
 				c_track = get_opt_child( c->c_opt, p_track );
@@ -2993,7 +2993,7 @@ void wordCopy( char *out, char *in ) {
 		
 	} else {
 		
-		dbgf( DBGL_SYS, DBGT_ERR, "called with out %s  and in %d %s", out, (uint32_t)in, in );
+		dbgf( DBGL_SYS, DBGT_ERR, "called with out: %s  and  in: %s", out, in );
 		cleanup_all( -500017 );
 		
 	}

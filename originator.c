@@ -1159,7 +1159,8 @@ void process_ogm( struct msg_buff *mb ) {
 	
 	if ( ogm->ogm_pws < MIN_PWS  ||  ogm->ogm_pws > MAX_PWS ) {
 		
-		dbgf_all( DBGT_INFO, "drop OGM: unsopported path window size!" );
+		dbg_mute( 30, DBGL_SYS, DBGT_WARN, "drop OGM: %s unsopported path window size %d !",
+				ipStr( ogm->orig ), ogm->ogm_pws );
 		goto process_ogm_end;
 	}
 	
@@ -1177,7 +1178,7 @@ void process_ogm( struct msg_buff *mb ) {
 		
 		if ( neigh == bif->if_broad ) {
 			
-			dbgf_all( DBGT_INFO, "drop OGM: ignoring all packets with broadcast source IP (sender: %s)", 
+			dbg_mute( 30, DBGL_SYS, DBGT_WARN, "drop OGM: %s ignoring all packets with broadcast source IP",
 			          mb->neigh_str );
 			goto process_ogm_end;
 		}

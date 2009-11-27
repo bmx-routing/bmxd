@@ -458,8 +458,11 @@ struct send_node                 /* structure for send_list maintaining packets 
 	int16_t  send_bucket;
 	uint8_t  iteration;
 	uint8_t  own_if;
-	struct batman_if *if_outgoing;
 	int32_t  ogm_buff_len;
+	struct batman_if *if_outgoing;
+
+	// the following ogm_buff array MUST be aligned with bit-range of the OS (64bit for 64-bit OS)
+	// having a pointer right before ensures this alignment.
 	unsigned char ogm_buff[]; // this is to access following ogm data
 };
 

@@ -1,5 +1,5 @@
 
-CFLAGS +=	-pedantic -Wall -W -Wno-unused-parameter -O1 -g3 -std=gnu99 -I../../
+CFLAGS +=	-fpic -pedantic -Wall -W -Wno-unused-parameter -O1 -g3 -std=gnu99 -I../../
 LDFLAGS +=	-shared
 #-Wl,-soname,bmxd_config 
 
