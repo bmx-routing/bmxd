@@ -419,7 +419,6 @@ static void send_outstanding_ogms( void *unused ) {
 	//uint16_t aggr_interval = (my_ogi/aggr_p_ogi > 3*MIN_OGI) ? 3*MIN_OGI :  (my_ogi/aggr_p_ogi);
 
 	register_task( (aggr_interval + rand_num( aggr_interval/2 )) - (aggr_interval/4), send_outstanding_ogms, NULL );
-
 	
 	if ( list_empty( &send_list )  ||  
 	     GREAT_U32( (list_entry( (&send_list)->next, struct send_node, list ))->send_time, batman_time ) ) {
@@ -438,7 +437,7 @@ static void send_outstanding_ogms( void *unused ) {
 	list_for_each_safe( send_pos, send_temp, &send_list ) {
 	
 		send_node = list_entry( send_pos, struct send_node, list );
-		
+
 		
 		if ( GREAT_U32( send_node->send_time, batman_time ) )
 			break; // for now we are done, 
@@ -1400,9 +1399,9 @@ void schedule_own_ogm( struct batman_if *batman_if ) {
 	
 	send_node_new = batman_if->own_send_node;
 	memset( send_node_new, 0, sizeof( struct send_node) );
+
 	INIT_LIST_HEAD( &send_node_new->list );
-	
-	
+
 	send_node_new->send_time = batman_if->if_seqno_schedule + my_ogi;
 	
 	if ( LESS_U32( send_node_new->send_time, batman_time ) || 
@@ -1460,15 +1459,11 @@ void schedule_own_ogm( struct batman_if *batman_if ) {
 	
 	send_node_new->ogm_buff_len = ogm_len;
 	
-	
-	
 	batman_if->own_ogm_out->ogm_seqno = htons( batman_if->if_seqno );
 	batman_if->own_ogm_out->bat_size = ogm_len/4;
 	batman_if->own_ogm_out->flags = 0;
 
-	//batman_if->own_ogm_out->ogm_path_lounge = Signal_lounge; done in if_reconfigure_soft
 	batman_if->own_ogm_out->ogm_misc = MIN( s_curr_avg_cpu_load , 255 );
-	
 	
 	prev_list_head = (struct list_head *)&send_list;
 
@@ -1503,6 +1498,7 @@ void schedule_own_ogm( struct batman_if *batman_if ) {
 		
 	}
 	
+
 	prof_stop( PROF_schedule_own_ogm );
 	
 }

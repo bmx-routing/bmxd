@@ -149,7 +149,7 @@ enum ADGSN {
 #define WARNING_PERIOD 20000
 
 #define MAX_PATH_SIZE 300
-#define MAX_ARG_SIZE 50
+#define MAX_ARG_SIZE 200
 
 
 /* DEF_UDPD_SIZE should not be increased before all bmxds' of a mesh support this option!

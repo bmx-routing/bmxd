@@ -298,50 +298,57 @@ struct opt_type {
 
 
 enum opt_cmd {
+	// option handlers are registered, configured, and unregistered using primitives.
+	// for registration and unregistration the primitives OPT_REGISTER and OPT_UNREGISTER are used
+	// for configuration the primitives OPT_PATCH, OPT_ADJUST, OPT_CHECK, OPT_APPLY, OPT_SET_POST, OPT_POST are used
+
+
 	// called once for each option after registration
 	// Returns FAILURE or SUCCESS
 	OPT_REGISTER,
 		
 		
-		OPT_PATCH,
-/* 
-	if applied values need to be adjusted to unified format it must be during OPT_ADJUST
-	this has the following advantages:
-	tracked and applied values are equal
-		-> track knows about already configured values
-		-> can prevent/warn reconfiguration of already configured values
-		-> can reject resetting of non-configured values
-*/
+	OPT_PATCH,
+	// opt values are configured by creating, extending, adjusting and finally testing and applying a patch
+	// option handler usually dont care about the creation of the patch.
+	// they get a complete patch which includes 
+	// the option type-value pair and optional child type-valued pairs.
+		
+		
 	OPT_ADJUST,
-		
-		
-	// to test opt value!
-	// Returns FAILURE or n>=0 of processed bytes-1
-		OPT_CHECK,
-		
-	// to set opt value!
-	// Returns FAILURE or n>=0 of processed bytes-1
-		OPT_APPLY,
-		
-		
-		/*
-	// end of A_N section (after last opt_arg )
-	// Returns FAILURE or SUCCESS
-		OPT_TEST_END,
-		OPT_SET_END,
-		*/
+	// patched type-values pairs can be adjusted to a unified format before being checked or applied 
+	// this has the following advantages:
+	// tracked and applied values are equal (different value notations can be adjusted to a unified format)
+	//	-> track knows about already configured values (even when given with different notation)
+	//	-> can prevent/warn reconfiguration of already configured values
+	//	-> can reject resetting of non-configured values
 	
+		
+	OPT_CHECK,
+	// to test a give patch (type-value pair) !
+	// Returns FAILURE or n>=0 of processed bytes-1
+		
+		
+	OPT_APPLY,
+	// to apply a previously created and adjusted patch
+	// Returns FAILURE or n>=0 of processed bytes-1
+		
+		
+	OPT_SET_POST,
+	// called whenever any option is changed and
 	// called ordered for each option and before next higher-order option   
 	// Returns FAILURE or SUCCESS
-	OPT_SET_POST,
 		
+		
+	OPT_POST,
+	// called whenever any option is changed  and
 	// called ordered for each option after all options were (re-)set
 	// Returns FAILURE or SUCCESS
-		OPT_POST,
 		
+	
+	OPT_UNREGISTER
 	// called once before an option is unregistered
 	// Returns FAILURE or SUCCESS
-		OPT_UNREGISTER
 		
 };
 

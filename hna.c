@@ -466,13 +466,13 @@ static struct opt_type hna_options[]= {
 			0,		"\nHost and Network Announcement (HNA) options:"},
 
 	{ODI,5,0,ARG_UHNA,	 	'a',A_PMN,A_ADM,A_DYI,A_CFA,A_ANY,	0,		0,		0,		0,		opt_hna,
-			ARG_PREFIX_FORM, 	"perform host-network announcement (HNA) for defined ip range"},
+			ARG_PREFIX_FORM,"perform host-network announcement (HNA) for defined ip range"},
 	
 	{ODI,5,ARG_UHNA,ARG_NETW,	'n',A_CS1,A_ADM,A_DYI,A_CFA,A_ANY,	0,		0,		0,		0,		opt_hna,
 			ARG_NETW_FORM, 	"specify network of announcement"},
 	
 	{ODI,5,ARG_UHNA,ARG_MASK,	'm',A_CS1,A_ADM,A_DYI,A_CFA,A_ANY,	0,		0,		0,		0,		opt_hna,
-			ARG_MASK_FORM, 	"specify network of announcement"},
+			ARG_MASK_FORM, 	"specify network prefix of announcement"},
 	
 		
 	{ODI,5,0,ARG_HNAS,		0,  A_PS0,A_USR,A_DYN,A_ARG,A_ANY,	0,		0, 		0,		0, 		opt_show_hnas,
