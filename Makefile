@@ -96,10 +96,15 @@ IPKG_DEPENDS=	"kmod-tun"
 
 SNAPSHOT_DIR=	../bmx-snapshots
 
+
 all:	
 	$(MAKE) $(BINARY_NAME)
-	$(MAKE) -C lib $@
-	
+	$(MAKE) help
+
+libs:	all
+	$(MAKE) -C lib all
+
+
 
 $(BINARY_NAME):	$(OBJS) Makefile
 	$(CC)  $(OBJS) -o $@  $(LDFLAGS) $(EXTRA_LDFLAGS)
@@ -111,12 +116,44 @@ $(BINARY_NAME):	$(OBJS) Makefile
 	$(CC) $(CFLAGS) $(EXTRA_CFLAGS) -c $< -o $@
 
 
+strip:	all
+	strip $(BINARY_NAME) 
+
+strip_libs: all libs
+	$(MAKE) -C lib strip
+
+
+
+
 install:	all
 	mkdir -p $(SBINDIR)
 	install -m 0755 $(BINARY_NAME) $(SBINDIR)
+
+install_libs:
 	$(MAKE) -C lib install
+
+
 	
 clean:
 	rm -f $(BINARY_NAME) *.o posix/*.o linux/*.o
+
+clean_libs:
 	$(MAKE) -C lib clean
+
+
+clean_all: clean clean_libs
+build_all: all libs
+strip_all: strip strip_libs
+install_all: install install_libs
+
+
+help:
+	# make targets:
+	# help					show this help
+	# all					compile  bmxd core only
+	# libs			 		compile  bmx plugins
+	# build_all				compile  bmxd and plugins
+	# strip / strip_libs / strip_all	strip    bmxd / plugins / all
+	# install / install_libs / install_all	install  bmxd / plugins / all
+	# clean / clean_libs / clean_all	clean    bmxd / libs / all
 

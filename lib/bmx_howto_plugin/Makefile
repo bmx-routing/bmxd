@@ -33,3 +33,6 @@ install:	all
 		mkdir -p $(LIBDIR)
 		install -D -m 755 $(PLUGIN_FULLNAME) $(LIBDIR)/$(PLUGIN_FULLNAME); /sbin/ldconfig -n $(LIBDIR); ln -f -s $(LIBDIR)/$(PLUGIN_FULLNAME) $(LIBDIR)/$(PLUGIN_SHORTNAME)
 
+
+strip:		all
+		strip $(PLUGIN_FULLNAME)

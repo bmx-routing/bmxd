@@ -36,6 +36,7 @@ static int32_t howto_var;
 static int32_t opt_howto_do ( uint8_t cmd, uint8_t _save, struct opt_type *opt, struct opt_parent *patch, struct ctrl_node *cn ) {
 	
 	static uint8_t call_counter;
+	struct opt_parent *p;
 	
 	if ( cmd == OPT_REGISTER ) {
 		
@@ -51,21 +52,25 @@ static int32_t opt_howto_do ( uint8_t cmd, uint8_t _save, struct opt_type *opt, 
 		call_counter++;
 		
 		dbgf_cn( cn, DBGL_CHANGES, DBGT_INFO, 
-		        "now called for the %d time: stored: %s", call_counter, patch->p_val );
+		        "now called for the %d time: going to store: %s", 
+		         call_counter, patch->p_val );
+		
+		dbgf( DBGL_CHANGES, DBGT_INFO, "%s - but currently still stored: %s", 
+		      opt_cmd2str[cmd], (p=get_opt_parent_val( opt, 0 )) ? p->p_val : NULL );
 		
 	} else if ( cmd == OPT_SET_POST ) {
 		
-		//this block will only be executed after opt_howto_plugin option is set
+		// this block will always be executed 
+		// after all options with this order were set and
+		// before any option with a higher order is set
 		
-		struct opt_parent *p;
-		char *comment = (p=get_opt_parent_val( opt, 0 )) ? p->p_val : NULL;
-		
-		dbgf( DBGL_ALL, DBGT_INFO, "%s stored: %s", opt_cmd2str[cmd], comment );
+		dbgf( DBGL_CHANGES, DBGT_INFO, "%s - now stored: %s", 
+		      opt_cmd2str[cmd], (p=get_opt_parent_val( opt, 0 )) ? p->p_val : NULL );
 		
 		
 	} else if ( cmd == OPT_POST ) {
 		
-		//this block will only be executed after all options were set
+		//this block will always be executed after all options were set
 		
 		if ( !on_the_fly ) {
 			//due to NOT on_the_fly 
