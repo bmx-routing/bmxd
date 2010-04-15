@@ -52,9 +52,9 @@ void list_add( struct list_head *new, struct list_head_first *head );
 void list_add_tail( struct list_head *new, struct list_head_first *head );
 void list_add_before( struct list_head *prev_node, struct list_head *next_node, struct list_head *new_node );
 void list_del( struct list_head *prev_entry, struct list_head *entry, struct list_head_first *head );
-int list_empty( struct list_head_first *head );
+//int list_empty( struct list_head_first *head );
 
-
+#define list_empty(lst)  ((lst)->next == (struct list_head *)(lst))
 
 #define INIT_LIST_HEAD(ptr) do { \
 	(ptr)->next = (ptr); \

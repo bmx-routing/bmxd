@@ -29,12 +29,14 @@
  * This is only for internal list manipulation where we know
  * the next entries already!
  */
+/*
 void __list_add( struct list_head *new, struct list_head *prev, struct list_head *next ) {
 
 	new->next = next;
 	prev->next = new;
 
 }
+*/
 
 /**
  * list_add - add a new entry
@@ -46,7 +48,10 @@ void __list_add( struct list_head *new, struct list_head *prev, struct list_head
  */
 void list_add( struct list_head *new, struct list_head_first *head ) {
 
-	__list_add( new, (struct list_head *)head, head->next );
+//	__list_add( new, (struct list_head *)head, head->next );
+	new->next = head->next;
+	((struct list_head *)head)->next = new;
+
 
 	if ( head->prev == (struct list_head *)head )
 		head->prev = new;
@@ -63,7 +68,9 @@ void list_add( struct list_head *new, struct list_head_first *head ) {
  */
 void list_add_tail( struct list_head *new, struct list_head_first *head ) {
 
-	__list_add( new, head->prev, (struct list_head *)head );
+//	__list_add( new, head->prev, (struct list_head *)head );
+        new->next = (struct list_head *)head;
+        head->prev->next = new;
 
 	head->prev = new;
 
@@ -85,11 +92,13 @@ void list_add_before( struct list_head *prev_node, struct list_head *next_node, 
  * This is only for internal list manipulation where we know
  * the next entries already!
  */
+/*
 void __list_del( struct list_head *prev, struct list_head *next ) {
 
 	prev->next = next;
 
 }
+*/
 
 /**
  * list_del - deletes entry from list.
@@ -101,7 +110,9 @@ void list_del( struct list_head *prev_entry, struct list_head *entry, struct lis
 	if ( head->prev == entry )
 		head->prev = prev_entry;
 
-	__list_del( prev_entry, entry->next );
+//	__list_del( prev_entry, entry->next );
+	prev_entry->next = entry->next;
+
 
 	entry->next = (void *) 0;
 
@@ -113,9 +124,10 @@ void list_del( struct list_head *prev_entry, struct list_head *entry, struct lis
  * list_empty - tests whether a list is empty
  * @head: the list to test.
  */
+/*
 int list_empty( struct list_head_first *head ) {
 
 	return head->next == (struct list_head *)head;
 
 }
-
+*/

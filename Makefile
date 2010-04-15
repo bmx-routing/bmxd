@@ -20,7 +20,10 @@ REVISION =	$(shell if [ -d .svn ]; then which svn > /dev/null && which sed > /de
 REVISION_VERSION =	\"\ rv$(REVISION)\"
 
 
-CFLAGS +=	 -pedantic -Wall -W -Wno-unused-parameter -O1 -g3 -std=gnu99 -I./ -DREVISION_VERSION=$(REVISION_VERSION) -DDEBUG_MALLOC -DMEMORY_USAGE 
+CFLAGS +=	 -pedantic -Wall -W -Wno-unused-parameter -Os -g3 -std=gnu99 -I./ -DREVISION_VERSION=$(REVISION_VERSION) -DDEBUG_MALLOC -DMEMORY_USAGE
+
+#EXTRA_CFLAGS += -DTESTDEBUG
+#EXTRA_CFLAGS += -DNODEBUGALL
 
 # Recommended defines and approximate binary sizes with gcc-x86
 # -static
@@ -28,9 +31,6 @@ CFLAGS +=	 -pedantic -Wall -W -Wno-unused-parameter -O1 -g3 -std=gnu99 -I./ -DRE
 # -pg  # "-pg" with openWrt toolchain results in "gcrt1.o: No such file" ?!
 #
 
-# compared to -O1 stripped:
-# -Os								- ~29k
-#	
 # -DDEBUG_MALLOC  						+ ~0k
 # -DMEMORY_USAGE 						+ ~1k
 # -DPROFILE_DATA	(some realtime profiling)		+ ~3k
@@ -38,6 +38,7 @@ CFLAGS +=	 -pedantic -Wall -W -Wno-unused-parameter -O1 -g3 -std=gnu99 -I./ -DRE
 # optional defines (you may disable these features if you dont need it):
 # -DNOTRAILER							- ~3K
 # -DNODEBUGALL							- ~13k
+# -DLESS_OPTIONS                                                - ~7K
 #
 # -DNOTUNNEL  		(only affects this node)		- ~23k
 # -DNOSRV  		(only affects this node)		- ~3k
@@ -72,8 +73,8 @@ LOG_BRANCH= trunk/batman-experimental
 
 SRC_FILES= "\(\.c\)\|\(\.h\)\|\(Makefile\)\|\(INSTALL\)\|\(LIESMICH\)\|\(README\)\|\(THANKS\)\|\(./posix\)\|\(./linux\)\|\(./man\)\|\(./doc\)"
 
-SRC_C= batman.c originator.c hna.c schedule.c plugin.c list-batman.c allocate.c hash.c profile.c control.c metrics.c $(OS_C)
-SRC_H= batman.h originator.h hna.h schedule.h plugin.h list-batman.h allocate.h hash.h profile.h control.h metrics.h vis-types.h os.h
+SRC_C= batman.c originator.c hna.c schedule.c plugin.c list-batman.c allocate.c avl.c profile.c control.c metrics.c $(OS_C)
+SRC_H= batman.h originator.h hna.h schedule.h plugin.h list-batman.h allocate.h avl.h profile.h control.h metrics.h vis-types.h os.h
 OBJS=  $(SRC_C:.c=.o)
 
 #PACKAGE_NAME=	batmand-exp
@@ -99,7 +100,7 @@ SNAPSHOT_DIR=	../bmx-snapshots
 
 all:	
 	$(MAKE) $(BINARY_NAME)
-	$(MAKE) help
+	# further make targets: help, libs, build_all, strip[_libs|_all], install[_libs|_all], clean[_libs|_all]
 
 libs:	all
 	$(MAKE) -C lib all
@@ -148,7 +149,7 @@ install_all: install install_libs
 
 
 help:
-	# make targets:
+	# further make targets:
 	# help					show this help
 	# all					compile  bmxd core only
 	# libs			 		compile  bmx plugins

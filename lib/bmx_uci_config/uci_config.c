@@ -563,9 +563,6 @@ static int bmx_load_config ( uint8_t cmd, struct opt_type *opt, struct ctrl_node
 				return FAILURE;
 			}
 			
-			// remove all (re)loaded opts from the cached list. They dont have to be resetted later on
-			if ( (p_tmp=get_opt_parent_ref(&tmp_conf_opt, config_sect_val)) || (p_tmp=get_opt_parent_val(&tmp_conf_opt, config_sect_val)) )
-				del_opt_parent( &tmp_conf_opt, p_tmp );
 			
 			list_for_each( pos, &opt->d.childs_type_list ) {
 				
@@ -621,6 +618,12 @@ static int bmx_load_config ( uint8_t cmd, struct opt_type *opt, struct ctrl_node
 				     del_opt_parent( &Patch_opt, patch );
 				     return FAILURE;
 			     }
+
+			// remove all (re)loaded opts from the cached list. They dont have to be resetted later on
+                        if ((p_tmp = get_opt_parent_ref(&tmp_conf_opt, config_sect_val)) ||
+                                (p_tmp = get_opt_parent_val(&tmp_conf_opt, patch->p_val)))
+                                del_opt_parent(&tmp_conf_opt, p_tmp);
+
 			
 			del_opt_parent( &Patch_opt, patch );
 		}
@@ -699,7 +702,7 @@ static int32_t opt_conf_file ( uint8_t cmd, uint8_t _save, struct opt_type *opt,
 		if ( wordlen(f)+1 +strlen(UCI_CONFDIR)+1 >= MAX_PATH_SIZE )
 			return FAILURE;
 		
-		if ( f[0] == '0' ) {
+		if ( wordsEqual( f, ARG_NO_CONFIG_FILE ) ) {
 			
 			if ( cmd == OPT_APPLY )
 				bmx_conf_name = NULL;
@@ -829,9 +832,9 @@ static int32_t opt_show_conf ( uint8_t cmd, uint8_t _save, struct opt_type *opt,
 		dbg_printf( cn, "config '%s' '%s'\n", DEF_SECT_TYPE, DEF_SECT_NAME );
 		
 		show_conf_general = YES;
-		func_for_each_opt( cn, NULL, NULL, "show_conf()", show_conf );
+		func_for_each_opt( cn, NULL, "show_conf()", show_conf );
 		show_conf_general = NO;
-		func_for_each_opt( cn, NULL, NULL, "show_conf()", show_conf );
+		func_for_each_opt( cn, NULL, "show_conf()", show_conf );
 		
 		dbg_printf( cn, "\n" );
 		
@@ -848,7 +851,8 @@ static struct opt_type config_options[]= {
 		
 		
 	{ODI,1,0,ARG_CONFIG_FILE,	'f',A_PS1,A_ADM,A_INI,A_ARG,A_ANY,	0,		0, 		0,		0, 		opt_conf_file,
-			ARG_FILE_FORM,	"use non-default config file. If defined, this must be the first given option!" },
+			ARG_FILE_FORM,	"use non-default config file. If defined, this must be the first given option.\n"
+                        "	use --" ARG_CONFIG_FILE "=" ARG_NO_CONFIG_FILE " or -f" ARG_NO_CONFIG_FILE " to disable"},
 	
 	{ODI,1,0,ARG_RELOAD_CONFIG,	0,  A_PS0,A_ADM,A_DYN,A_ARG,A_ANY,	0,		0, 		0,		0, 		opt_conf_reload,
 			0,		"dynamically reload config file"},

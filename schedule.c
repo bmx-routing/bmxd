@@ -35,11 +35,18 @@
 #include "plugin.h"
 #include "schedule.h"
 
+int32_t my_ogi;   /* orginator message interval in miliseconds */
+int32_t ogi_pwrsave;
+
 static int32_t pref_udpd_size = DEF_UDPD_SIZE;
 
 //static int32_t aggr_p_ogi;
 static int32_t aggr_interval;
 
+#ifndef NOPARANOIA
+#define DEF_SIM_PARA NO
+static int32_t sim_paranoia = DEF_SIM_PARA;
+#endif
 
 
 static SIMPEL_LIST( send_list );
@@ -199,7 +206,9 @@ void remove_task( void (* task) (void *), void *data ) {
 uint32_t whats_next( void ) {
 	
 	struct list_head *list_pos, *tmp_pos, *prev_pos = (struct list_head*)&task_list;
-		
+
+        paranoia( -500175, sim_paranoia );
+
 	list_for_each_safe( list_pos, tmp_pos, &task_list ) {
 			
 		struct task_node *tn = list_entry( list_pos, struct task_node, list );
@@ -232,63 +241,51 @@ static void send_aggregated_ogms( void ) {
 	prof_start( PROF_send_aggregated_ogms );
 
 	struct list_head *if_pos;
-
 	uint8_t iftype;
 
 	/* send all the aggregated packets (which fit into max packet size) */
 	
 	/* broadcast via lan interfaces first */
 	for ( iftype = VAL_DEV_LL_LAN; iftype <= VAL_DEV_LL_WLAN; iftype++ ) {
-		
-		list_for_each(if_pos, &if_list) {
-		
-			struct batman_if *bif = list_entry(if_pos, struct batman_if, list);
-		
-			dbgf_all( DBGT_INFO, "dev: %s, linklayer %d iftype %d len %d ...",
-			         bif->dev, bif->if_linklayer, iftype, bif->aggregation_len);
 
-			if ( bif->if_linklayer == iftype  &&  
-			     bif->aggregation_len > (int32_t)sizeof( struct bat_header ) ) 
-			{
-				
-				((struct bat_header*)&(bif->aggregation_out))->version = COMPAT_VERSION;
-				
-				((struct bat_header*)&(bif->aggregation_out))->link_flags = Link_flags;
-				
-				
-				((struct bat_header*)&(bif->aggregation_out))->size =
-					(bif->aggregation_len)/4;
-				
-				
-				if ( bif->aggregation_len > MAX_UDPD_SIZE  ||  (bif->aggregation_len)%4 != 0) {
-					
-					dbg( DBGL_SYS, DBGT_ERR, "trying to send strange packet length %d oktets",
-					     bif->aggregation_len );
-					
-					cleanup_all( -500016 );
-				}
-				
-				if (bif->if_active ) {
-					
-					if ( send_udp_packet( bif->aggregation_out, bif->aggregation_len,
-					                      &bif->if_netwbrc_addr, bif->if_unicast_sock ) < 0 ) 
-					{
-						
-						dbg_mute( 60, DBGL_SYS, DBGT_ERR, 
-						          "send_aggregated_ogms() cant send via dev %s %s fd %d",
-						          bif->dev, bif->if_ip_str, bif->if_unicast_sock);
-					
-					}
-				}
-				
-				bif->aggregation_len = sizeof( struct bat_header );
-				
-			}
-		
-		}
+                list_for_each(if_pos, &if_list) {
 
-	}
-	
+                        struct batman_if *bif = list_entry(if_pos, struct batman_if, list);
+
+                        dbgf_all(DBGT_INFO, "dev: %s, linklayer %d iftype %d len %d min_len %d...",
+                                bif->dev, bif->if_linklayer, iftype, bif->aggregation_len,
+                                (int32_t)sizeof ( struct bat_header));
+
+                        if (bif->if_linklayer == iftype &&
+                                bif->aggregation_len > (int32_t)sizeof ( struct bat_header)) {
+
+                                struct bat_header *bat_hdr = (struct bat_header *) bif->aggregation_out;
+                                bat_hdr->version = COMPAT_VERSION;
+                                bat_hdr->link_flags = 0;
+                                bat_hdr->size = (bif->aggregation_len) / 4;
+
+                                if (bif->aggregation_len > MAX_UDPD_SIZE || (bif->aggregation_len) % 4 != 0) {
+
+                                        dbg(DBGL_SYS, DBGT_ERR, "trying to send strange packet length %d oktets",
+                                                bif->aggregation_len);
+
+                                        cleanup_all(-500016);
+                                }
+
+                                if (send_udp_packet(bif->aggregation_out, bif->aggregation_len,
+                                        &bif->if_netwbrc_addr, bif->if_unicast_sock) < 0) {
+                                        dbg_mute(60, DBGL_SYS, DBGT_ERR,
+                                                "send_aggregated_ogms() cant send via dev %s %s fd %d",
+                                                bif->dev, bif->if_ip_str, bif->if_unicast_sock);
+                                }
+
+                                bif->aggregation_len = sizeof ( struct bat_header);
+
+                        }
+ 
+                }
+        }
+
 	prof_stop( PROF_send_aggregated_ogms );
 	return;
 }
@@ -303,7 +300,7 @@ void debug_send_list( struct ctrl_node *cn ) {
 	list_for_each( list_pos, &send_list ) {
 		
 		struct send_node *send_node = list_entry( list_pos, struct send_node, list );
-		struct bat_packet_ogm *ogm = ((struct bat_packet_ogm *)(send_node->ogm_buff));
+		struct bat_packet_ogm *ogm = send_node->ogm;
 		
 		dbg_printf( cn, "%-15s   (seqno %5d  ttl %3d)  at %u \n", 
 		         ipStr( ogm->orig ), ntohs(ogm->ogm_seqno), ogm->ogm_ttl, send_node->send_time );
@@ -368,11 +365,6 @@ static void recv_ifevent_netlink_sk( void ) {
 
 
 
-
-
-
-
-
 void remove_outstanding_ogms( struct batman_if *bif ) {
 	struct send_node *send_node;
 	struct list_head *send_pos, *send_temp, *send_prev;
@@ -389,19 +381,16 @@ void remove_outstanding_ogms( struct batman_if *bif ) {
 		if ( send_node->if_outgoing  ==  bif ) {
 			
 			list_del( send_prev, send_pos, &send_list );
-			
-			if ( !send_node->own_if )
-				debugFree( send_node, 1502 );
+                        debugFree(send_node, 1502);
 			
 		} else {
-			
-			send_prev = send_pos;
+                        send_prev = send_pos;
 			
 		}
 	}
 }
 	
-static void send_outstanding_ogms( void *unused ) {
+static void aggregate_outstanding_ogms( void *unused ) {
 
 	prof_start( PROF_send_outstanding_ogms );
 	struct send_node *send_node;
@@ -414,23 +403,9 @@ static void send_outstanding_ogms( void *unused ) {
 	int dbg_if_out = 0;
 #define	MAX_DBG_IF_SIZE 200
 	static char dbg_if_str[ MAX_DBG_IF_SIZE ];
-	
-	//check that aggregation interval is not getting to big
-	//uint16_t aggr_interval = (my_ogi/aggr_p_ogi > 3*MIN_OGI) ? 3*MIN_OGI :  (my_ogi/aggr_p_ogi);
 
-	register_task( (aggr_interval + rand_num( aggr_interval/2 )) - (aggr_interval/4), send_outstanding_ogms, NULL );
-	
-	if ( list_empty( &send_list )  ||  
-	     GREAT_U32( (list_entry( (&send_list)->next, struct send_node, list ))->send_time, batman_time ) ) {
-		
-		prof_stop( PROF_send_outstanding_ogms );
-		return;
-	}
-	
-	dbgf_all( DBGT_INFO, 
-	         "now %u, aggreg_interval %d, send_list holds packets to send",
-	         batman_time, aggr_interval );
-
+        // ensuring that aggreg_interval is really an upper boundary
+	register_task( aggr_interval - 1 - rand_num( aggr_interval/10 ), aggregate_outstanding_ogms, NULL );
 	
 	prev_list_head = (struct list_head *)&send_list;
 	
@@ -476,11 +451,11 @@ static void send_outstanding_ogms( void *unused ) {
 			// keep care to not aggregate more packets than would fit into max packet size
 			aggregated_size += send_node->ogm_buff_len;
 
-			directlink =     (((struct bat_packet_ogm *)send_node->ogm_buff)->flags & DIRECTLINK_FLAG );
-			unidirectional = (((struct bat_packet_ogm *)send_node->ogm_buff)->flags & UNIDIRECTIONAL_FLAG );
-			cloned =         (((struct bat_packet_ogm *)send_node->ogm_buff)->flags & CLONED_FLAG );
+			directlink =     (send_node->ogm->flags & DIRECTLINK_FLAG );
+			unidirectional = (send_node->ogm->flags & UNIDIRECTIONAL_FLAG );
+			cloned =         (send_node->ogm->flags & CLONED_FLAG );
 
-			ttl = ((struct bat_packet_ogm *)send_node->ogm_buff)->ogm_ttl;
+			ttl = send_node->ogm->ogm_ttl;
 			if_singlehomed = ( (send_node->own_if && send_node->if_outgoing->if_singlehomed) ? 1 : 0 );
 			
 			
@@ -508,7 +483,7 @@ static void send_outstanding_ogms( void *unused ) {
 				//TODO: send only pure bat_packet_ogm, no extension headers.
 				memcpy( send_node->if_outgoing->aggregation_out + 
 					send_node->if_outgoing->aggregation_len,
-						send_node->ogm_buff, send_node->ogm_buff_len );
+						send_node->ogm, send_node->ogm_buff_len );
 
 				send_node->if_outgoing->aggregation_len += send_node->ogm_buff_len;
 			
@@ -518,7 +493,9 @@ static void send_outstanding_ogms( void *unused ) {
 	
 				list_for_each(if_pos, &if_list) {
 
-					bif = list_entry(if_pos, struct batman_if, list);
+					struct bat_packet_ogm *ogm;
+
+                                        bif = list_entry(if_pos, struct batman_if, list);
 
 					if ( !bif->if_active )
 						continue;
@@ -526,27 +503,34 @@ static void send_outstanding_ogms( void *unused ) {
 					if ( ( send_node->send_bucket >= bif->if_send_clones ) ||
 					     ( if_singlehomed && send_node->if_outgoing != bif ) )
 						continue;
-					
+
+                                        if (
+                                                // power-save mode enabled:
+                                                ogi_pwrsave > my_ogi &&
+                                                // we alone:
+                                                GREAT_U32(batman_time, bif->if_last_link_activity + COMMON_OBSERVATION_WINDOW) &&
+                                                (// not yet time for a neighbor-discovery hardbeat?:
+                                                send_node->own_if == 0 ||
+                                                send_node->if_outgoing != bif ||
+                                                LSEQ_U32(batman_time, bif->if_next_pwrsave_hardbeat)
+                                                ))
+                                                continue;
+
+
 					if ( (send_node->send_bucket + 100) < bif->if_send_clones )
 						send_node_done = NO;
 					
+                                        ogm = (struct bat_packet_ogm*) (bif->aggregation_out + bif->aggregation_len);
 					
-					memcpy( (bif->aggregation_out + bif->aggregation_len),
-						send_node->ogm_buff, send_node->ogm_buff_len );
-					
+                                        memcpy( ogm, send_node->ogm, send_node->ogm_buff_len );
 					
 					if ( send_node->iteration > bif->if_ant_diversity )
-						((struct bat_packet_ogm *)
-						 (bif->aggregation_out + bif->aggregation_len))->flags |= CLONED_FLAG;
-					
-					
+						ogm->flags |= CLONED_FLAG;
+										
 					if ( ( directlink ) && ( send_node->if_outgoing == bif ) )
-						((struct bat_packet_ogm *)
-						 (bif->aggregation_out + bif->aggregation_len))->flags |= DIRECTLINK_FLAG; 
-					
+						ogm->flags |= DIRECTLINK_FLAG;
 					else
-						((struct bat_packet_ogm *)
-						 (bif->aggregation_out + bif->aggregation_len))->flags &= ~DIRECTLINK_FLAG;
+						ogm->flags &= ~DIRECTLINK_FLAG;
 					
 					
 					bif->aggregation_len += send_node->ogm_buff_len;
@@ -568,8 +552,8 @@ static void send_outstanding_ogms( void *unused ) {
 			dbgf_all( DBGT_INFO, 
 			         "OG %-16s, seqno %5d, TTL %2d, IDF %d, UDF %d, CLF %d "
 			         "iter %d len %3d max agg_size %3d IFs %s", 
-			         ipStr( ((struct bat_packet_ogm *)send_node->ogm_buff)->orig ), 
-			         ntohs( ((struct bat_packet_ogm *)send_node->ogm_buff)->ogm_seqno ), 
+			         ipStr( send_node->ogm->orig ), 
+			         ntohs( send_node->ogm->ogm_seqno ), 
 			         ttl, directlink, unidirectional, cloned, send_node->iteration,
 			         send_node->ogm_buff_len, aggregated_size, dbg_if_str );
 				
@@ -582,21 +566,14 @@ static void send_outstanding_ogms( void *unused ) {
 		// trigger next seqno now where the first one of the current seqno has been send
 		if (  send_node->own_if  &&  send_node->iteration == 1  ) {
 			send_node->if_outgoing->if_seqno++;
+                        send_node->if_outgoing->send_own = 1;
 		}
 		
 		// remove all the finished packets from send_list
 		if ( send_node_done ) {
 	
 			list_del( prev_list_head, send_pos, &send_list );
-		
-			if ( !send_node->own_if ) {
-				
-				debugFree( send_node, 1502 );
-				
-			} else {
-				// trigger the scheduling of the next own OGMs at the end of this function
-				send_node->if_outgoing->send_own = 1;
-			}
+                        debugFree(send_node, 1502);
 		
 		} else {
 		
@@ -618,20 +595,31 @@ static void send_outstanding_ogms( void *unused ) {
 	list_for_each(if_pos, &if_list) {
 			
 		bif = list_entry(if_pos, struct batman_if, list);
-				
-		// if own OGMs have been send during this call, schedule next one now
-		if ( bif->send_own ) 
-			schedule_own_ogm( bif );
 
-		bif->send_own = 0;
-		
-		
 		if ( bif->aggregation_len != sizeof( struct bat_header ) ) {
 			dbgf( DBGL_SYS, DBGT_ERR, 
 			     "finished with dev %s and packet_out_len %d > %d",
-			     bif->dev, bif->aggregation_len, sizeof( struct bat_header ) );
+			     bif->dev, bif->aggregation_len, (int)sizeof( struct bat_header ) );
 		}
-		
+
+
+                // if own OGMs need to be send, schedule next one now
+		if ( bif->send_own ) {
+
+                        schedule_own_ogm( bif );
+
+                        if (GREAT_U32(batman_time, bif->if_next_pwrsave_hardbeat))
+                                bif->if_next_pwrsave_hardbeat = batman_time + ((uint32_t) (ogi_pwrsave));
+
+                        bif->send_own = 0;
+                }
+
+
+                // this timestamp may become invalid after U32 wrap-around
+                if (GREAT_U32(batman_time, bif->if_last_link_activity + (2 * COMMON_OBSERVATION_WINDOW)))
+                        bif->if_last_link_activity = batman_time - COMMON_OBSERVATION_WINDOW;
+
+
 	}
 
 	prof_stop( PROF_send_outstanding_ogms );
@@ -644,7 +632,7 @@ void schedule_rcvd_ogm( uint16_t oCtx, uint16_t neigh_id, struct msg_buff *mb ) 
 
 	prof_start( PROF_schedule_rcvd_ogm );
 	
-	struct send_node *send_node_new, *send_packet_tmp = NULL;
+	struct send_node *send_packet_tmp = NULL;
 	struct list_head *list_pos, *prev_list_head;
 	
 	uint8_t with_unidirectional_flag = 0;
@@ -718,13 +706,14 @@ void schedule_rcvd_ogm( uint16_t oCtx, uint16_t neigh_id, struct msg_buff *mb ) 
 	for( i=0; i<=EXT_TYPE_MAX; i++ )
 		snd_ext_total_len += mb->snd_ext_len[i];
 
-	send_node_new = debugMalloc( sizeof(struct send_node) + sizeof(struct bat_packet_ogm) + snd_ext_total_len, 504 );
-	memset( send_node_new, 0, sizeof( struct send_node ) );
-	INIT_LIST_HEAD( &send_node_new->list );
+	struct send_node *sn = debugMalloc( sizeof(struct send_node) + sizeof(struct bat_packet_ogm) + snd_ext_total_len, 504 );
+	memset( sn, 0, sizeof( struct send_node ) );
+	INIT_LIST_HEAD( &sn->list );
 
-	send_node_new->ogm_buff_len = sizeof(struct bat_packet_ogm) + snd_ext_total_len;
+	sn->ogm_buff_len = sizeof(struct bat_packet_ogm) + snd_ext_total_len;
+        sn->ogm = (struct bat_packet_ogm*)sn->_attached_ogm_buff;
 
-	memcpy( send_node_new->ogm_buff, mb->bp.ogm, sizeof(struct bat_packet_ogm) );
+	memcpy( sn->ogm, mb->bp.ogm, sizeof(struct bat_packet_ogm) );
 
 	/* primary-interface-extension messages do not need to be rebroadcastes */
 	/* other extension messages only if not unidirectional and ttl > 1 */
@@ -735,7 +724,7 @@ void schedule_rcvd_ogm( uint16_t oCtx, uint16_t neigh_id, struct msg_buff *mb ) 
 		
 		if ( mb->snd_ext_len[i] ) {
 			
-			memcpy( &(send_node_new->ogm_buff[p]), 
+			memcpy( &(((unsigned char*)(sn->ogm))[p]),
 			        (unsigned char *)(mb->snd_ext_array[i]), 
 			        mb->snd_ext_len[i] );
 			
@@ -743,35 +732,34 @@ void schedule_rcvd_ogm( uint16_t oCtx, uint16_t neigh_id, struct msg_buff *mb ) 
 		}
 	}
 	
-	if ( p != send_node_new->ogm_buff_len ) {
-		dbgf( DBGL_SYS, DBGT_ERR, "incorrect msg lengths %d != %d", p, send_node_new->ogm_buff_len );
+	if ( p != sn->ogm_buff_len ) {
+		dbgf( DBGL_SYS, DBGT_ERR, "incorrect msg lengths %d != %d", p, sn->ogm_buff_len );
 	}
 	
-	((struct bat_packet_ogm *)send_node_new->ogm_buff)->ogm_ttl--;
-	((struct bat_packet_ogm *)send_node_new->ogm_buff)->prev_hop_id = neigh_id;
-	((struct bat_packet_ogm *)send_node_new->ogm_buff)->bat_size = (send_node_new->ogm_buff_len)>>2;
+	sn->ogm->ogm_ttl--;
+	sn->ogm->prev_hop_id = neigh_id;
+	sn->ogm->bat_size = (sn->ogm_buff_len)>>2;
 
-	send_node_new->send_time = batman_time;
-	send_node_new->own_if = 0;
+	sn->send_time = batman_time;
+	sn->own_if = 0;
 
-	send_node_new->if_outgoing = mb->iif;
+	sn->if_outgoing = mb->iif;
 
-	((struct bat_packet_ogm *)send_node_new->ogm_buff)->flags = 0x00;
+	sn->ogm->flags = 0x00;
 	
 	if ( with_unidirectional_flag )
-		((struct bat_packet_ogm *)send_node_new->ogm_buff)->flags |= UNIDIRECTIONAL_FLAG;
+		sn->ogm->flags |= UNIDIRECTIONAL_FLAG;
 
 	if ( directlink )
-		((struct bat_packet_ogm *)send_node_new->ogm_buff)->flags |= DIRECTLINK_FLAG;
+		sn->ogm->flags |= DIRECTLINK_FLAG;
 
 	
 	if ( oCtx & HAS_CLONED_FLAG )
-		((struct bat_packet_ogm *)send_node_new->ogm_buff)->flags |= CLONED_FLAG;
+		sn->ogm->flags |= CLONED_FLAG;
 
 	
 	/* change sequence number to network order */
-	((struct bat_packet_ogm *)send_node_new->ogm_buff)->ogm_seqno = 
-		htons( ((struct bat_packet_ogm *)send_node_new->ogm_buff)->ogm_seqno );
+        sn->ogm->ogm_seqno = htons(sn->ogm->ogm_seqno);
 	
 
 	prev_list_head = (struct list_head *)&send_list;
@@ -780,9 +768,9 @@ void schedule_rcvd_ogm( uint16_t oCtx, uint16_t neigh_id, struct msg_buff *mb ) 
 
 		send_packet_tmp = list_entry( list_pos, struct send_node, list );
 
-		if ( GREAT_U32(send_packet_tmp->send_time, send_node_new->send_time) ) {
+		if ( GREAT_U32(send_packet_tmp->send_time, sn->send_time) ) {
 
-			list_add_before( prev_list_head, list_pos, &send_node_new->list );
+			list_add_before( prev_list_head, list_pos, &sn->list );
 			break;
 
 		}
@@ -791,8 +779,8 @@ void schedule_rcvd_ogm( uint16_t oCtx, uint16_t neigh_id, struct msg_buff *mb ) 
 
 	}
 
-	if ( ( send_packet_tmp == NULL ) || ( LSEQ_U32(send_packet_tmp->send_time, send_node_new->send_time) ) )
-		list_add_tail( &send_node_new->list, &send_list );
+	if ( ( send_packet_tmp == NULL ) || ( LSEQ_U32(send_packet_tmp->send_time, sn->send_time) ) )
+		list_add_tail( &sn->list, &send_list );
 
 		
 	prof_stop( PROF_schedule_rcvd_ogm );
@@ -887,9 +875,10 @@ static void strip_packet(  struct msg_buff *mb, unsigned char *pos, int32_t udp_
 				ext_p = 0;
 				ext_type++;
 			}
-		
 
-			if ( (int32_t)(sizeof(struct bat_packet_ogm) + done_p)  !=  ((((struct bat_packet_common *)pos)->bat_size)<<2) ) {
+
+                        if ((int32_t) (sizeof (struct bat_packet_ogm) + done_p) !=
+                                ((((struct bat_packet_common *) pos)->bat_size) << 2)) {
 
 				udp_len = udp_len - ((((struct bat_packet_common *)pos)->bat_size)<<2);
 				pos = pos + ((((struct bat_packet_common *)pos)->bat_size)<<2);
@@ -898,7 +887,7 @@ static void strip_packet(  struct msg_buff *mb, unsigned char *pos, int32_t udp_
 				     "Drop packet! Rcvd corrupted packet size via NB %s: "
 				     "processed bytes: %d , indicated bytes %d, flags. %X, remaining bytes %d",
 				     mb->neigh_str,
-				     (sizeof(struct bat_packet_ogm) + done_p), 
+				     (int)(sizeof(struct bat_packet_ogm) + done_p),
 				     ((((struct bat_packet_common *)pos)->bat_size)<<2), 
 				     ((struct bat_packet_ogm *)pos)->flags, udp_len );
 
@@ -983,35 +972,32 @@ static void process_packet( struct msg_buff *mb, unsigned char *pos, uint32_t rc
 		((((struct bat_header *)pos)->size)<<2) > mb->total_length )
 	{
 	
-		if ( mb->total_length >= (int32_t)(sizeof(struct bat_header) /*+ sizeof(struct bat_packet_common) */) )
+		if ( mb->total_length >= (int32_t)(sizeof(struct bat_header) /*+ sizeof(struct bat_packet_common) */) ) {
 			dbg_mute( 60, DBGL_SYS, DBGT_WARN, 
 			     "Drop packet: rcvd incompatible batman packet via NB %s "
-			     "(version? %i, link_flags? %X, reserved? %X, size? %i), "
+			     "(version? %i, reserved? %X, size? %i), "
 			     "rcvd udp_len %d  My version is %d",
 			     mb->neigh_str,
 			     ((struct bat_header *)pos)->version,
-			     ((struct bat_header *)pos)->link_flags,
 			     ((struct bat_header *)pos)->reserved,
 			     ((struct bat_header *)pos)->size,
 			     mb->total_length, COMPAT_VERSION );
-			
-		else
+
+                } else {
 			dbg_mute( 40, DBGL_SYS, DBGT_ERR, "Rcvd to small packet via NB %s, rcvd udp_len %i",
 			     mb->neigh_str, mb->total_length );
-		
+                }
+
 		prof_stop( PROF_process_packet );
 		return;
 	
 	}
-	
-	
-	mb->link_flags = ((struct bat_header *)pos)->link_flags;
-	mb->neigh = rcvd_neighbor;
 
-	dbgf_all( DBGT_INFO, "version? %i, link_flags? %X, "
+        mb->neigh = rcvd_neighbor;
+
+	dbgf_all( DBGT_INFO, "version? %i, "
 	         "reserved? %X, size? %i, rcvd udp_len %d via NB %s %s %s", 
 	         ((struct bat_header *)pos)->version, 
-	         ((struct bat_header *)pos)->link_flags,
 	         ((struct bat_header *)pos)->reserved,
 	         ((struct bat_header *)pos)->size,
 	         mb->total_length, mb->neigh_str, mb->iif->dev, mb->unicast?"UNICAST":"BRC" );
@@ -1072,6 +1058,8 @@ static void process_packet( struct msg_buff *mb, unsigned char *pos, uint32_t rc
 		return;
 
 	}
+
+        mb->iif->if_last_link_activity = batman_time;
 
 	strip_packet( mb, pos, udp_len );
 	
@@ -1390,56 +1378,82 @@ wait4Event_end:
 
 
 
-void schedule_own_ogm( struct batman_if *batman_if ) {
+void schedule_own_ogm( struct batman_if *bif ) {
 
 	prof_start( PROF_schedule_own_ogm );
 
-	struct send_node *send_node_new, *send_packet_tmp = NULL;
+	struct send_node *send_packet_tmp = NULL;
 	struct list_head *list_pos, *prev_list_head;
-	
-	send_node_new = batman_if->own_send_node;
-	memset( send_node_new, 0, sizeof( struct send_node) );
 
-	INIT_LIST_HEAD( &send_node_new->list );
+        int sn_size = sizeof (struct send_node) +
+                ((bif == primary_if) ? MAX_UDPD_SIZE + 1 : sizeof (struct bat_packet_ogm) + sizeof (struct ext_packet));
 
-	send_node_new->send_time = batman_if->if_seqno_schedule + my_ogi;
+        struct send_node *sn = (struct send_node*) debugMalloc(sn_size, 209);
+
+        memset(sn, 0, sizeof (struct send_node) + sizeof (struct bat_packet_ogm) );
+
+        INIT_LIST_HEAD( &sn->list );
+
+        sn->ogm = (struct bat_packet_ogm*) sn->_attached_ogm_buff;
+
+        sn->ogm->ext_msg = NO;
+        sn->ogm->bat_type = BAT_TYPE_OGM;
+        sn->ogm->ogx_flag = NO;
+        sn->ogm->ogm_ttl = bif->if_ttl;
+	sn->ogm->ogm_pws = my_pws;
+        sn->ogm->orig = bif->if_addr;
+	//sn->ogm->ogm_path_lounge = Signal_lounge;
+
+
+
+	sn->send_time = bif->if_seqno_schedule + my_ogi;
 	
-	if ( LESS_U32( send_node_new->send_time, batman_time ) || 
-	     GREAT_U32( send_node_new->send_time, batman_time + my_ogi ) ) 
+	if ( LESS_U32( sn->send_time, batman_time ) ||
+	     GREAT_U32( sn->send_time, batman_time + my_ogi ) )
 	{
 		dbg_mute( 50, DBGL_SYS, DBGT_WARN, 
 		          "strange own OGM schedule, rescheduling IF %10s SQN %d from %d to %d. "
-		          "Maybe --%s too small, --%s to big or too much --%s", 
-		          batman_if->dev, batman_if->if_seqno, send_node_new->send_time, batman_time + my_ogi,
-		          ARG_OGI_INTERVAL, ARG_AGGR_ITERVAL, ARG_WL_CLONES );
+		          "Maybe we just woke up from power-save mode, --%s too small, --%s to big or too much --%s",
+		          bif->dev, bif->if_seqno, sn->send_time, batman_time + my_ogi,
+		          ARG_OGI, ARG_AGGR_IVAL, ARG_WL_CLONES );
 	
-		send_node_new->send_time = batman_time + my_ogi;// - (my_ogi/(2*aggr_p_ogi));
+		sn->send_time = batman_time + my_ogi;// - (my_ogi/(2*aggr_p_ogi));
 	}
 	
-	batman_if->if_seqno_schedule = send_node_new->send_time;
+	bif->if_seqno_schedule = sn->send_time;
 	
-	dbgf_all( DBGT_INFO, "for %s seqno %d at %d", batman_if->dev, batman_if->if_seqno, send_node_new->send_time );
+	dbgf_all( DBGT_INFO, "for %s seqno %d at %d", bif->dev, bif->if_seqno, sn->send_time );
 	
 	
-	send_node_new->if_outgoing = batman_if;
-	send_node_new->own_if = 1;
+	sn->if_outgoing = bif;
+	sn->own_if = 1;
 
 	uint32_t ogm_len = sizeof(struct bat_packet_ogm);
-	unsigned char *what_p;
-	int32_t what_len;
 
 	/* only primary interfaces send usual extension messages */
-	if (  batman_if == primary_if  ) {
+	if (  bif == primary_if  ) {
 		
 		uint16_t t;
 		for ( t=0; t<=EXT_TYPE_MAX; t++ ) {
+                        
+                        int32_t what_len=0;
 		
-			if ( (what_len = cb_snd_ext_hook( t, send_node_new->ogm_buff + ogm_len )) != FAILURE )
-				ogm_len += what_len;
-			
-			else
+			if ( (what_len = cb_snd_ext_hook( t, (unsigned char*)sn->ogm + ogm_len )) == FAILURE )
 				cleanup_all( -500040 - t );
-			
+
+                        if ( ogm_len+what_len > (uint32_t) pref_udpd_size) {
+
+                                dbg(DBGL_SYS, DBGT_ERR,
+                                        "%s=%d  exceeded by needed ogm + extension header length (%d+%d) "
+                                        "due to additional extension header 0x%X"
+                                        "you may increase %s or specify less tpye-0x%X extension headers",
+                                        ARG_UDPD_SIZE, pref_udpd_size, ogm_len, what_len, t, ARG_UDPD_SIZE, t);
+
+                                cleanup_all(-500192);
+                                //break;
+                        }
+
+                        ogm_len += what_len;
 		}
 		
 	/* all non-primary interfaces send primary-interface extension message */
@@ -1448,22 +1462,19 @@ void schedule_own_ogm( struct batman_if *batman_if ) {
 		my_pip_extension_packet.EXT_PIP_FIELD_ADDR = primary_addr;
 		my_pip_extension_packet.EXT_PIP_FIELD_PIPSEQNO = htons( primary_if->if_seqno );
 		
-		what_len = sizeof(struct ext_packet);
-		what_p = (unsigned char *)&my_pip_extension_packet;
-
-		memcpy( (send_node_new->ogm_buff + ogm_len), what_p, what_len );
-		ogm_len += what_len;
+		memcpy( (unsigned char*)sn->ogm + ogm_len, &my_pip_extension_packet, sizeof(struct ext_packet) );
+		ogm_len += sizeof(struct ext_packet);
 		
 	}
 
 	
-	send_node_new->ogm_buff_len = ogm_len;
+	sn->ogm_buff_len = ogm_len;
 	
-	batman_if->own_ogm_out->ogm_seqno = htons( batman_if->if_seqno );
-	batman_if->own_ogm_out->bat_size = ogm_len/4;
-	batman_if->own_ogm_out->flags = 0;
+	sn->ogm->ogm_seqno = htons( bif->if_seqno );
+	sn->ogm->bat_size = ogm_len/4;
+	sn->ogm->flags = 0;
 
-	batman_if->own_ogm_out->ogm_misc = MIN( s_curr_avg_cpu_load , 255 );
+	sn->ogm->ogm_misc = MIN( s_curr_avg_cpu_load , 255 );
 	
 	prev_list_head = (struct list_head *)&send_list;
 
@@ -1471,9 +1482,9 @@ void schedule_own_ogm( struct batman_if *batman_if ) {
 
 		send_packet_tmp = list_entry( list_pos, struct send_node, list );
 
-		if ( GREAT_U32(send_packet_tmp->send_time, send_node_new->send_time) ) {
+		if ( GREAT_U32(send_packet_tmp->send_time, sn->send_time) ) {
 
-			list_add_before( prev_list_head, list_pos, &send_node_new->list );
+			list_add_before( prev_list_head, list_pos, &sn->list );
 			break;
 
 		}
@@ -1482,21 +1493,21 @@ void schedule_own_ogm( struct batman_if *batman_if ) {
 
 	}
 
-	if ( ( send_packet_tmp == NULL ) || ( LSEQ_U32(send_packet_tmp->send_time, send_node_new->send_time) ) )
-		list_add_tail( &send_node_new->list, &send_list );
+	if ( ( send_packet_tmp == NULL ) || ( LSEQ_U32(send_packet_tmp->send_time, sn->send_time) ) )
+		list_add_tail( &sn->list, &send_list );
 
 	list_for_each( list_pos, &link_list ) {
 
 		struct link_node *ln = list_entry(list_pos, struct link_node, list);
 		
-		struct link_node_dev *lndev = get_lndev( ln, batman_if, NO/*create*/ );
+		struct link_node_dev *lndev = get_lndev( ln, bif, NO/*create*/ );
 		
-		if ( lndev )
-			update_queued_metric( 0, my_link_lounge, batman_if->if_seqno - OUT_SEQNO_OFFSET,
-			                      &lndev->rtq_sqr, my_lws,
-			                      batman_if->if_addr , ln->orig_node->orig, batman_if, "schedule_own_ogm()" );
-		
-	}
+		if ( lndev) {
+                        update_lounged_metric(0, local_rtq_lounge,
+                                bif->if_seqno - OUT_SEQNO_OFFSET, bif->if_seqno - OUT_SEQNO_OFFSET,
+                                &lndev->rtq_sqr, local_lws);
+                }
+        }
 	
 
 	prof_stop( PROF_schedule_own_ogm );
@@ -1510,20 +1521,25 @@ static struct opt_type schedule_options[]=
 	
 	{ODI,5,0,0,			0,  0,0,0,0,0,				0,		0,		0,		0,		0,
 			0,		"\nScheduling options:"},
-		
-	//dispatch.c		
-		/*	
-	{ODI,5,0,"aggreg_per_ogi",	0,  A_PS1,A_ADM,A_DYI,A_CFA,A_ANY,	&aggr_p_ogi,	MIN_AGGR_P_OGI,	MAX_AGGR_P_OGI,	DEF_AGGR_P_OGI,	0,
-			ARG_VALUE_FORM,	"set number of OGM aggregations per originator interval"},
-		*/
-//dispatch.c
-	{ODI,5,0,ARG_AGGR_ITERVAL,	0,  A_PS1,A_ADM,A_DYI,A_CFA,A_ANY,	&aggr_interval,	40,		4000,		300,		0,
+
+	{ODI,5,0,ARG_OGI, 	        'o',A_PS1,A_ADM,A_DYI,A_CFA,A_ANY,	&my_ogi,	MIN_OGI,	MAX_OGI,	DEF_OGI,	0,
+			ARG_VALUE_FORM,	"set interval in ms with which new originator message (OGM) are send"},
+
+	{ODI,5,0,ARG_OGI_PWRSAVE, 	0,A_PS1,A_ADM,A_DYI,A_CFA,A_ANY,	&ogi_pwrsave,   MIN_OGI,	MAX_OGI,	MIN_OGI,      	0,
+			ARG_VALUE_FORM,	"enable power-saving feature by setting increased OGI when no other nodes are in range"},
+
+	{ODI,5,0,ARG_AGGR_IVAL,	        0,  A_PS1,A_ADM,A_DYI,A_CFA,A_ANY,	&aggr_interval,	MIN_AGGR_IVAL,  MAX_AGGR_IVAL,  DEF_AGGR_IVAL,	0,
 			ARG_VALUE_FORM,	"set aggregation interval (SHOULD be smaller than the half of your and others OGM interval)"},
 		
-		
-// dispatch.c
 	{ODI,5,0,ARG_UDPD_SIZE,		0,  A_PS1,A_ADM,A_DYI,A_CFA,A_ANY,	&pref_udpd_size,MIN_UDPD_SIZE,	MAX_UDPD_SIZE,	DEF_UDPD_SIZE,	0,
 			ARG_VALUE_FORM,	"set preferred udp-data size for send packets"}
+#ifndef LESS_OPTIONS
+#ifndef NOPARANOIA
+	,{ODI,5,0,"simulate_cleanup",	0,  A_PS1,A_ADM,A_DYI,A_ARG,A_ANY,	&sim_paranoia,   NO,	        YES,	        DEF_SIM_PARA,  	0,
+			ARG_VALUE_FORM,	"simulate paranoia and cleanup_all for testing"}
+#endif
+#endif
+
 };
 
 
@@ -1543,7 +1559,7 @@ void init_schedule( void ) {
 
 void start_schedule( void ) {
 	
-	register_task( 50+rand_num(100), send_outstanding_ogms, NULL );
+	register_task( 50+rand_num(100), aggregate_outstanding_ogms, NULL );
 }
 
 
@@ -1556,9 +1572,8 @@ void cleanup_schedule( void ) {
 		struct send_node *send_node = list_entry( list_pos, struct send_node, list );
 		
 		list_del( (struct list_head *)&send_list, list_pos, &send_list );
-		
-		if ( !send_node->own_if )
-			debugFree( send_node, 1106 );
+
+                debugFree(send_node, 1106);
 		
 	}
 	

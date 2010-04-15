@@ -41,12 +41,20 @@
 
 static char run_dir[MAX_PATH_SIZE] = DEF_RUN_DIR;
 
-int32_t debug_level = -1;
+static int32_t debug_level = -1;
 static int32_t dbg_mute_to;
-static int32_t loop_period;
+
+#define MIN_LOOP_PERIOD 100
+#define MAX_LOOP_PERIOD 10000
+#define DEF_LOOP_PERIOD 1000
+static int32_t loop_period = DEF_LOOP_PERIOD;
+
 static int32_t loop_mode;
 
-static int32_t pedantic_cmd_check;
+#define MIN_PEDANT_CHK NO
+#define MAX_PEDANT_CHK YES
+#define DEF_PEDANT_CHK NO
+static int32_t pedantic_check = DEF_PEDANT_CHK;
 
 
 int unix_sock = 0;
@@ -246,7 +254,8 @@ struct ctrl_node *create_ctrl_node( int fd, void (*cn_fd_handler) (struct ctrl_n
 void close_ctrl_node( uint8_t cmd, struct ctrl_node *ctrl_node ) {
 
 	struct list_head* list_pos, *list_prev, *list_tmp;
-	
+	int trash;
+
 	list_prev = (struct list_head *)&ctrl_list;
 	
 	list_for_each_safe( list_pos, list_tmp, &ctrl_list ) {
@@ -265,7 +274,7 @@ void close_ctrl_node( uint8_t cmd, struct ctrl_node *ctrl_node ) {
 				
 				
 				if ( cmd == CTRL_CLOSE_SUCCESS )
-					Trash = write( cn->fd, CONNECTION_END_STR, strlen(CONNECTION_END_STR) );
+					trash=write( cn->fd, CONNECTION_END_STR, strlen(CONNECTION_END_STR) );
 				
 				if ( cmd != CTRL_CLOSE_DELAY ) {
 					close( cn->fd );
@@ -935,7 +944,7 @@ static int8_t is_valid_opt_ival( struct opt_type *opt, char *s, struct ctrl_node
  * call given function for each applied option
  * thus: if several hna are active func() is called once for each
  */
-int8_t func_for_each_opt( struct ctrl_node *cn, void *data, struct opt_type *opt_tmpl, char* func_name, 
+int8_t func_for_each_opt( struct ctrl_node *cn, void *data, char* func_name, 
                           int8_t (*func) ( struct ctrl_node *cn, void *data, struct opt_type *opt, struct opt_parent *p, struct opt_child *c ) ) 
 {
 	
@@ -947,46 +956,33 @@ int8_t func_for_each_opt( struct ctrl_node *cn, void *data, struct opt_type *opt
 		
 		if ( /* !opt->help  || we are also interested in uncommented configurations*/ !opt->long_name )
 			continue;
-		
-		if ( !( /*proceed if:*/ !opt_tmpl  ||  opt_tmpl == opt  ||  !list_empty(&opt->d.childs_type_list) )  )
-			continue;
-		
-		
+
 		struct list_head *p_pos;
 		
 		list_for_each( p_pos, &(opt->d.parents_instance_list) ) {
 			
 			struct opt_parent *p = (struct opt_parent*)list_entry( p_pos, struct opt_parent, list );
 			
-			if ( !opt_tmpl  ||  opt_tmpl  == opt ) {
-				
-				if ( (*func)( cn, data, opt, p, NULL ) == FAILURE ) {
-					
-					dbgf_cn( cn, DBGL_SYS, DBGT_ERR, 
-					         "%s func()=%s with %s %s failed", 
-					         opt_tmpl->long_name, func_name, opt->long_name, p->p_val );
-					
-					return FAILURE;
-				}
-			}
+                        if ( (*func)( cn, data, opt, p, NULL ) == FAILURE ) {
+
+                                dbgf_cn( cn, DBGL_SYS, DBGT_ERR,
+                                         "func()=%s with %s %s failed",
+                                         func_name, opt->long_name, p->p_val );
+
+                                return FAILURE;
+                        }
 			
 			struct list_head *c_pos;
 			
 			list_for_each( c_pos, &p->childs_instance_list ) {
 				
-				struct opt_child *c = 
-					(struct opt_child*)list_entry( c_pos, struct opt_child, list );
-				
-				if ( !( /*proceed if:*/ !opt_tmpl  ||  opt_tmpl == c->c_opt ) )
-					continue;
-				
+				struct opt_child *c = (struct opt_child*)list_entry( c_pos, struct opt_child, list );
 				
 				if ( (*func)( cn, data, opt, p, c ) == FAILURE ) {
 					
 					dbgf_cn( cn, DBGL_SYS, DBGT_ERR, 
-					         "%s func()=%s with %s %s %s %s failed", 
-					         opt_tmpl->long_name, func_name,
-					         opt->long_name, p->p_val, c->c_opt->long_name, c->c_val );
+					         "func()=%s with %s %s %s %s failed",
+					         func_name, opt->long_name, p->p_val, c->c_opt->long_name, c->c_val );
 					
 					return FAILURE;
 				}
@@ -1004,12 +1000,14 @@ static void show_opts_help( uint8_t all_opts, uint8_t verbose, struct ctrl_node 
 		return;
 	
 	dbg_printf(cn, "\n");
-	dbg_printf(cn, "Usage: %s [LONGOPT [%c]VAL] | [-SHORTOPT[SHORTOPT...] [%c]VAL] ...\n", 
+	dbg_printf(cn, "Usage: %s [LONGOPT[=[%c]VAL]] | [-SHORTOPT[SHORTOPT...] [[%c]VAL]] ...\n",
 	           prog_name, ARG_RESET_CHAR , ARG_RESET_CHAR);
-	dbg_printf(cn, "  e.g. %s -cid8\n", prog_name);
-	dbg_printf(cn, "  e.g. %s -c a 192.200.200.1/24\n", prog_name);
-	dbg_printf(cn, "  e.g. %s -c %s  my-vpn /n=192.168.115.0 /m=24\n", prog_name, ARG_THROW);
-	dbg_printf(cn, "  e.g. %s -c %s -my-vpn \n", prog_name, ARG_THROW);
+	dbg_printf(cn, "  e.g. %s dev=eth0 dev=wlan0         # to start daemon on interface eth0 and wlan0\n", prog_name);
+	dbg_printf(cn, "  e.g. %s plugin=bmx_http_info.so -X # to show verbose help of bmxd and its' plugin\n", prog_name);
+
+	dbg_printf(cn, "  e.g. %s -c -a 192.200.200.1/24     # to connect to running bmxd and announce given network\n", prog_name);
+	dbg_printf(cn, "  e.g. %s -c -a -192.200.200.1/24    # to connect and stop announcing given network\n", prog_name);
+	dbg_printf(cn, "  e.g. %s -cid8                      # to connect and show configured options and connevtivity\n", prog_name);
 	dbg_printf(cn, "\n");
 	//dbg_printf(cn, "\nValid options are:\n" );
 	
@@ -1019,6 +1017,7 @@ static void show_opts_help( uint8_t all_opts, uint8_t verbose, struct ctrl_node 
 		
 		struct list_head *pos;
 		struct opt_type *opt = (struct opt_type *)list_entry( list_pos, struct opt_data, list );
+                char sn[5], st[3 * MAX_ARG_SIZE], defaults[100];
 		
 		if ( !( all_opts  ||  opt->short_name ) )
 			continue;
@@ -1030,25 +1029,25 @@ static void show_opts_help( uint8_t all_opts, uint8_t verbose, struct ctrl_node 
 		
 		if ( opt->long_name  &&  opt->help  &&  !opt->parent_name ) {
 			
-			char sn[5];
+
 			if ( opt->short_name )
 				snprintf( sn,5, ", -%c", opt->short_name );
-			
 			else 
 				*sn = '\0';
 			
-			
-			char ln[MAX_ARG_SIZE];
-			snprintf( ln,MAX_ARG_SIZE, "--%s", opt->long_name );
-			
-			dbg_printf( cn, "\n%s%s %s \n", ln, sn, opt->syntax ? opt->syntax: "" );
+			sprintf( st, "--%s%s %s ", opt->long_name, sn, opt->syntax ? opt->syntax: "" );
+
+			if ( opt->opt_t != A_PS0  &&  opt->imin != opt->imax )
+				sprintf( defaults, "def: %-6d  range: [ %d %s %d ]",
+				         opt->idef, opt->imin, opt->imin+1 == opt->imax ? ",": "...", opt->imax );
+                        else
+                                defaults[0]='\0';
+
+			dbg_printf( cn, "\n%-40s %s\n", st, defaults );
 			
 			if ( verbose )
 				dbg_printf( cn, "	%s\n", opt->help );
 			
-			if ( verbose  &&  opt->opt_t != A_PS0  &&  opt->imin != opt->imax )
-				dbg_printf( cn, "	default: %5d, valid range: [ %d %s %d ] \n", 
-				            opt->idef, opt->imin, opt->imin+1 == opt->imax ? ",": "...", opt->imax );
 			
 			
 		} else if ( !opt->long_name && opt->help ) {
@@ -1062,36 +1061,32 @@ static void show_opts_help( uint8_t all_opts, uint8_t verbose, struct ctrl_node 
 			
 			struct opt_type *c_opt = (struct opt_type *)list_entry( pos, struct opt_data, list );
 			
-			if ( !c_opt->parent_name )
-				continue;
-			
-			if ( !c_opt->help )
+			if ( !c_opt->parent_name  ||  !c_opt->help )
 				continue;
 			
 #ifndef NODEPRECATED
 			if ( c_opt->call_custom_option == opt_deprecated )
 				continue;
 #endif
-			
-			char sn[5];
-			if ( c_opt->short_name )
-				snprintf( sn,5, " ,/%c", c_opt->short_name );
-			
-			else 
+
+                        if ( c_opt->short_name )
+				snprintf( sn,5, ", /%c", c_opt->short_name );
+			else
 				*sn = '\0';
-			
-			char ln[MAX_ARG_SIZE];
-			snprintf( ln,MAX_ARG_SIZE, "/%s", c_opt->long_name );
-			
-			dbg_printf( cn, "\n	%s%s %s \n", ln, sn, c_opt->syntax ? c_opt->syntax: "" );
-			
+
+			sprintf( st, "  /%s%s %s ", c_opt->long_name, sn, c_opt->syntax ? c_opt->syntax: "" );
+
+			if ( c_opt->opt_t != A_PS0  &&  c_opt->imin != c_opt->imax )
+				sprintf( defaults, "def: %-6d  range: [ %d %s %d ]",
+				         c_opt->idef, c_opt->imin, c_opt->imin+1 == c_opt->imax ? ",": "...", c_opt->imax );
+                        else
+                                defaults[0]='\0';
+
+			dbg_printf( cn, "%-40s %s\n", st, defaults );
+
 			if ( verbose )
-				dbg_printf( cn, "		%s\n", c_opt->help );
-			
-			if ( verbose  &&  c_opt->opt_t != A_PS0  &&  c_opt->imin != c_opt->imax )
-				dbg_printf( cn, "		default: %5d, valid range: [ %d %s %d ] \n", 
-				            c_opt->idef, c_opt->imin, c_opt->imin+1 == c_opt->imax ? ",": "...", c_opt->imax );
-			
+				dbg_printf( cn, "	        %s\n", c_opt->help );
+
 		}
 	}
 	
@@ -1773,6 +1768,7 @@ static int32_t _opt_connect ( uint8_t cmd, struct opt_type *opt, struct ctrl_nod
 	
 	char tmp_path[MAX_PATH_SIZE+20] = "";
 	char unix_buff[MAX_UNIX_MSG_SIZE+1] = "";
+	int trash;
 	
 	dbgf_all( DBGT_INFO, "cmd %s, opt_name %s, stream %s", 
 	          opt_cmd2str[cmd], opt->long_name, curr_strm_pos );
@@ -1856,7 +1852,7 @@ static int32_t _opt_connect ( uint8_t cmd, struct opt_type *opt, struct ctrl_nod
 			//printf("::::::::::::::::: from %s begin :::::::::::::::::::\n", tmp_path );
 			
 			if ( loop_mode )
-				Trash = system( "clear" );
+				trash=system( "clear" );
 			
 			int32_t recv_buff_len = 0;
 			
@@ -2243,7 +2239,7 @@ static int32_t track_opt_parent(  uint8_t cmd, uint8_t save, struct opt_type *p_
 		}
 		
 		// be pedantic only after startup (!on_the_fly) and not reload-config (!save)
-		if ( !changed  &&  on_the_fly  &&  save  &&  pedantic_cmd_check ) {
+		if ( !changed  &&  on_the_fly  &&  save  &&  pedantic_check ) {
 			
 			dbg_cn( cn, DBGL_SYS, DBGT_ERR, "--%s %s already configured", 
 			        p_opt->long_name, p_patch->p_val );
@@ -2278,7 +2274,8 @@ int32_t call_option( uint8_t ad, uint8_t cmd, uint8_t save, struct opt_type *opt
 		return FAILURE;
 	}
 	
-	if ( ad == DEL  &&  ( !on_the_fly  /*||  opt->dyn_t == A_INI this is what conf-reload tries */  ||  opt->cfg_t == A_ARG ) ) {
+	if ( ad == DEL  &&  ( /*!on_the_fly this is what concurrent -r and -g configurations do || */
+                /* opt->dyn_t == A_INI this is what conf-reload tries   ||*/  opt->cfg_t == A_ARG ) ) {
 		dbg( DBGL_SYS, DBGT_ERR, "option %s can not be resetted during startup!", opt->long_name );
 		return FAILURE;
 	}
@@ -2457,7 +2454,7 @@ int8_t apply_stream_opts( char *s, char *fallback_opt, uint8_t cmd, uint8_t load
 			LONG_OPT_ARG_VAL,	// 7
 	};
 	
-	char *state2str[] = {"NEXT_OPT","NEW_OPT","SHORT_OPT","LONG_OPT","LONG_OPT_VAL","LONG_OPT_WHAT","LONG_OPT_ARG","LONG_OPT_ARG_VAL"};
+	//char *state2str[] = {"NEXT_OPT","NEW_OPT","SHORT_OPT","LONG_OPT","LONG_OPT_VAL","LONG_OPT_WHAT","LONG_OPT_ARG","LONG_OPT_ARG_VAL"};
 	
 	
 	int8_t state = NEW_OPT;
@@ -2481,8 +2478,8 @@ int8_t apply_stream_opts( char *s, char *fallback_opt, uint8_t cmd, uint8_t load
 	
 	while ( s && strlen(s) >= 1 ) {
 		
-		dbgf_all( DBGT_INFO, "cmd: %-10s, state: %s opt: %s, wordlen: %d rest: %s",
-		          opt_cmd2str[cmd], state2str[state], opt?opt->long_name:"null", wordlen(s), s );
+		dbgf_all( DBGT_INFO, "cmd: %-10s, state: 0x%X opt: %s, wordlen: %d rest: %s",
+		          opt_cmd2str[cmd], state, opt?opt->long_name:"null", wordlen(s), s );
 		
 		if ( Testing ) {
 			Testing = 0;
@@ -3049,7 +3046,7 @@ static int32_t opt_show_info ( uint8_t cmd, uint8_t _save, struct opt_type *opt,
 		dbg_printf(cn, "\n");
 		*/
 		
-		func_for_each_opt( cn, NULL, NULL, "opt_show_info()", show_info );
+		func_for_each_opt( cn, NULL, "opt_show_info()", show_info );
 		
 		if ( !on_the_fly )
 			cleanup_all(CLEANUP_SUCCESS);
@@ -3285,34 +3282,31 @@ static struct opt_type control_options[]=
 	{ODI,3,0,"loop_mode",		'l',A_PS0,A_ADM,A_INI,A_ARG,A_ANY,	&loop_mode,	0, 		1,		0, 		0,
 			0,		"put client daemon in loop mode to periodically refresh debug information"},
 		
-	{ODI,3,0,"loop_period",		0,  A_PS1,A_ADM,A_INI,A_ARG,A_ANY,	&loop_period,	100, 		10000,		1000,		0,
+#ifndef LESS_OPTIONS
+	{ODI,3,0,"loop_period",		0,  A_PS1,A_ADM,A_INI,A_ARG,A_ANY,	&loop_period,	MIN_LOOP_PERIOD,MAX_LOOP_PERIOD,DEF_LOOP_PERIOD,0,
 			ARG_VALUE_FORM,	"periodicity in ms with which client daemon in loop-mode refreshes debug information"},
+#endif
 		
-//config.c
 #ifndef NODEPRECATED
 	{ODI,3,0,"batch_mode",		'b',A_PS0,A_ADM,A_INI,A_ARG,A_ANY,	0,		0, 		0,		0, 		opt_deprecated,0,0},
 #endif
 		
-//control.c
 	{ODI,3,0,ARG_CONNECT,		'c',A_PS0,A_ADM,A_INI,A_ARG,A_EAT,	0,		0, 		0,		0, 		opt_connect,
 			0,		"set client mode. Connect and forward remaining args to main routing daemon"},
 
-//config.c	
 	//order=5: so when used during startup it also shows the config-file options	
 	{ODI,5,0,ARG_SHOW_CHANGED,	'i',A_PS0,A_ADM,A_DYI,A_ARG,A_ANY,	0,		0,		0,		0, 		opt_show_info,
 			0,		"inform about configured options" },
-		
-//config.c				
-	{ODI,5,0,ARG_PEDANTIC_CMDCHECK,	0,  A_PS1,A_ADM,A_DYI,A_CFA,A_ANY,	&pedantic_cmd_check,0,		1,		0,		0,
+#ifndef LESS_OPTIONS
+	{ODI,5,0,ARG_PEDANTIC_CMDCHECK,	0,  A_PS1,A_ADM,A_DYI,A_CFA,A_ANY,	&pedantic_check,MIN_PEDANT_CHK, MAX_PEDANT_CHK, DEF_PEDANT_CHK,	0,
 			ARG_VALUE_FORM,	"disable/enable pedantic checking of command-line parameters and context -\n"
 			"	( e.g. fail setting a parameter without changing it)" },
-		
-		//control.c
+#endif
 	{ODI,5,0,"dbg_mute_timeout",	0,  A_PS1,A_ADM,A_DYI,A_CFA,A_ANY,	&dbg_mute_to,	0,		10000000,	100000,		0,
 			ARG_VALUE_FORM,	"set timeout in ms for muting frequent messages"},
-		
+
 #ifndef NODEPRECATED
-//batman.c
+
 	{ODI,5,0,"fake_uptime",		0,  A_PS1,A_ADM,A_DYN,A_ARG,A_ANY,	0,		MIN_UPTIME,	MAX_UPTIME,	0,		opt_uptime,0,0},
 		
 	{ODI,5,0,"bmx_defaults",	0,  A_PS0,A_ADM,A_INI,A_ARG,A_ANY,	0,		0, 		0,		0, 		opt_deprecated,0,0},
@@ -3321,7 +3315,6 @@ static struct opt_type control_options[]=
 	{ODI,5,0,"24c3",		0,  A_PS0,A_ADM,A_INI,A_ARG,A_ANY,	0,		0, 		0,		0, 		opt_deprecated,0,0},
 #endif
 		
-//config.c
 	{ODI,5,0,ARG_QUIT,EOS_DELIMITER,    A_PS0,A_USR,A_DYN,A_ARG,A_END,	0,		0, 		0,		0, 		opt_quit,0,0}
 };
 
@@ -3331,6 +3324,10 @@ void init_control( void ) {
 	
 	int i;
 	
+	char *d = getenv(BMX_ENV_DEBUG);
+	if ( d  &&  strtol(d, NULL , 10) >= DBGL_MIN  &&  strtol(d, NULL , 10) <= DBGL_MAX )
+		debug_level = strtol(d, NULL , 10);
+
 	for ( i = DBGL_MIN; i <= DBGL_MAX; i++ )
 		INIT_LIST_HEAD_FIRST( dbgl_clients[i] );
 	

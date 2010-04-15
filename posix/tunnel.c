@@ -33,6 +33,11 @@
 #include <linux/if_tun.h> /* TUNSETPERSIST, ... */
 #include <linux/if.h>     /* ifr_if, ifr_tun */
 #include <fcntl.h>        /* open(), O_RDWR */
+#include <asm/types.h>
+#include <sys/socket.h>
+#include <linux/netlink.h>
+#include <linux/rtnetlink.h>
+
 
 
 #include "batman.h"
@@ -41,7 +46,59 @@
 #include "plugin.h"
 #include "schedule.h"
 
-static int32_t Tun_persist;
+
+#define ARG_UNRESP_GW_CHK "unresp_gateway_check"
+
+#define ARG_TWO_WAY_TUNNEL "two_way_tunnel"
+
+#define ARG_ONE_WAY_TUNNEL "one_way_tunnel"
+
+#define ARG_GW_HYSTERESIS "gateway_hysteresis"
+#define MIN_GW_HYSTERE    1
+#define MAX_GW_HYSTERE    PROBE_RANGE/PROBE_TO100
+#define DEF_GW_HYSTERE    2
+
+
+#define BATMAN_TUN_PREFIX "bat"
+#define MAX_BATMAN_TUN_INDEX 20
+
+#define TUNNEL_DATA 0x01
+#define TUNNEL_IP_REQUEST 0x02
+#define TUNNEL_IP_INVALID 0x03
+#define TUNNEL_IP_REPLY 0x06
+
+#define GW_STATE_UNKNOWN  0x01
+#define GW_STATE_VERIFIED 0x02
+
+#define ONE_MINUTE                60000
+
+#define GW_STATE_UNKNOWN_TIMEOUT  (1  * ONE_MINUTE)
+#define GW_STATE_VERIFIED_TIMEOUT (5  * ONE_MINUTE)
+
+#define IP_LEASE_TIMEOUT          (1 * ONE_MINUTE)
+
+#define MAX_TUNNEL_IP_REQUESTS 60 //12
+#define TUNNEL_IP_REQUEST_TIMEOUT 1000 // msec
+
+#define DEF_GWTUN_NETW_PREFIX  "169.254.0.0" /* 0x0000FEA9 */
+
+#define MIN_GWTUN_NETW_MASK 20
+#define MAX_GWTUN_NETW_MASK 30
+#define DEF_GWTUN_NETW_MASK 22
+
+#define MIN_TUN_LTIME 60 /*seconds*/
+#define MAX_TUN_LTIME 60000
+#define DEF_TUN_LTIME 600
+#define ARG_TUN_LTIME "tunnel_lease_time"
+
+#define DEF_TUN_PERSIST 1
+
+
+#define MIN_RT_CLASS 0
+#define MAX_RT_CLASS 3
+
+
+static int32_t Tun_persist = DEF_TUN_PERSIST;
 
 static int32_t my_gw_port = 0;
 static uint32_t my_gw_addr = 0;
@@ -73,10 +130,130 @@ static uint32_t gw_tunnel_prefix;
 
 static uint32_t gw_tunnel_netmask;
 
-static int32_t Tun_leasetime;
+static int32_t Tun_leasetime = DEF_TUN_LTIME;
 
 
 static uint32_t pref_gateway = 0;
+
+
+
+
+struct tun_request_type {
+	uint32_t lease_ip;
+	uint16_t lease_lt;
+} __attribute__((packed));
+
+struct tun_data_type {
+	unsigned char ip_packet[MAX_MTU];
+} __attribute__((packed));
+
+struct tun_packet_start {
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+	unsigned int type:4;
+	unsigned int version:4;  // should be the first field in the packet in network byte order
+#elif __BYTE_ORDER == __BIG_ENDIAN
+	unsigned int version:4;
+	unsigned int type:4;
+#else
+# error "Please fix <bits/endian.h>"
+#endif
+} __attribute__((packed));
+
+struct tun_packet
+{
+	uint8_t  reserved1;
+	uint8_t  reserved2;
+	uint8_t  reserved3;
+
+	struct tun_packet_start start;
+#define TP_TYPE  start.type
+#define TP_VERS  start.version
+
+	union
+	{
+		struct tun_request_type trt;
+		struct tun_data_type tdt;
+		struct iphdr iphdr;
+	}tt;
+#define LEASE_IP  tt.trt.lease_ip
+#define LEASE_LT  tt.trt.lease_lt
+#define IP_PACKET tt.tdt.ip_packet
+#define IP_HDR    tt.iphdr
+} __attribute__((packed));
+
+
+#define TX_RP_SIZE (sizeof(struct tun_packet_start) + sizeof(struct tun_request_type))
+#define TX_DP_SIZE (sizeof(struct tun_packet_start) + sizeof(struct tun_data_type))
+
+
+struct gwc_args {
+	uint32_t gw_state_stamp;
+	uint8_t gw_state;
+	uint8_t prev_gw_state;
+	uint32_t orig;
+	struct gw_node *gw_node;	// pointer to gw node
+	struct sockaddr_in gw_addr;	// gateway ip
+	char  gw_str[ADDR_STR_LEN];	// string of gateway ip
+	struct sockaddr_in my_addr; 	// primary_ip
+	uint32_t my_tun_addr;		// ip used for bat0 tunnel interface
+	char  my_tun_str[ADDR_STR_LEN];	// string of my_tun_addr
+	int32_t mtu_min;
+	uint8_t tunnel_type;
+	int32_t udp_sock;
+	int32_t tun_fd;
+	int32_t tun_ifi;
+	char tun_dev[IFNAMSIZ];		// was tun_if
+	uint32_t tun_ip_request_stamp;
+	uint32_t tun_ip_lease_stamp;
+	uint32_t tun_ip_lease_duration;
+	uint32_t send_tun_ip_requests;
+	uint32_t pref_addr;
+	//	uint32_t last_invalidip_warning;
+};
+
+
+struct gws_args
+{
+	int8_t netmask;
+	int32_t port;
+	int32_t owt;
+	int32_t twt;
+	int32_t lease_time;
+	int mtu_min;
+	uint32_t my_tun_ip;
+	uint32_t my_tun_netmask;
+	uint32_t my_tun_ip_h;
+	uint32_t my_tun_suffix_mask_h;
+	struct sockaddr_in  client_addr;
+	struct gw_client **gw_client_list;
+	int32_t sock;
+	int32_t tun_fd;
+	int32_t tun_ifi;
+	char tun_dev[IFNAMSIZ];
+};
+
+
+
+// field accessor and flags for gateway announcement extension packets
+#define EXT_GW_FIELD_GWTYPES ext_related
+#define EXT_GW_FIELD_GWFLAGS def8
+#define EXT_GW_FIELD_GWPORT  d16.def16
+#define EXT_GW_FIELD_GWADDR  d32.def32
+
+// the flags for gw extension messsage gwtypes:
+#define TWO_WAY_TUNNEL_FLAG   0x01
+#define ONE_WAY_TUNNEL_FLAG   0x02
+
+struct tun_orig_data {
+
+	int16_t  tun_array_len;
+	struct ext_packet tun_array[];
+
+};
+
+
+
+
 
 static uint16_t my_gw_ext_array_len = 0;
 static struct ext_packet my_gw_extension_packet; //currently only one gw_extension_packet considered
@@ -468,7 +645,8 @@ static int32_t cb_tun_ogm_hook( struct msg_buff *mb, uint16_t oCtx, struct neigh
 		// memorize new gw_msg
 		update_gw_list( on, gw_array_len, gw_array  );
 		
-	} else if ( tuno  &&  gw_array  &&  (tuno->tun_array_len != gw_array_len || memcmp( tuno->tun_array, gw_array, gw_array_len * sizeof(struct ext_packet)))) {
+	} else if ( tuno  &&  gw_array  &&
+                (tuno->tun_array_len != gw_array_len || memcmp( tuno->tun_array, gw_array, gw_array_len * sizeof(struct ext_packet)))) {
 		
 		// update existing gw_msg
 		update_gw_list( on, gw_array_len, gw_array  );
@@ -477,6 +655,7 @@ static int32_t cb_tun_ogm_hook( struct msg_buff *mb, uint16_t oCtx, struct neigh
 	
 	/* restart gateway selection if routing class 3 and we have more packets than curr_gateway */
 	if (	curr_gateway  &&
+                on->router &&
 		routing_class == 3  &&
 		tuno  &&
 		tuno->tun_array[0].EXT_GW_FIELD_GWFLAGS  &&
@@ -484,15 +663,15 @@ static int32_t cb_tun_ogm_hook( struct msg_buff *mb, uint16_t oCtx, struct neigh
 		curr_gateway->orig_node != on  &&
 		(	( pref_gateway == on->orig )  ||
 			( pref_gateway != curr_gateway->orig_node->orig  &&  
-			  curr_gateway->orig_node->router->accepted_sqr.wa_val + (gw_hysteresis*PROBE_TO100)
-				<= on->router->accepted_sqr.wa_val  ) ) ) {
+			  curr_gateway->orig_node->router->longtm_sqr.wa_val + (gw_hysteresis*PROBE_TO100)
+				<= on->router->longtm_sqr.wa_val  ) ) ) {
 		
 		dbg( DBGL_CHANGES, DBGT_INFO, "Restart gateway selection. %s gw found! "
 		     "%d OGMs from new GW %s (compared to %d from old GW %s)",
 		     pref_gateway == on->orig ? "Preferred":"Better",
-		     on->router ? on->router->accepted_sqr.wa_val : 255,  
+		     on->router->longtm_sqr.wa_val,
 		     on->orig_str, 
-		     pref_gateway != on->orig ? curr_gateway->orig_node->router->accepted_sqr.wa_val : 255, 
+		     pref_gateway != on->orig ? curr_gateway->orig_node->router->longtm_sqr.wa_val : 255,
 		     pref_gateway != on->orig ? curr_gateway->orig_node->orig_str : "???" );
 	
 		curr_gateway = NULL;
@@ -525,7 +704,7 @@ static int32_t gwc_handle_tun_ip_reply( struct tun_packet *tp, uint32_t sender_i
 		if ( gwc_args->pref_addr == 0  || gwc_args->pref_addr != tp->LEASE_IP ) {
 
 			if ( gwc_args->pref_addr /*== 0 ?????*/ )
-				add_del_route( 0, 0, 0, 0, gwc_args->tun_ifi, gwc_args->tun_dev, RT_TABLE_TUNNEL, RT_UNICAST, DEL, TRACK_TUNNEL );
+				add_del_route( 0, 0, 0, 0, gwc_args->tun_ifi, gwc_args->tun_dev, RT_TABLE_TUNNEL, RTN_UNICAST, DEL, TRACK_TUNNEL );
 			
 			if ( set_tun_addr( gwc_args->udp_sock, tp->LEASE_IP, gwc_args->tun_dev ) < 0 ) {
 		
@@ -534,7 +713,12 @@ static int32_t gwc_handle_tun_ip_reply( struct tun_packet *tp, uint32_t sender_i
 			}
 	
 			/* kernel deletes routes after resetting the interface ip */
-			add_del_route( 0, 0, 0, 0, gwc_args->tun_ifi, gwc_args->tun_dev, RT_TABLE_TUNNEL, RT_UNICAST, ADD, TRACK_TUNNEL );
+			add_del_route( 0, 0, 0, 0, gwc_args->tun_ifi, gwc_args->tun_dev, RT_TABLE_TUNNEL, RTN_UNICAST, ADD, TRACK_TUNNEL );
+			
+			// critical syntax: may be used for nameserver updates
+			dbg( DBGL_CHANGES, DBGT_INFO, "GWT: GW-client tunnel init succeeded - type: 2WT  dev: %s  IP: %s  MTU: %d  GWIP: %s", 
+			     gwc_args->tun_dev, ipStr( tp->LEASE_IP ) , gwc_args->mtu_min,  ipStr( gwc_args->gw_addr.sin_addr.s_addr) );
+			
 		}
 
 		gwc_args->tun_ip_lease_stamp = batman_time;
@@ -689,7 +873,7 @@ static void gwc_recv_tun( int32_t fd_in ) {
 		
 		tp_len = tp_data_len + sizeof(tp.start);
 		
-		if ( tp_data_len < (int32_t)sizeof(struct iphdr) || ((struct iphdr *)(tp.IP_PACKET))->version != 4 ) {
+		if ( tp_data_len < (int32_t)sizeof(struct iphdr) || tp.IP_HDR.version != 4 ) {
 			
 			dbgf( DBGL_SYS, DBGT_ERR, "Received Invalid packet type via tunnel !" );
 			continue;
@@ -741,10 +925,10 @@ static void gwc_recv_tun( int32_t fd_in ) {
 			     unresp_gw_chk  &&  
 			     gwc_args->gw_state == GW_STATE_UNKNOWN  &&   
 			     gwc_args->gw_state_stamp == 0 ) {
-		
-				if( ( (((struct iphdr  *)(tp.IP_PACKET))->protocol == IPPROTO_TCP )) || 
-				    ( (((struct iphdr  *)(tp.IP_PACKET))->protocol == IPPROTO_UDP) && 
-				      (((struct udphdr *)(tp.IP_PACKET + ((struct iphdr *)(tp.IP_PACKET))->ihl*4))->dest == dns_port)  )
+
+                                if ((tp.IP_HDR.protocol == IPPROTO_TCP) ||
+                                       ( (tp.IP_HDR.protocol == IPPROTO_UDP) &&
+				      (((struct udphdr *)((uint8_t*)&tp.IP_HDR) + (tp.IP_HDR.ihl*4))->dest == dns_port)  )
 				  ) {
 					gwc_args->gw_state_stamp = batman_time;
 				  }
@@ -817,16 +1001,14 @@ void gwc_recv_udp( int32_t fd_in ) {
 
 			// got data from gateway
 			if ( tp.TP_TYPE == TUNNEL_DATA ) {
-				
-				if ( tp_data_len >= (int32_t)sizeof(struct iphdr) && 
-				     ((struct iphdr *)(tp.IP_PACKET))->version == 4 ) {
+
+                                if (tp_data_len >= (int32_t)sizeof (struct iphdr) && tp.IP_HDR.version == 4) {
 
 					     if ( write( gwc_args->tun_fd, tp.IP_PACKET, tp_data_len ) < 0 ) {
 						dbgf( DBGL_SYS, DBGT_ERR, "can't write packet: %s", strerror(errno) );
-					     }
+                                        }
 
-					if ( unresp_gw_chk && 
-					     ((struct iphdr *)(tp.IP_PACKET))->protocol != IPPROTO_ICMP  ) {
+                                        if (unresp_gw_chk && tp.IP_HDR.protocol != IPPROTO_ICMP) {
 				
 						gwc_args->gw_state = GW_STATE_VERIFIED;
 						gwc_args->gw_state_stamp = batman_time;
@@ -836,10 +1018,10 @@ void gwc_recv_udp( int32_t fd_in ) {
 
 						if( gwc_args->prev_gw_state != gwc_args->gw_state ) {
 							
-							dbgf( DBGL_CHANGES, DBGT_INFO, 
-							     "changed GW state: from %d to %d, incoming IP protocol: %d", 
-							     gwc_args->prev_gw_state, gwc_args->gw_state,
-							     ((struct iphdr *)(tp.IP_PACKET))->protocol );
+							dbgf( DBGL_CHANGES, DBGT_INFO,
+                                                                "changed GW state: from %d to %d, incoming IP protocol: %d",
+                                                                gwc_args->prev_gw_state, gwc_args->gw_state,
+                                                                tp.IP_HDR.protocol);
 							
 							gwc_args->prev_gw_state = gwc_args->gw_state;
 						}
@@ -903,7 +1085,7 @@ static void gwc_cleanup( void ) {
 		update_interface_rules( IF_RULE_CLR_TUNNEL );
 		
 		if ( gwc_args->my_tun_addr )
-			add_del_route( 0, 0, 0, 0, gwc_args->tun_ifi, gwc_args->tun_dev, RT_TABLE_TUNNEL, RT_UNICAST, DEL, TRACK_TUNNEL );
+			add_del_route( 0, 0, 0, 0, gwc_args->tun_ifi, gwc_args->tun_dev, RT_TABLE_TUNNEL, RTN_UNICAST, DEL, TRACK_TUNNEL );
 			
 		if ( gwc_args->tun_fd ) {
 			del_dev_tun( gwc_args->tun_fd, gwc_args->tun_dev, gwc_args->my_tun_addr, __FUNCTION__ );
@@ -914,6 +1096,9 @@ static void gwc_cleanup( void ) {
 			close( gwc_args->udp_sock );
 			set_fd_hook( gwc_args->udp_sock, gwc_recv_udp, YES /*delete*/ );
 		}
+		
+		// critical syntax: may be used for nameserver updates
+		dbg( DBGL_CHANGES, DBGT_INFO, "GWT: GW-client tunnel closed " );
 		
 		debugFree( gwc_args, 1207 );
 		gwc_args = NULL;
@@ -1066,8 +1251,12 @@ static int8_t gwc_init( void ) {
 		gwc_args->my_tun_addr = gwc_args->my_addr.sin_addr.s_addr;
 		addr_to_str( gwc_args->my_tun_addr, gwc_args->my_tun_str );
 
-		add_del_route( 0, 0, 0, 0, gwc_args->tun_ifi, gwc_args->tun_dev, RT_TABLE_TUNNEL, RT_UNICAST, ADD, TRACK_TUNNEL );
+		add_del_route( 0, 0, 0, 0, gwc_args->tun_ifi, gwc_args->tun_dev, RT_TABLE_TUNNEL, RTN_UNICAST, ADD, TRACK_TUNNEL );
 
+		// critical syntax: may be used for nameserver updates
+		dbg( DBGL_CHANGES, DBGT_INFO, "GWT: GW-client tunnel init succeeded - type: 1WT  dev: %s  IP: %s  MTU: %d", 
+		     gwc_args->tun_dev, ipStr( gwc_args->my_addr.sin_addr.s_addr ) , gwc_args->mtu_min  );
+		
 		
 	} else /*if ( gwc_args->tunnel_type & TWO_WAY_TUNNEL_FLAG )*/ {
 		
@@ -1079,6 +1268,9 @@ static int8_t gwc_init( void ) {
 	return SUCCESS;
 	
 gwc_init_failure:
+	
+	// critical syntax: may be used for nameserver updates
+	dbg( DBGL_CHANGES, DBGT_INFO, "GWT: GW-client tunnel init failed" );
 	
 	gwc_cleanup();
 	curr_gateway = NULL;
@@ -1256,7 +1448,7 @@ static void gws_recv_udp( int32_t fd_in ) {
 	
 		if ( tp.TP_TYPE == TUNNEL_DATA ) {
 			
-			if ( !(tp_data_len >= (int32_t)sizeof(struct iphdr) && ((struct iphdr *)(tp.IP_PACKET))->version == 4 ) ) {
+			if ( !(tp_data_len >= (int32_t)sizeof(struct iphdr) && tp.IP_HDR.version == 4 ) ) {
 	
 				dbgf( DBGL_SYS, DBGT_ERR, "Invalid packet type via tunnel" );
 				continue;
@@ -1354,7 +1546,7 @@ static void gws_recv_tun( int32_t fd_in ) {
 		
 		tp_len = tp_data_len + sizeof(tp.start);
 		
-		if ( !(gws_args->twt) || tp_data_len < (int32_t)sizeof(struct iphdr) || ((struct iphdr *)(tp.IP_PACKET))->version != 4 ) {
+		if ( !(gws_args->twt) || tp_data_len < (int32_t)sizeof(struct iphdr) || tp.IP_HDR.version != 4 ) {
 		
 			dbgf( DBGL_SYS, DBGT_ERR, "Invalid packet type for client tunnel" );
 			continue;
@@ -1406,7 +1598,7 @@ static void gws_cleanup( void ) {
 		
 		if ( gws_args->tun_ifi )
 			add_del_route( gws_args->my_tun_ip, gws_args->netmask, 
-			               0, 0, gws_args->tun_ifi, gws_args->tun_dev, 254, RT_UNICAST, DEL, TRACK_TUNNEL );
+			               0, 0, gws_args->tun_ifi, gws_args->tun_dev, 254, RTN_UNICAST, DEL, TRACK_TUNNEL );
 			
 		if ( gws_args->tun_fd ) {
 			del_dev_tun( gws_args->tun_fd, gws_args->tun_dev, gws_args->my_tun_ip, __FUNCTION__ );
@@ -1425,6 +1617,10 @@ static void gws_cleanup( void ) {
 			
 		}
 		
+		// critical syntax: may be used for nameserver updates
+		dbg( DBGL_CHANGES, DBGT_INFO, "GWT: GW-server tunnel closed - dev: %s  IP: %s/%d  MTU: %d", 
+		     gws_args->tun_dev, ipStr( gws_args->my_tun_ip ), gws_args->netmask , gws_args->mtu_min  );
+		
 		debugFree( gws_args, 1223 );
 		gws_args = NULL;
 	
@@ -1435,7 +1631,7 @@ static void gws_cleanup( void ) {
 
 static int32_t gws_init( void ) {
 	
-	char str[16], str2[16];
+	//char str[16], str2[16];
 	
 	if ( probe_tun() == FAILURE )
 		goto gws_init_failure;
@@ -1469,9 +1665,9 @@ static int32_t gws_init( void ) {
 	gws_args->my_tun_ip_h = ntohl( gw_tunnel_prefix );
 	gws_args->my_tun_suffix_mask_h = ntohl( ~gws_args->my_tun_netmask );
 	
-	addr_to_str( gws_args->my_tun_ip, str );
-	addr_to_str( gws_args->my_tun_netmask, str2 );
-	dbgf( DBGL_CHANGES, DBGT_INFO, "my_tun_ip %s, my_tun_netmask: %s", str, str2);
+	//addr_to_str( gws_args->my_tun_ip, str );
+	//addr_to_str( gws_args->my_tun_netmask, str2 );
+	
 	
 	gws_args->client_addr.sin_family = AF_INET;
 	gws_args->client_addr.sin_port = htons(gws_args->port);
@@ -1535,7 +1731,7 @@ static int32_t gws_init( void ) {
 	}
 	
 	add_del_route( gws_args->my_tun_ip, gws_args->netmask, 
-	               0, 0, gws_args->tun_ifi, gws_args->tun_dev, 254, RT_UNICAST, ADD, TRACK_TUNNEL );
+	               0, 0, gws_args->tun_ifi, gws_args->tun_dev, 254, RTN_UNICAST, ADD, TRACK_TUNNEL );
 	
 	register_task( 5000, gws_garbage_collector, NULL );
 	
@@ -1552,10 +1748,17 @@ static int32_t gws_init( void ) {
 	
 	my_gw_ext_array_len = 1;
 
+	// critical syntax: may be used for nameserver updates
+	dbg( DBGL_CHANGES, DBGT_INFO, "GWT: GW-server tunnel init succeeded - dev: %s  IP: %s/%d  MTU: %d", 
+	     gws_args->tun_dev, ipStr( gws_args->my_tun_ip ), gws_args->netmask , gws_args->mtu_min  );
+	
 	return SUCCESS;
 	
 gws_init_failure:
-		
+	
+	// critical syntax: may be used for nameserver updates
+	dbg( DBGL_CHANGES, DBGT_INFO, "GWT: GW-server tunnel init failed" );
+	
 	gws_cleanup();
 		
 	return FAILURE;
@@ -1644,7 +1847,7 @@ static void cb_choose_gw( void* unused ) {
 
 	if ( routing_class == 0  ||  curr_gateway ||
 	     ((routing_class == 1 || routing_class == 2 ) && 
-	      ( batman_time_sec < (((uint32_t)(my_ogi*my_pws))/(CHOOSE_GW_DELAY_DIVISOR*1000))  )) ) {
+	      ( batman_time_sec < COMMON_OBSERVATION_WINDOW  )) ) {
 
 		return;
 	}
@@ -1676,24 +1879,24 @@ static void cb_choose_gw( void* unused ) {
 				get_gw_speeds( tuno->tun_array[0].EXT_GW_FIELD_GWFLAGS, &download_speed, &upload_speed );
 
 		// is this voodoo ???
-			tmp_gw_factor = ( ( ( on->router->accepted_sqr.wa_val/PROBE_TO100 ) *
-			                    ( on->router->accepted_sqr.wa_val/PROBE_TO100 ) ) ) * 
+			tmp_gw_factor = ( ( ( on->router->longtm_sqr.wa_val/PROBE_TO100 ) *
+			                    ( on->router->longtm_sqr.wa_val/PROBE_TO100 ) ) ) *
 						( download_speed / 64 ) ;
 		
 				if ( tmp_gw_factor > max_gw_factor || 
 				     ( tmp_gw_factor == max_gw_factor  && 
-				       on->router->accepted_sqr.wa_val > best_wa_val ) )
+				       on->router->longtm_sqr.wa_val > best_wa_val ) )
 					tmp_curr_gw = gw_node;
 		
 				break;
 
 				case 2:   /* stable connection (use best statistic) */
-				     if ( on->router->accepted_sqr.wa_val > best_wa_val )
+				     if ( on->router->longtm_sqr.wa_val > best_wa_val )
 					     tmp_curr_gw = gw_node;
 					break;
 
 					default:  /* fast-switch (use best statistic but change as soon as a better gateway appears) */
-				     if ( on->router->accepted_sqr.wa_val > best_wa_val )
+				     if ( on->router->longtm_sqr.wa_val > best_wa_val )
 							tmp_curr_gw = gw_node;
 						break;
 
@@ -1702,7 +1905,7 @@ static void cb_choose_gw( void* unused ) {
 		if ( tuno->tun_array[0].EXT_GW_FIELD_GWFLAGS > max_gw_class )
 			max_gw_class = tuno->tun_array[0].EXT_GW_FIELD_GWFLAGS;
 
-		best_wa_val = MAX( best_wa_val, on->router->accepted_sqr.wa_val );
+		best_wa_val = MAX( best_wa_val, on->router->longtm_sqr.wa_val );
 		
 		
 		if ( tmp_gw_factor > max_gw_factor )
@@ -1716,7 +1919,7 @@ static void cb_choose_gw( void* unused ) {
 			dbg( DBGL_SYS, DBGT_INFO, 
 			     "Preferred gateway found: %s (gw_flags: %i, packet_count: %i, ws: %i, gw_product: %i)", 
 			     on->orig_str, tuno->tun_array[0].EXT_GW_FIELD_GWFLAGS, 
-			     on->router->accepted_sqr.wa_val/PROBE_TO100, on->pws, tmp_gw_factor );
+			     on->router->longtm_sqr.wa_val/PROBE_TO100, on->pws, tmp_gw_factor );
 	
 			break;
 
@@ -1792,8 +1995,8 @@ static int32_t opt_gateways ( uint8_t cmd, uint8_t _save, struct opt_type *opt, 
 			
 			dbg_printf( cn, "%s %-15s %15s %3i, gw_class %2i - %i%s/%i%s, reliability: %i, supported tunnel types %s, %s \n",
 				curr_gateway == gw_node ? "=>" : "  ",
-				ipStr(on->orig) , ipStr(on->router->addr),
-			        gw_node->orig_node->router->accepted_sqr.wa_val/PROBE_TO100,
+				ipStr(on->orig) , ipStr(on->router->nnkey_addr),
+			        gw_node->orig_node->router->longtm_sqr.wa_val/PROBE_TO100,
 				tuno->tun_array[0].EXT_GW_FIELD_GWFLAGS,
 				download_speed > 2048 ? download_speed / 1024 : download_speed,
 				download_speed > 2048 ? "MBit" : "KBit",
@@ -1852,7 +2055,7 @@ static int32_t opt_rt_class ( uint8_t cmd, uint8_t _save, struct opt_type *opt, 
 	
 	if ( cmd == OPT_APPLY ) {
 		
-		if ( Gateway_class  &&  routing_class )
+		if ( /* Gateway_class  && */ routing_class )
 			check_apply_parent_option( DEL, OPT_APPLY, _save, get_option(0,0,ARG_GW_CLASS), 0, cn );
 	
 	}
@@ -1879,8 +2082,10 @@ static int32_t opt_rt_pref ( uint8_t cmd, uint8_t _save, struct opt_type *opt, s
 			pref_gateway = test_ip;
 		
 			/* use routing class 3 if none specified */
+/*
 			if ( pref_gateway && !routing_class && !Gateway_class )
 				check_apply_parent_option( ADD, OPT_APPLY, _save, get_option(0,0,ARG_RT_CLASS), "3", cn );
+*/
 			
 		}
 		
@@ -1966,7 +2171,7 @@ static int32_t opt_gw_class ( uint8_t cmd, uint8_t _save, struct opt_type *opt, 
 		
 			Gateway_class = gateway_class;
 			
-			if ( gateway_class  &&  routing_class )
+			if ( gateway_class  /*&&  routing_class*/ )
 				check_apply_parent_option( DEL, OPT_APPLY, _save, get_option(0,0,ARG_RT_CLASS), 0, cn );
 	
 			dbg( DBGL_SYS, DBGT_INFO, "gateway class: %i -> propagating: %s", gateway_class, gwarg );
@@ -2016,15 +2221,19 @@ static struct opt_type tunnel_options[]= {
  
 	{ODI,5,0,ARG_UNRESP_GW_CHK,	0,  A_PS1,A_ADM,A_DYI,A_CFA,A_ANY,	&unresp_gw_chk,	0, 		1,		1, 		0,
 			ARG_VALUE_FORM,"disable/enable unresponsive GW check (only relevant for GW clients in TWT mode)"},
- 
+
+#ifndef LESS_OPTIONS
 	{ODI,5,0,ARG_TUN_LTIME, 	0,  A_PS1,A_ADM,A_DYI,A_CFA,A_ANY,	&Tun_leasetime, MIN_TUN_LTIME, MAX_TUN_LTIME,	DEF_TUN_LTIME, 0,
 			ARG_VALUE_FORM,"set leasetime in seconds of virtual two-way-tunnel IPs"},
-  
+#endif
+
 	{ODI,4,0,ARG_GWTUN_NETW,	0,  A_PS1,A_ADM,A_INI,A_CFA,A_ANY,	0,		0, 		0,		0, 		opt_gwtun_netw,
 			ARG_PREFIX_FORM,"set network used by two-way-tunnel gateway nodes\n"},
 
-	{ODI,5,0,"tun_persist", 	0,  A_PS1,A_ADM,A_INI,A_CFA,A_ANY,	&Tun_persist, 	0,		1,		1,		0,
+#ifndef LESS_OPTIONS
+	{ODI,5,0,"tun_persist", 	0,  A_PS1,A_ADM,A_INI,A_CFA,A_ANY,	&Tun_persist, 	0,		1,		DEF_TUN_PERSIST,0,
 			ARG_VALUE_FORM,"disable/enable ioctl TUNSETPERSIST for GW tunnels (disabling was required for openVZ emulation)" },
+#endif
  
 	{ODI,5,0,ARG_GATEWAYS,		0,  A_PS0,A_USR,A_DYN,A_ARG,A_END,	0,		0, 		0,		0, 		opt_gateways,0,
 			"show currently available gateways\n"}

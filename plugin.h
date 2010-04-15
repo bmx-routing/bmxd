@@ -46,7 +46,6 @@ struct plugin_v1 {
 	void (*cb_plugin_handler[PLUGIN_CB_SIZE]) (void*);
 	
 	//some other attributes
-	uint8_t link_flags;
 
 };
 

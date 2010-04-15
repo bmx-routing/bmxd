@@ -70,7 +70,10 @@ static void http_info_rcv_tcp_data( struct ctrl_node *cn ) {
 		struct opt_type *opt;
 		char *request = &(tcp_req_data[HTTP_PREAMBLE_LEN]);
 	
-		
+//		dbg_printf( cn, "Content-type: text/plain\n\n" );
+		dbg_printf( cn, "\n" );
+
+
 		if ( wordlen( request ) <= MAX_ARG_SIZE  &&
 		     (opt = get_option(0,0,request))  &&
 		     opt->auth_t == A_USR  &&
@@ -83,7 +86,7 @@ static void http_info_rcv_tcp_data( struct ctrl_node *cn ) {
 			      tcp_req_len, cn->fd, opt->long_name );
 			
 			check_apply_parent_option( ADD, OPT_APPLY, 0, opt, 0, cn );
-		
+                        
 		} else {
 			
 			dbg( DBGL_CHANGES, DBGT_INFO, "rcvd illegal %d bytes long HTTP request via fd %d", 
@@ -259,13 +262,13 @@ static struct opt_type http_info_options[]= {
 };
 
 
-void http_info_cleanup( void ) {
+static void http_info_cleanup( void ) {
 	
 	//	remove_options_array( http_info_options );
 	
 }
 
-int32_t http_info_init( void ) {
+static int32_t http_info_init( void ) {
 	
 	register_options_array( http_info_options, sizeof( http_info_options ) );
 	

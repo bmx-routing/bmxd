@@ -115,13 +115,13 @@ static struct opt_type howto_plugin_options[]= {
 };
 
 
-void howto_plugin_cleanup( void ) {
+static void howto_plugin_cleanup( void ) {
 	
 	dbgf( DBGL_CHANGES, DBGT_INFO, "cleanung up plugin %s", HOWTO_PLUGIN );
 	
 }
 
-int32_t howto_plugin_init( void ) {
+static int32_t howto_plugin_init( void ) {
 	
 	dbgf( DBGL_CHANGES, DBGT_INFO, "init plugin %s", HOWTO_PLUGIN );
 	

@@ -28,7 +28,7 @@
 #define	DBGT_ERR  3
 
 
-extern int debug_level;
+//extern int debug_level;
 #define DBGL_MIN	0
 #define DBGL_SYS	0
 #define DBGL_ROUTES	1
@@ -325,7 +325,7 @@ enum opt_cmd {
 	
 		
 	OPT_CHECK,
-	// to test a give patch (type-value pair) !
+	// to test a given patch (type-value pair) !
 	// Returns FAILURE or n>=0 of processed bytes-1
 		
 		
@@ -378,7 +378,7 @@ struct opt_parent *	get_opt_parent_ref ( struct opt_type *opt, char *ref );
 
 
 
-int8_t func_for_each_opt( struct ctrl_node *cn, void *data, struct opt_type *opt_tmpl, char* func_name, 
+int8_t func_for_each_opt( struct ctrl_node *cn, void *data, char* func_name, 
                           int8_t (*func) ( struct ctrl_node *cn, void *data, struct opt_type *opt, struct opt_parent *p, struct opt_child *c ) );
 
 int respect_opt_order( uint8_t test, int8_t last, int8_t next, struct opt_type *on, uint8_t load_config, uint8_t cmd, struct ctrl_node *cn );

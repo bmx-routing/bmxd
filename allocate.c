@@ -193,8 +193,7 @@ void checkLeak(void)
 		for (walker = chunkList; walker != NULL; walker = walker->next) {
 			syslog( LOG_ERR, "Memory leak detected, malloc tag = %d\n", walker->tag );
 		
-			if (debug_level >= 0)
-				fprintf( stderr, "Memory leak detected, malloc tag = %d \n", walker->tag );
+			fprintf( stderr, "Memory leak detected, malloc tag = %d \n", walker->tag );
 			
 		}
 		

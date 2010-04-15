@@ -336,9 +336,6 @@ static int activate_plugin( void *p, int32_t version, void *dlhandle, const char
 		pn->plugin = p;
 		pn->dlhandle = dlhandle;
 		
-		if ( pn->plugin_v1 )
-			Link_flags |= pn->plugin_v1->link_flags;
-		
 		list_add_tail( &pn->list, &plugin_list );
 		
 		dbgf_all( DBGT_INFO, "%s SUCCESS", pn->plugin_v1->plugin_name );
@@ -359,15 +356,13 @@ static int activate_plugin( void *p, int32_t version, void *dlhandle, const char
 static void deactivate_plugin( void *p ) {
 	
 	if ( !is_plugin_active( p ) ) {
-		cleanup_all( -500146 );
+		cleanup_all( -500190 );
 		//dbg( DBGL_SYS, DBGT_ERR, "deactivate_plugin(): requested to deactivate inactive plugin !");
 		//return;
 	}
 	
 	struct list_head *list_pos, *tmp_pos, *prev_pos = (struct list_head*)&plugin_list;
 		
-	Link_flags = 0;
-
 	list_for_each_safe( list_pos, tmp_pos, &plugin_list ) {
 			
 		struct plugin_node *pn = list_entry( list_pos, struct plugin_node, list );
@@ -379,7 +374,7 @@ static void deactivate_plugin( void *p ) {
 			if ( pn->version != PLUGIN_VERSION_01 )
 				cleanup_all( -500098 );
 			
-			dbgf( DBGL_CHANGES, DBGT_INFO, "deactivating plugin %s", pn->plugin_v1->plugin_name );
+			dbg( DBGL_CHANGES, DBGT_INFO, "deactivating plugin %s", pn->plugin_v1->plugin_name );
 			
 			if ( pn->plugin_v1->cb_cleanup )
 				(*( pn->plugin_v1->cb_cleanup )) ();
@@ -392,9 +387,6 @@ static void deactivate_plugin( void *p ) {
 			
 		} else {
 			
-			if ( pn->plugin_v1 )
-				Link_flags |= pn->plugin_v1->link_flags;
-			
 			prev_pos = &pn->list;
 			
 		}
@@ -405,7 +397,6 @@ static void deactivate_plugin( void *p ) {
 
 static int8_t activate_dyn_plugin( const char* name ) {
 	
-	//get_plugin_v1 get_plugin_v1;
 	struct plugin_v1* (*get_plugin_v1) ( void ) = NULL;
 	
 	void *dlhandle;
@@ -449,13 +440,22 @@ static int8_t activate_dyn_plugin( const char* name ) {
 	}
 	
 	dbgf_all( DBGT_INFO, "survived dlopen()!" );
-	
-	
-	if ( !( (*(void **)(&get_plugin_v1)) = dlsym( dlhandle, "get_plugin_v1"))  ) {
-		
+
+
+        typedef struct plugin_v1* (*sdl_init_function_type) ( void );
+
+        union {
+                sdl_init_function_type func;
+                void * obj;
+        } alias;
+
+        alias.obj = dlsym( dlhandle, "get_plugin_v1");
+
+	if ( !( get_plugin_v1 = alias.func )  ) {
 		dbgf( DBGL_SYS, DBGT_ERR, "dlsym( %s ) failed: %s", name, dlerror() );
 		return FAILURE;
 	}
+
 	
 	if ( !(pv1 = get_plugin_v1()) ) {
 

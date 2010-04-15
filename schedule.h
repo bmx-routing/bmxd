@@ -17,8 +17,19 @@
  *
  */
 
+#define ARG_OGI "ogm_interval"
+#define DEF_OGI 1000
+#define MIN_OGI 50
+#define MAX_OGI 100000
+extern int32_t my_ogi; // my originator interval
 
-#define ARG_AGGR_ITERVAL "aggreg_interval"
+#define ARG_OGI_PWRSAVE "ogi_power_save"
+
+
+#define MIN_AGGR_IVAL 35
+#define MAX_AGGR_IVAL 4000
+#define DEF_AGGR_IVAL 500
+#define ARG_AGGR_IVAL "aggreg_interval"
 
 void init_schedule( void );
 void start_schedule( void );

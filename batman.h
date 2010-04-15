@@ -28,10 +28,10 @@
 #include <linux/if.h>
 
 #include "list-batman.h"
-#include "hash.h"
 #include "control.h"
 #include "allocate.h"
 #include "profile.h"
+#include "avl.h"
 
 
 /***
@@ -61,8 +61,7 @@
  * Global Variables and definitions 
  */
 
-
-#define SOURCE_VERSION "0.3-alpha" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
+#define SOURCE_VERSION "0.3-rc1" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
 
 #define COMPAT_VERSION 10 
 
@@ -108,7 +107,8 @@ enum ADGSN {
 
 #define MAX_GW_UNAVAIL_FACTOR 10 /* 10 */
 #define GW_UNAVAIL_TIMEOUT 10000
-#define CHOOSE_GW_DELAY_DIVISOR 1
+
+#define COMMON_OBSERVATION_WINDOW (DEF_OGI*DEF_PWS)
 
 #define MAX_SELECT_TIMEOUT_MS 400 /* MUST be smaller than (1000/2) to fit into max tv_usec */
 
@@ -137,13 +137,9 @@ enum ADGSN {
 
 #define MAX( a, b ) ( (a>b) ? (a) : (b) )
 #define MIN( a, b ) ( (a<b) ? (a) : (b) )
+#define MAX_SQ( a, b ) ( (GREAT_SQ( (a), (b) )) ? (a) : (b) )
 
 
-#ifdef NOPARANOIA
-#define paranoia( ... )
-#else
-#define paranoia( code , problem ); do { if ( problem ) { cleanup_all( code ); } }while(0)
-#endif
 
 
 #define WARNING_PERIOD 20000
@@ -157,8 +153,7 @@ enum ADGSN {
    could not be send by nodes with the old MAX_PACKET_SIZE = 256 */
 #define MIN_UDPD_SIZE 24
 #define DEF_UDPD_SIZE 256
-/* which is the maximum packet size which could be defined with the bat_header->size field */
-#define MAX_UDPD_SIZE 1024 
+#define MAX_UDPD_SIZE (255<<2) //the maximum packet size which could be defined with the bat_header->size field
 #define ARG_UDPD_SIZE "udp_data_size"
 
 #define MAX_MTU 1500
@@ -257,8 +252,6 @@ extern uint8_t on_the_fly;
 
 extern uint32_t s_curr_avg_cpu_load;
 
-extern int Trash;
-
 #define SQ_TYPE uint16_t
 
 
@@ -272,22 +265,25 @@ extern int Trash;
 #define CLONED_FLAG		0x04 /* set when (re-)broadcasting a OGM not-for-the-first time or re-broadcasting a OGM with this flag */
 
 
-extern uint8_t Link_flags;
+//extern uint8_t Link_flags;
 
-#define UNICAST_PROBES_CAP 0x01 /* set on bat_header->link_flags to announce capability for unidirectional UDP link measurements */
+#define BAT_CAPAB_UNICAST_PROBES 0x01 /* set on bat_header->link_flags to announce capability for unidirectional UDP link measurements */
+#define BAT_CAPAB_ ...
 
 
 struct bat_header
 {
 	uint8_t  version;
-	uint8_t  link_flags; 	// UNICAST_PROBES_CAP, ...
+	uint8_t  link_flags; 	// BAT_CAPAB_UNICAST_PROBES, ...
 	uint8_t  reserved;
 	uint8_t  size; 		// the relevant data size in 4 oktets blocks of the packet (including the bat_header)
 } __attribute__((packed));
 
 
-#define BAT_TYPE_OGM 0x00	// originator message
-#define BAT_TYPE_UPM 0x01	// unicast link-probe message
+#define BAT_TYPE_OGM  0x00	// originator message
+#define BAT_TYPE_UPM  0x01	// unicast link-probe message
+#define BAT_TYPE_ ...
+
 
 
 struct bat_packet_common
@@ -426,7 +422,6 @@ struct msg_buff {
 	uint32_t		neigh;
 	char neigh_str[ADDR_STR_LEN];
 	int16_t			total_length;
-	uint8_t			link_flags;
 	uint8_t 		unicast;
 	
 	//filled by strip_packet()
@@ -460,10 +455,11 @@ struct send_node                 /* structure for send_list maintaining packets 
 	uint8_t  own_if;
 	int32_t  ogm_buff_len;
 	struct batman_if *if_outgoing;
+	struct bat_packet_ogm *ogm;
 
 	// the following ogm_buff array MUST be aligned with bit-range of the OS (64bit for 64-bit OS)
 	// having a pointer right before ensures this alignment.
-	unsigned char ogm_buff[]; // this is to access following ogm data
+	unsigned char _attached_ogm_buff[]; // this is to access attached ogm data (only if allocated) !!!
 };
 
 
@@ -483,21 +479,22 @@ struct batman_if
 	char dev_phy[IFNAMSIZ+1];
 	char if_ip_str[ADDR_STR_LEN];
 	
-	int32_t if_index;
 	uint8_t if_active;
 	uint8_t if_scheduling;
-	
-	uint8_t if_reserved;
-	
-	uint8_t  if_prefix_length;
-	uint32_t if_netmask;
+
+	uint16_t  if_prefix_length;
+
+	int32_t if_index;
 	uint32_t if_netaddr;
+	uint32_t if_addr;
+	uint32_t if_broad;
+
+
+	uint32_t if_netmask;
 	
 	int32_t if_rp_filter_orig;
 	int32_t if_send_redirects_orig;
 	
-	uint32_t if_addr;
-	uint32_t if_broad;
 	
 	struct sockaddr_in if_unicast_addr;
 	struct sockaddr_in if_netwbrc_addr;
@@ -508,12 +505,17 @@ struct batman_if
 	
 	SQ_TYPE if_seqno;
 	uint32_t if_seqno_schedule;
-	
-	struct send_node *own_send_node;
+	uint32_t if_last_link_activity;
+	uint32_t if_next_pwrsave_hardbeat;
+
+	/*
+	struct send_node own_send_struct;
 	struct bat_packet_ogm *own_ogm_out;
-	unsigned char own_send_buff[MAX_UDPD_SIZE + 1 + sizeof(struct send_node)];
-	
-	unsigned char aggregation_out[MAX_UDPD_SIZE + 1];
+	 */
+
+	// having a pointer right before the following array ensures 32/64 bit alignment.
+	unsigned char *aggregation_out;
+	unsigned char aggregation_out_buff[MAX_UDPD_SIZE + 1];
 	
 	int16_t aggregation_len;
 	
@@ -527,6 +529,7 @@ struct batman_if
 	int8_t if_linklayer;
 	
 	int16_t if_ttl_conf;
+	int16_t if_ttl;
 	
 	int16_t if_send_clones_conf;
 	int16_t if_send_clones;
@@ -542,13 +545,15 @@ struct batman_if
 
 struct orig_node                 /* structure for orig_list maintaining nodes of mesh */
 {
-	uint32_t orig;          /* this must be the first four bytes! otherwise the hash functionality does not work */
+	uint32_t orig;          /* this must be the first four bytes! otherwise avl or hash functionality do not work */
 		
 	struct neigh_node *router;   /* the neighbor which is the currently best_next_hop */
 	
 	char orig_str[ADDR_STR_LEN];
 	
 	struct list_head_first neigh_list;
+	struct avl_tree neigh_avl;
+
 	
 	uint32_t last_aware;              /* when last valid ogm via  this node was received */
 	uint32_t last_valid_time;         /* when last valid ogm from this node was received */
@@ -558,22 +563,32 @@ struct orig_node                 /* structure for orig_list maintaining nodes of
 	SQ_TYPE last_decided_sqn;
 	SQ_TYPE last_accepted_sqn;              /* last squence number acceppted for metric */
 	SQ_TYPE last_valid_sqn;			/* last and best known squence number */
-	
+	SQ_TYPE last_wavg_sqn;                  /* last sequence number used for estimating ogi */
+
 	// From nodes with several interfaces we may know several originators, 
 	// this points to the originator structure of the primary interface of a node 
 	struct orig_node *primary_orig_node;
-	//struct list_head_first pog_referrer_list;
 	int16_t pog_refcnt;
 	
 	
 	//	uint8_t  last_accept_largest_ttl;  /* largest (best) TTL received with last sequence number */
 	uint8_t  last_path_ttl;
-	
+
 	uint8_t  ogx_flag;
 	uint8_t  pws;
-	uint8_t  path_lounge;
+//	uint8_t  path_lounge;
 	uint8_t  ogm_misc;
-	
+
+//	uint8_t path_hystere;
+//	uint8_t late_penalty;
+//	uint8_t hop_penalty;
+//	uint8_t asym_weight;
+
+//	uint8_t rcnt_pws;
+//	uint8_t rcnt_lounge;
+//	uint8_t rcnt_hystere;
+//	uint8_t rcnt_fk;
+
 	uint32_t ogi_wavg;
 	uint32_t rt_changes;
 	
@@ -595,25 +610,18 @@ struct orig_node                 /* structure for orig_list maintaining nodes of
 	
 };
 
-/*
-struct pog_referrer_node
-{
-	struct list_head list;
-	uint32_t addr;
-};
-*/
 
 #define SQN_LOUNGE_SIZE (8*sizeof(uint32_t)) /* must correspond to bits of neigh_node->considered_seqnos */
 
 struct sq_record {
 	
 	SQ_TYPE wa_clr_sqn; 	// SQN upto which waightedAverageVal has been purged
-	SQ_TYPE wa_set_sqn; 	// SQN which has been applied (if equals wa_pos) then wa_unscaled MUST NO be set again!
+	SQ_TYPE wa_set_sqn; 	// SQN which has been applied (if equals wa_pos) then wa_unscaled MUST NOT be set again!
 	uint32_t wa_unscaled;	// unscaled summary value of processed SQNs
 	uint32_t wa_val;	// scaled and representative value of processed SQNs
 	
-	uint8_t sqn_entry_queue[SQN_LOUNGE_SIZE];	// cache for greatest rcvd SQNs waiting to be processed
-	SQ_TYPE sqn_entry_queue_tip;			// the greatest SQN rcvd so fare
+//	uint8_t sqn_entry_queue[SQN_LOUNGE_SIZE];	// cache for greatest rcvd SQNs waiting to be processed
+//	SQ_TYPE sqn_entry_queue_tip;			// the greatest SQN rcvd so fare
 };
 
 
@@ -638,32 +646,39 @@ struct link_node_dev
  */
 struct link_node
 {
+	uint32_t orig_addr;
+
 	struct list_head list;
-	
+
 	struct orig_node *orig_node;
-	uint8_t link_flags;
 	
 	struct list_head_first lndev_list; // list with one link_node_dev element per link
 
 };
 
-
-
+struct neigh_node_key {
+	uint32_t addr;
+	struct batman_if *iif;
+};
 
 /* Path statistics per neighbor via which OGMs of the parent orig_node have been received */
 /* Every OG has one ore several neigh_nodes. */
 struct neigh_node
 {
+
+	struct neigh_node_key key;
+#define nnkey_addr key.addr
+#define nnkey_iif key.iif
+//	uint32_t nnkey_addr;
+//	struct batman_if *nnkey_iif;
+
 	struct list_head list;
-	uint32_t addr;
 	uint32_t last_aware;            /* when last packet via this neighbour was received */
 	
-	uint32_t considered_seqnos;	//MUST have SQN_LOUNGE_SIZE bits
 	SQ_TYPE last_considered_seqno;
 	
-	struct batman_if *iif;
-	
-	struct sq_record accepted_sqr;
+	struct sq_record longtm_sqr;
+	struct sq_record recent_sqr;
 };
 
 

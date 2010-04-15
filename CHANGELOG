@@ -3,6 +3,19 @@ http://open-mesh.net/log/trunk/batman-experimental
 
 Important changes should be listed in the following, most recent changes on top:
 
+---------------------------------------------------------------------------------------------------
+2010-04-15 -
+
+ - debug sorted originator lists (using a binary avl-tree instead of hash)
+
+ - ogi_power_save (mode) for energy-restriced devices
+
+ - many 64-bit fixes
+
+ - harded ogm-aggregation and more tolerant acceptance of late OGMs (old SQNs) with --path_lounge_size
+
+ - dead-path detection by concurrent path-quality observation using a  long-term and short-term observation window
+
 
 ---------------------------------------------------------------------------------------------------
 2009-08-18 - bmx_http_info and bmx_gsf_map plugin, ...

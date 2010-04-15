@@ -33,6 +33,7 @@
 #include "metrics.h"
 #include "plugin.h"
 #include "schedule.h"
+//#include "avl.h"
 
 
 
@@ -65,7 +66,7 @@ uint8_t ext_attribute[EXT_TYPE_MAX+1] =
 
 int32_t Gateway_class = 0;
 
-uint8_t Link_flags = 0;
+//uint8_t Link_flags = 0;
 
 uint32_t batman_time = 0;
 uint32_t batman_time_sec = 0;
@@ -73,8 +74,6 @@ uint32_t batman_time_sec = 0;
 uint8_t on_the_fly = NO;
 
 uint32_t s_curr_avg_cpu_load = 0;
-
-int Trash;
 
 void batman( void ) {
 
@@ -206,7 +205,7 @@ static void send_vis_packet( void *unused ) {
 	((struct vis_packet *)vis_packet)->sender_ip = primary_addr;
 	((struct vis_packet *)vis_packet)->version = VIS_COMPAT_VERSION;
 	((struct vis_packet *)vis_packet)->gw_class = Gateway_class;
-	((struct vis_packet *)vis_packet)->seq_range = my_lws;  
+	((struct vis_packet *)vis_packet)->seq_range = local_lws;
 
 	
 	/* iterate link list */
@@ -552,21 +551,21 @@ static int32_t opt_srv ( uint8_t cmd, uint8_t _save, struct opt_type *opt, struc
 
 static int32_t opt_srvs ( uint8_t cmd, uint8_t _save, struct opt_type *opt, struct opt_parent *patch, struct ctrl_node *cn ) {
 	
-	struct hash_it_t *hashit = NULL;
-
 	int dbg_ogm_out = 0;
 	static char dbg_ogm_str[MAX_DBG_STR_SIZE + 1]; // TBD: must be checked for overflow when 
-
+        struct orig_node *on;
 	uint16_t srv_count = 0;
 
 	if ( cmd != OPT_APPLY )
 		return SUCCESS;
 	
 	dbg_printf( cn, "Originator      Announced services ip:port:seqno ...\n");
-	
-	while ( (hashit = hash_iterate( orig_hash, hashit )) ) {
 
-		struct orig_node *on = hashit->bucket->data;
+        uint32_t orig_ip = 0;
+
+        while ((on = (struct orig_node*) avl_next(&orig_avl, &orig_ip))) {
+
+                orig_ip = on->orig;
 
 		if ( on->router == NULL  ||  srv_orig_registry < 0  ||  on->plugin_data[srv_orig_registry] == NULL )
 			continue;
@@ -618,10 +617,8 @@ static struct opt_type srv_options[]= {
 
 static int32_t send_my_srv_ext( unsigned char* ext_buff ) {
 	
-	if ( my_srv_list_enabled )
-		memcpy( ext_buff, 
-		        (unsigned char *)my_srv_ext_array, 
-		        my_srv_list_enabled * sizeof(struct ext_packet) );
+	if ( my_srv_list_enabled)
+                memcpy(ext_buff, (unsigned char *) my_srv_ext_array, my_srv_list_enabled * sizeof (struct ext_packet));
 	
 	return my_srv_list_enabled * sizeof(struct ext_packet);
 

@@ -27,7 +27,7 @@
 
 // my HNA extension messages (attached to all primary OGMs)
 
-#define A_TYPE_INTERFACE 0x00
+#define A_TYPE_INTERFACE 0x00 //unused
 #define A_TYPE_NETWORK   0x01
 #define A_TYPE_MAX       0x01
 
@@ -90,7 +90,7 @@ struct hna_key
 #define  HNA_HASH_NODE_MYONE 0x01
 #define  HNA_HASH_NODE_OTHER 0x02
 
-struct hna_hash_node
+struct hna_node
 {
 	struct hna_key key;
 	

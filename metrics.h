@@ -28,10 +28,10 @@
 
 void flush_sq_record( struct sq_record *sqr );
 
-void update_queued_metric( uint8_t probe, uint8_t lounge_size, SQ_TYPE seqno, struct sq_record *sqr, uint8_t ws,
-                           uint32_t orig, uint32_t neigh, struct batman_if *bif, char* who );
+void update_lounged_metric( uint8_t probe, uint8_t lounge_size, SQ_TYPE sqn_incm, SQ_TYPE sqn_max, struct sq_record *sqr, uint8_t ws );
 
-uint32_t get_wavg( uint32_t wavg, uint8_t weight_exp );
+#define WAVG( wavg , weight_exp ) ( (uint32_t) ( (wavg) >> (weight_exp) ) )
+
 uint32_t upd_wavg( uint32_t *wavg, uint32_t probe, uint8_t weight_exp );
 
 #endif

@@ -38,6 +38,7 @@
 #include "metrics.h"
 #include "plugin.h"
 #include "schedule.h"
+//#include "avl.h"
 
 # define timercpy(d, a) (d)->tv_sec = (a)->tv_sec; (d)->tv_usec = (a)->tv_usec; 
 
@@ -52,6 +53,14 @@ void fake_start_time( int32_t fake ) {
 	start_time_tv.tv_sec-= fake;
 }
 #endif
+
+/* get_time functions MUST be called at least every 2*MAX_SELECT_TIMEOUT_MS to allow for properly working time-drift checks */
+
+/* overlaps after approximately 138 years */
+//#define get_time_sec()  get_time( NO, NULL  )
+
+/* overlaps after 49 days, 17 hours, 2 minutes, and 48 seconds */
+//#define get_time_msec() get_time( YES, NULL )
 
 void update_batman_time( struct timeval *precise_tv ) {
 	
@@ -176,7 +185,9 @@ static void sym_print( char x, char y, char *z ) {
 
 void print_animation( void ) {
 
-	Trash = system( "clear" );
+	int trash;
+
+	trash = system( "clear" );
 	BAT_LOGO_END( 0, 500 );
 
 	sym_print( 0, 3, "." );
@@ -379,24 +390,25 @@ static void segmentation_fault( int32_t sig ) {
 void cleanup_all( int status ) {
 	
 	static int cleaning_up = NO;
-	
-	if ( status < 0 ) {
-			/*
-	 * Negative numbers are used as SIGSEV error codes !
-	 * Currently used numbers are 
-	 * for core programs:		-500000 ... -500156
-	 */
-		dbg( DBGL_SYS, DBGT_ERR, 
-		     "Terminating with error code %d ! Please notify a developer", status );
-		
-		raise( SIGSEGV );
-	}
-	
-	if ( !cleaning_up ) {
-	
-		cleaning_up = YES;
-	
-		// first, restore defaults...
+
+        if (status < 0) {
+                dbg(DBGL_SYS, DBGT_ERR, "Terminating with error code %d ! Please notify a developer", status);
+
+                dbg(DBGL_SYS, DBGT_ERR, "raising SIGSEGV to simplify debugging ...");
+
+                errno = 0;
+                if (raise(SIGSEGV)) {
+                        dbg(DBGL_SYS, DBGT_ERR, "raising SIGSEGV failed: %s...", strerror(errno));
+                }
+
+        }
+
+
+        if (!cleaning_up) {
+
+                cleaning_up = YES;
+
+                // first, restore defaults...
 		
 		stop = 1;
 		
@@ -421,13 +433,11 @@ void cleanup_all( int status ) {
 			remove_outstanding_ogms( bif );
 			
 			list_del( (struct list_head *)&if_list, list_pos, &if_list );
-			
-			debugFree( list_pos, 1214 );
+
+                        //debugFree(bif->own_ogm_out, 1209);
+                        debugFree(bif, 1214);
 		}
 
-		hash_destroy( orig_hash );
-		
-		
 		// last, close debugging system and check for forgotten resources...
 		cleanup_control();
 		
@@ -462,28 +472,27 @@ int main( int argc, char *argv[] ) {
 
 	My_pid = getpid();
 
-	
-	char *d = getenv(BMX_ENV_DEBUG);
+/*	char *d = getenv(BMX_ENV_DEBUG);
 	if ( d  &&  strtol(d, NULL , 10) >= DBGL_MIN  &&  strtol(d, NULL , 10) <= DBGL_MAX )
 		debug_level = strtol(d, NULL , 10);
-	
+*/
 	
 	srand( My_pid );
 
 	init_set_bits_table256();
-	
-	orig_hash = hash_new( 128, compare_key, choose_key, 4 );
 	
 	signal( SIGINT, handler );
 	signal( SIGTERM, handler );
 	signal( SIGPIPE, SIG_IGN );
 	signal( SIGSEGV, segmentation_fault );
 	
+	init_control();
+
 	init_profile();
 	
 	init_route();
 	
-	init_control();
+//	init_control();
 	
 	init_route_args();
 	

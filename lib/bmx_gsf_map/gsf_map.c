@@ -34,6 +34,7 @@
 #include "plugin.h"
 #include "metrics.h"
 //#include "schedule.h"
+//#include "avl.h"
 
 
 #define GSF_MAP_MYNAME 		"gsf_map_name"
@@ -94,7 +95,7 @@ static int32_t opt_gsf_map_local ( uint8_t cmd, uint8_t _save, struct opt_type *
 			if ( !orig_node->router  ||  !orig_node->primary_orig_node )
 				continue;
 			
-			struct orig_node *onn = get_orig_node( orig_node->router->addr, NO/*create*/ );
+			struct orig_node *onn = get_orig_node( orig_node->router->nnkey_addr, NO/*create*/ );
 			
 			if ( !onn  ||  !onn->last_valid_time  ||  !onn->router )
 				continue;
@@ -116,7 +117,7 @@ static int32_t opt_gsf_map_local ( uint8_t cmd, uint8_t _save, struct opt_type *
 				            "'rtq' : %3i, 'rq' : %3i, 'tq' : %3i} ",
 				            count_neigh++,
 				            orig_node->primary_orig_node->orig_str,
-				            orig_node->router->accepted_sqr.wa_val/PROBE_TO100, 
+				            orig_node->router->longtm_sqr.wa_val/PROBE_TO100,
 				            orig_node->last_valid_sqn,
 				            ( batman_time - orig_node->last_valid_time)/1000,
 				            lndev->bif->if_ip_str,
@@ -143,15 +144,17 @@ static int32_t opt_gsf_map_global ( uint8_t cmd, uint8_t _save, struct opt_type 
 	
 	if ( cmd == OPT_APPLY  &&  cn ) {
 	
-	struct hash_it_t *hashit = NULL;
 	struct orig_node *orig_node;
 	uint32_t count=0;
 
 	dbg_printf( cn, "\nall_nodes = {\n" "  '%s' : {\n", ipStr(primary_addr) );
 
-	while ( (hashit = hash_iterate( orig_hash, hashit )) ) {
+        uint32_t orig_ip = 0;
 
-		orig_node = hashit->bucket->data;
+        while ((orig_node = (struct orig_node*) avl_next(&orig_avl, &orig_ip))) {
+
+                orig_ip = orig_node->orig;
+
 
 		if ( orig_node->router == NULL )
 			continue;
@@ -159,7 +162,7 @@ static int32_t opt_gsf_map_global ( uint8_t cmd, uint8_t _save, struct opt_type 
 		if ( orig_node->primary_orig_node != orig_node )
 			continue;
 
-		struct orig_node *onn = get_orig_node( orig_node->router->addr, NO );
+		struct orig_node *onn = get_orig_node( orig_node->router->nnkey_addr, NO );
 
 		if ( !onn  ||  !onn->last_valid_time  ||  !onn->router  ||  !onn->primary_orig_node )
 			continue;
@@ -174,15 +177,15 @@ static int32_t opt_gsf_map_global ( uint8_t cmd, uint8_t _save, struct opt_type 
 				"      "
 				"'dev' : '%s', 'via' : '%s', 'viaPub' : '%s', 'pq' : %i, 'ut' : '%s', "
 				"'lseq' : %i, 'lvld' : %i, 'pwd' : %i, 'ogi' : %i, 'hop' : %i, 'chng' : %i }",
-				orig_node->router->iif->dev,
-				ipStr( orig_node->router->addr ),
+				orig_node->router->nnkey_iif->dev,
+				ipStr( orig_node->router->nnkey_addr ),
 				ipStr( onn->primary_orig_node->orig ),
-		        	orig_node->router->accepted_sqr.wa_val/PROBE_TO100,
+		        	orig_node->router->longtm_sqr.wa_val/PROBE_TO100,
 				get_human_uptime( orig_node->first_valid_sec ),
 				orig_node->last_valid_sqn,
 				( batman_time - orig_node->last_valid_time)/1000,
 				orig_node->pws,
-				get_wavg( orig_node->ogi_wavg, OGI_WAVG_EXP ),
+				WAVG( orig_node->ogi_wavg, OGI_WAVG_EXP ),
 				(Ttl+1 - orig_node->last_path_ttl),
 				orig_node->rt_changes
 				); 
@@ -272,13 +275,13 @@ static struct opt_type gsf_map_options[]= {
 };
 
 
-void gsf_map_cleanup( void ) {
+static void gsf_map_cleanup( void ) {
 	
 	//	remove_options_array( gsf_map_options );
 	
 }
 
-int32_t gsf_map_init( void ) {
+static int32_t gsf_map_init( void ) {
 	
 	register_options_array( gsf_map_options, sizeof( gsf_map_options ) );
 	

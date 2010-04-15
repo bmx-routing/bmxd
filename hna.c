@@ -22,12 +22,17 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <asm/types.h>
+#include <sys/socket.h>
+#include <linux/netlink.h>
+#include <linux/rtnetlink.h>
 
 #include "batman.h"
 #include "os.h"
 #include "originator.h"
 #include "plugin.h"
 #include "hna.h"
+//#include "avl.h"
 
 
 static int32_t hna_orig_registry = FAILURE;
@@ -35,52 +40,42 @@ static int32_t hna_orig_registry = FAILURE;
 static struct ext_type_hna *my_hna_ext_array = NULL;
 static uint16_t my_hna_list_enabled = 0;
 
-static struct hashtable_t *hna_hash = NULL;
-
+//static struct avl_tree hna_avl = { sizeof(struct hna_key), NULL};
+static AVL_TREE( hna_avl, sizeof(struct hna_key) );
 
 // this function finds (or if it does not exits and create is true it creates) 
 // an hna entry for the given hna address, anetmask, and atype 
-static struct hna_hash_node *get_hna_node( struct hna_key *hk, uint8_t create ) {
+static struct hna_node *get_hna_node( struct hna_key *hk, uint8_t create ) {
 	
-	struct hna_hash_node *hash_node;
-	struct hashtable_t *swaphash;
+	struct hna_node *hn;
+	hn = ((struct hna_node *)avl_find( &hna_avl, hk ));
 	
-	hash_node = ((struct hna_hash_node *)hash_find( hna_hash, hk ));
-	
-	if ( hash_node ) {
+	if ( hn ) {
 		
-		paranoia( -500022, ( memcmp( hk, &hash_node->key, sizeof( struct hna_key ) ) ) );// found incorrect key
+		paranoia( -500022, ( memcmp( hk, &hn->key, sizeof( struct hna_key ) ) ) );// found incorrect key
 		
-		return hash_node;
+		return hn;
 	}
 	
 	if ( !create )
 		return NULL;
 	
-	dbgf_all( DBGT_INFO, "  creating new and empty hna_hash_node: %s/%d, type %d", 
+	dbgf_all( DBGT_INFO, "  creating new and empty hna_node: %s/%d, type %d", 
 	         ipStr(hk->addr), hk->KEY_FIELD_ANETMASK, hk->KEY_FIELD_ATYPE );
 	
-	hash_node = debugMalloc( sizeof(struct hna_hash_node), 401 );
-	memset(hash_node, 0, sizeof(struct hna_hash_node));
+	hn = debugMalloc( sizeof(struct hna_node), 401 );
+	memset(hn, 0, sizeof(struct hna_node));
 	
-	hash_node->key.addr = hk->addr;
-	hash_node->key.KEY_FIELD_ATYPE = hk->KEY_FIELD_ATYPE;
-	hash_node->key.KEY_FIELD_ANETMASK = hk->KEY_FIELD_ANETMASK;
-	hash_node->status = HNA_HASH_NODE_EMPTY;
+	hn->key.addr = hk->addr;
+	hn->key.KEY_FIELD_ATYPE = hk->KEY_FIELD_ATYPE;
+	hn->key.KEY_FIELD_ANETMASK = hk->KEY_FIELD_ANETMASK;
+	hn->status = HNA_HASH_NODE_EMPTY;
 	
-	hash_add( hna_hash, hash_node );
+        avl_insert( &hna_avl, hn );
 	
-	if ( hna_hash->elements * 4 > hna_hash->size ) {
-		
-		if ( !(swaphash = hash_resize( hna_hash, hna_hash->size * 2 )) )
-			cleanup_all( -500095 );
-		
-		hna_hash = swaphash;
-	}
+	paranoia( -500022, ( memcmp( hk, &hn->key, sizeof( struct hna_key ) ) ) );// found incorrect key
 	
-	paranoia( -500022, ( memcmp( hk, &hash_node->key, sizeof( struct hna_key ) ) ) );// found incorrect key
-	
-	return hash_node;
+	return hn;
 }
 
 
@@ -91,14 +86,14 @@ static int8_t add_del_hna( uint8_t del, struct orig_node *other_orig, struct nei
 	if ( atype > A_TYPE_MAX ) // NOT YET supported!
 		return SUCCESS;
 	
-	uint8_t err = !del  &&  other_orig  &&  ( !router || !router->addr ||  !router->iif );
+	uint8_t err = !del  &&  other_orig  &&  ( !router || !router->nnkey_addr ||  !router->nnkey_iif );
 	
-	dbgf( ( err ? DBGL_SYS : DBGL_CHANGES ), ( err ? DBGT_ERR : DBGT_INFO ), 
+	dbgf( ( err ? DBGL_SYS : DBGL_ALL ), ( err ? DBGT_ERR : DBGT_INFO ),
 	     "%s %s %s %s %s/%d %d",
 	     del?"DEL":"ADD",
 	     other_orig?ipStr(other_orig->orig):"myself",
-	     ipStr( router&&router->addr ? router->addr : 0 ),
-	     ( router&&router->iif ? router->iif->dev : "???" ),
+	     ipStr( router&&router->nnkey_addr ? router->nnkey_addr : 0 ),
+	     ( router&&router->nnkey_iif ? router->nnkey_iif->dev : "???" ),
 	     ipStr(ip), mask, atype );
 	
 	paranoia( -500023, err );
@@ -107,77 +102,73 @@ static int8_t add_del_hna( uint8_t del, struct orig_node *other_orig, struct nei
 	key.addr = ip;
 	key.KEY_FIELD_ANETMASK = mask;
 	key.KEY_FIELD_ATYPE = atype;
+
+        int16_t rt_table = (atype == A_TYPE_INTERFACE || atype == A_TYPE_NETWORK) ? RT_TABLE_NETWORKS : 0;
 	
-	uint8_t rt_table = ( atype == A_TYPE_INTERFACE ? RT_TABLE_INTERFACES : 
-	                     (atype == A_TYPE_NETWORK ? RT_TABLE_NETWORKS : 0 ) );
-	
-	struct hna_hash_node *hhn = get_hna_node( &key, NO/*create*/);
-	
+	struct hna_node *hn = get_hna_node( &key, NO/*create*/);
+
+        
 	if ( del ) {
 		
-		if ( !other_orig  &&  hhn  &&  hhn->status == HNA_HASH_NODE_MYONE ) {
+		if ( !other_orig  &&  hn  &&  hn->status == HNA_HASH_NODE_MYONE ) {
 			
 			/* del throw routing entries for own hna */
-			add_del_route( ip, mask, 0,0,0, "unknown", RT_TABLE_HOSTS,      RT_THROW, DEL, TRACK_MY_HNA );
-			add_del_route( ip, mask, 0,0,0, "unknown", RT_TABLE_INTERFACES, RT_THROW, DEL, TRACK_MY_HNA );
-			add_del_route( ip, mask, 0,0,0, "unknown", RT_TABLE_NETWORKS,   RT_THROW, DEL, TRACK_MY_HNA );
-			add_del_route( ip, mask, 0,0,0, "unknown", RT_TABLE_TUNNEL,     RT_THROW, DEL, TRACK_MY_HNA );
+			add_del_route( ip, mask, 0,0,0, "unknown", RT_TABLE_HOSTS,      RTN_THROW, DEL, TRACK_MY_HNA );
+			add_del_route( ip, mask, 0,0,0, "unknown", RT_TABLE_NETWORKS,   RTN_THROW, DEL, TRACK_MY_HNA );
+			add_del_route( ip, mask, 0,0,0, "unknown", RT_TABLE_TUNNEL,     RTN_THROW, DEL, TRACK_MY_HNA );
 			
 			my_hna_list_enabled--;
 			
-		} else if ( other_orig  &&  hhn  &&  hhn->status == HNA_HASH_NODE_OTHER   &&  hhn->orig == other_orig ) {
+		} else if ( other_orig  &&  hn  &&  hn->status == HNA_HASH_NODE_OTHER   &&  hn->orig == other_orig ) {
 			
-			add_del_route( ip, mask, 0, primary_addr, 0, 0, rt_table, RT_UNICAST, DEL, TRACK_OTHER_HNA );
-			
-		} else if ( !hhn ) {
-			
-			dbgf( DBGL_SYS, DBGT_WARN, "get_hna_hash() requested to remove non-existing hna registry");
-			return FAILURE;
+			add_del_route( ip, mask, 0, primary_addr, 0, 0, rt_table, RTN_UNICAST, DEL, TRACK_OTHER_HNA );
 			
 		} else {
-			
-			return FAILURE;
-		}
+                        // paranoia( -500181, 1 );
+                        if (!hn) {
+                                dbgf(DBGL_SYS, DBGT_WARN, "get_hna_node() requested to remove non-existing hna registry");
+                        }
+                        return FAILURE;
+                }
+
+                avl_remove(&hna_avl, hn);
 		
-		hash_remove( hna_hash, hhn );
-		
-		debugFree( hhn, 1401 );
+		debugFree( hn, 1401 );
 		
 	} else {
 		
-		if ( other_orig  &&  !hhn ) {
+		if ( other_orig  &&  !hn ) {
 			
-			hhn = get_hna_node( &key, YES/*create*/);
-			hhn->status = HNA_HASH_NODE_OTHER;
-			hhn->orig = other_orig;
+			hn = get_hna_node( &key, YES/*create*/);
+			hn->status = HNA_HASH_NODE_OTHER;
+			hn->orig = other_orig;
 			
 			// we checked for err = !del  &&  ( !router || !router->addr ||  !router->iif ) at beginning: 
-			add_del_route( ip, mask, router->addr, primary_addr,
-			               router->iif->if_index, 
-			               router->iif->dev, 
-			               rt_table, RT_UNICAST, ADD, TRACK_OTHER_HNA  );
+			add_del_route( ip, mask, router->nnkey_addr, primary_addr,
+			               router->nnkey_iif->if_index,
+			               router->nnkey_iif->dev,
+			               rt_table, RTN_UNICAST, ADD, TRACK_OTHER_HNA  );
 			
 		
-		} else if (  other_orig  &&  hhn  &&  hhn->status == HNA_HASH_NODE_OTHER  &&  hhn->orig == other_orig ) {
+		} else if (  other_orig  &&  hn  &&  hn->status == HNA_HASH_NODE_OTHER  &&  hn->orig == other_orig ) {
 			
 			dbgf( DBGL_SYS, DBGT_WARN, "requested to add already-existing hna registry");
 			cleanup_all ( -500092 );
 		
-		} else if ( !other_orig  &&  !hhn ) {
+		} else if ( !other_orig  &&  !hn ) {
 			
-			hhn = get_hna_node( &key, YES/*create*/);
-			hhn->status = HNA_HASH_NODE_MYONE;
-			hhn->orig = NULL;
+			hn = get_hna_node( &key, YES/*create*/);
+			hn->status = HNA_HASH_NODE_MYONE;
+			hn->orig = NULL;
 			
 			/* add throw routing entries for own hna */  
-			add_del_route( ip, mask, 0,0,0, "unknown", RT_TABLE_HOSTS,      RT_THROW, ADD, TRACK_MY_HNA );
-			add_del_route( ip, mask, 0,0,0, "unknown", RT_TABLE_INTERFACES, RT_THROW, ADD, TRACK_MY_HNA );
-			add_del_route( ip, mask, 0,0,0, "unknown", RT_TABLE_NETWORKS,   RT_THROW, ADD, TRACK_MY_HNA );
-			add_del_route( ip, mask, 0,0,0, "unknown", RT_TABLE_TUNNEL,     RT_THROW, ADD, TRACK_MY_HNA );
+			add_del_route( ip, mask, 0,0,0, "unknown", RT_TABLE_HOSTS,      RTN_THROW, ADD, TRACK_MY_HNA );
+			add_del_route( ip, mask, 0,0,0, "unknown", RT_TABLE_NETWORKS,   RTN_THROW, ADD, TRACK_MY_HNA );
+			add_del_route( ip, mask, 0,0,0, "unknown", RT_TABLE_TUNNEL,     RTN_THROW, ADD, TRACK_MY_HNA );
 			
 			my_hna_list_enabled++;
 			
-		} else if ( !other_orig  &&  hhn  &&  hhn->status == HNA_HASH_NODE_MYONE ) {
+		} else if ( !other_orig  &&  hn  &&  hn->status == HNA_HASH_NODE_MYONE ) {
 			
 			dbgf( DBGL_SYS, DBGT_WARN, "requested to add already registered own hna %s/%d", 
 			      ipStr(ip), mask );
@@ -205,22 +196,19 @@ static int8_t add_del_hna( uint8_t del, struct orig_node *other_orig, struct nei
 		}
 		
 		uint16_t array_len = 0;
-		
-		struct hash_it_t *hashit = NULL;
-		
-		/* for all hna_hash_nodes... */
-		while ( (hashit = hash_iterate( hna_hash, hashit )) ) {
+
+                struct hna_key hk = {0,{0,0}};
+                while ( (hn = avl_next( &hna_avl, &hk))) {
+                        hk = hn->key;
 			
-			hhn = hashit->bucket->data;
-			
-			if ( hhn->status == HNA_HASH_NODE_MYONE ) {
+			if ( hn->status == HNA_HASH_NODE_MYONE ) {
 				
 				my_hna_ext_array[array_len].EXT_FIELD_MSG  = YES;
 				my_hna_ext_array[array_len].EXT_FIELD_TYPE = EXT_TYPE_64B_HNA;
 				
-				my_hna_ext_array[array_len].EXT_HNA_FIELD_ADDR    = hhn->key.addr;
-				my_hna_ext_array[array_len].EXT_HNA_FIELD_NETMASK = hhn->key.KEY_FIELD_ANETMASK;
-				my_hna_ext_array[array_len].EXT_HNA_FIELD_TYPE    = hhn->key.KEY_FIELD_ATYPE;
+				my_hna_ext_array[array_len].EXT_HNA_FIELD_ADDR    = hn->key.addr;
+				my_hna_ext_array[array_len].EXT_HNA_FIELD_NETMASK = hn->key.KEY_FIELD_ANETMASK;
+				my_hna_ext_array[array_len].EXT_HNA_FIELD_TYPE    = hn->key.KEY_FIELD_ATYPE;
 				
 				array_len++;
 			}
@@ -245,9 +233,9 @@ static void update_other_hna( struct orig_node *on, struct neigh_node *router, s
 	     ( !len  &&  (  array  || !orig_hna ) ) ) 
 	{
 		dbgf( DBGL_SYS, DBGT_ERR,
-		     "invalid hna information on %d, hal %d, ha %d, ohna_data %d ohal %d, oha %d!",
-		      on, len, array, orig_hna, 
-		      orig_hna?orig_hna->hna_array_len:0, (orig_hna?orig_hna->hna_array:0) );
+		     "invalid hna information on %p, hal %d, ha %p, ohna_data %p ohal %d, oha %p!",
+                        (void*)on, len, (void*)array, (void*)orig_hna,
+		      orig_hna?orig_hna->hna_array_len:0, (void*)(orig_hna?orig_hna->hna_array:0) );
 		
 		cleanup_all( -500024 );
 	}
@@ -298,7 +286,7 @@ static int32_t opt_hna ( uint8_t cmd, uint8_t _save, struct opt_type *opt, struc
 	
 	uint32_t ip;
 	int32_t mask;
-	struct hna_hash_node *hhn;
+	struct hna_node *hhn;
 	struct hna_key key;
 	char new[30];
 	
@@ -345,7 +333,8 @@ static int32_t opt_hna ( uint8_t cmd, uint8_t _save, struct opt_type *opt, struc
 					return FAILURE;
 				
 				// 3. remove the old HNA and hope to not mess it up...
-				if ( cmd == OPT_APPLY  &&  add_del_hna( DEL, NULL, NULL, ip, mask, A_TYPE_NETWORK ) == FAILURE )
+				if ( cmd == OPT_APPLY  &&
+                                        add_del_hna( DEL, NULL, NULL, ip, mask, A_TYPE_NETWORK ) == FAILURE )
 					cleanup_all( -500110 );
 				
 			}
@@ -390,24 +379,25 @@ static int32_t opt_hna ( uint8_t cmd, uint8_t _save, struct opt_type *opt, struc
 
 static int32_t opt_show_hnas ( uint8_t cmd, uint8_t _save, struct opt_type *opt, struct opt_parent *patch, struct ctrl_node *cn ) {
 	
-	struct hash_it_t *hashit = NULL;
-	
 	int dbg_ogm_out = 0;
 	char dbg_ogm_str[MAX_DBG_STR_SIZE + 1];
 	uint8_t blocked;
 	uint16_t hna_count = 0;
 	struct hna_key key;
-	struct hna_hash_node *hash_node;
-	
+	struct hna_node *hn;
+	struct orig_node *orig_node;
 	
 	if ( cmd == OPT_APPLY ) {
 		
 		dbg_printf( cn, "Originator      Announced networks HNAs:  network/netmask or interface/IF (B:blocked)...\n");
-		
-		while ( (hashit = hash_iterate( orig_hash, hashit )) ) {
-			
-			struct orig_node *orig_node = hashit->bucket->data;
-			struct hna_orig_data *orig_hna = orig_node->plugin_data[hna_orig_registry];
+
+                uint32_t orig_ip = 0;
+
+                while ((orig_node = (struct orig_node*) avl_next(&orig_avl, &orig_ip))) {
+
+                        orig_ip = orig_node->orig;
+
+                        struct hna_orig_data *orig_hna = orig_node->plugin_data[hna_orig_registry];
 			
 			if ( !orig_node->router  ||  !orig_hna )
 				continue;
@@ -424,9 +414,9 @@ static int32_t opt_show_hnas ( uint8_t cmd, uint8_t _save, struct opt_type *opt,
 				key.KEY_FIELD_ATYPE    = orig_hna->hna_array[hna_count].EXT_HNA_FIELD_TYPE;
 				
 				// check if HNA was blocked
-				hash_node = get_hna_node( &key, NO/*create*/ );
+				hn = get_hna_node( &key, NO/*create*/ );
 				
-				if ( hash_node  &&  hash_node->status == HNA_HASH_NODE_OTHER  &&  hash_node->orig == orig_node )
+				if ( hn  &&  hn->status == HNA_HASH_NODE_OTHER  &&  hn->orig == orig_node )
 					blocked = NO;
 				else
 					blocked = YES;
@@ -544,7 +534,7 @@ static int32_t cb_hna_ogm_hook( struct msg_buff *mb, uint16_t oCtx, struct neigh
 		while ( hna_count < hna_array_len ) {
 			
 			struct hna_key key;
-			struct hna_hash_node *hash_node;
+                        struct hna_node *hn;
 			
 			key.addr               = ((hna_array)[hna_count]).EXT_HNA_FIELD_ADDR;
 			key.KEY_FIELD_ANETMASK = ((hna_array)[hna_count]).EXT_HNA_FIELD_NETMASK;
@@ -555,24 +545,37 @@ static int32_t cb_hna_ogm_hook( struct msg_buff *mb, uint16_t oCtx, struct neigh
 			      key.addr != ( key.addr & htonl( 0xFFFFFFFF<<(32 - key.KEY_FIELD_ANETMASK ) ) ) ) 
 			{
 				
-				dbg_mute( 45, DBGL_SYS, DBGT_WARN, 
-				          "drop OGM: purging originator %15s "
-				          "hna: %s/%i, type %d -> ignoring (invalid netmask or type)", 
-				          orig_node->orig_str, ipStr( key.addr ), key.KEY_FIELD_ANETMASK, key.KEY_FIELD_ATYPE );
+				dbg_mute( 45, DBGL_SYS, DBGT_WARN,
+                                        "drop OGM: purging originator %15s "
+                                        "hna: %s/%i, type %d -> ignoring (invalid netmask or type)",
+                                        orig_node->orig_str, ipStr(key.addr),
+                                        key.KEY_FIELD_ANETMASK, key.KEY_FIELD_ATYPE);
 				
 				return CB_OGM_REJECT;
 				
-			} else if ( (hash_node = get_hna_node( &key, NO /*create*/ )) &&
-			            !(hash_node->status == HNA_HASH_NODE_OTHER  &&  hash_node->orig == orig_node)  &&
-			            (key.KEY_FIELD_ATYPE == A_TYPE_INTERFACE  ||  key.KEY_FIELD_ATYPE == A_TYPE_NETWORK) )
-			{
-				
-				dbg_mute( 45, DBGL_SYS, DBGT_WARN, 
-				          "drop OGM: purging originator %15s "
-				          "hna: %s/%d type %d is blocked by %s",
-				          orig_node->orig_str,
-				          ipStr( key.addr ), key.KEY_FIELD_ANETMASK, key.KEY_FIELD_ATYPE,
-				          ( hash_node->status == HNA_HASH_NODE_OTHER  ? hash_node->orig->orig_str : "myself" )  );
+			} else if ( (hn = get_hna_node( &key, NO /*create*/ )) &&
+                                !(hn->status == HNA_HASH_NODE_OTHER && hn->orig == orig_node) &&
+                                (key.KEY_FIELD_ATYPE <= A_TYPE_MAX) ) {
+
+                                dbg_mute(45, DBGL_SYS, DBGT_WARN,
+                                        "DAD-alert! ignoring %15s "
+                                        "hna: %s/%d type %d is blocked by %s "
+                                        "which may be purged in %d secs ( check --%s=%d )!",
+                                        orig_node->orig_str,
+                                        ipStr(key.addr), key.KEY_FIELD_ANETMASK, key.KEY_FIELD_ATYPE,
+                                        (hn->status == HNA_HASH_NODE_OTHER ? hn->orig->orig_str : "myself"),
+                                        (hn->status == HNA_HASH_NODE_OTHER ?
+                                        (int) (dad_to - (((uint32_t) (batman_time - hn->orig->last_valid_time)) / 1000)) :
+                                        -1),
+                                        ARG_PURGE_TO, dad_to);
+
+                                if (hn->status == HNA_HASH_NODE_OTHER) {
+                                        // if HNA is blocked by other node which has ńot bean heard of for 
+                                        // dad-timeout secs, 
+                                        // then its' HNAs should be removed before purge-timeout expires
+                                        if (LSEQ_U32(dad_to, (((uint32_t) (batman_time - hn->orig->last_valid_time)) / 1000)))
+                                                update_other_hna(hn->orig, 0, NULL, 0);
+                                }
 				
 				return CB_OGM_REJECT;
 				
@@ -637,7 +640,6 @@ static void hna_cleanup( void ) {
 	
 	set_snd_ext_hook( EXT_TYPE_64B_HNA, send_my_hna_ext, DEL );
 	
-	hash_destroy( hna_hash );
 	
 }
 
@@ -645,10 +647,6 @@ static void hna_cleanup( void ) {
 static int32_t hna_init( void ) {
 	
 	paranoia( -500061, ( sizeof(struct ext_type_hna) != sizeof(struct ext_packet) ) );
-	
-	if ( NULL == ( hna_hash = hash_new( 128, compare_key, choose_key, 5 ) ) )
-		cleanup_all( -500066 );
-	
 	
 	register_options_array( hna_options, sizeof( hna_options ) );
 	
