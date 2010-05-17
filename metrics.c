@@ -35,49 +35,6 @@ void flush_sq_record( struct sq_record *sqr ) {
 }
 
 
-/*
-//static
-void update_metric( uint8_t probe, SQ_TYPE sq_upd, struct sq_record *sqr, uint8_t ws ) {
-
-	uint32_t m_weight = ws/2;
-	SQ_TYPE offset = sq_upd - sqr->wa_clr_sqn;
-	uint32_t old_wa_val = sqr->wa_val;
-	
-	if ( offset >= ws ) {
-		
-		if ( old_wa_val ) {
-			dbgf_all( DBGT_WARN, "(offset:%d=SQN:%d-clrSQN:%d) > ws:%d  probe %d, old_wa_val %d ",
-			offset, sq_upd, sqr->wa_clr_sqn, ws, probe, sqr->wa_val );
-		}
-		
-		sqr->wa_unscaled = 0;
-	
-	} else {
-		
-		SQ_TYPE i;
-		for ( i=0; i < offset; i++ )
-			sqr->wa_unscaled -= ( sqr->wa_unscaled / m_weight );
-		
-	}
-	
-	sqr->wa_clr_sqn = sq_upd;
-	
-	if ( probe  &&  sqr->wa_set_sqn != sq_upd ) {
-		
-		sqr->wa_unscaled += ( (probe * WA_SCALE_FACTOR) / m_weight );
-
-		sqr->wa_set_sqn = sq_upd;
-	}
-	
-	sqr->wa_val = sqr->wa_unscaled/WA_SCALE_FACTOR;
-	
-	
-	dbgf_ext( DBGT_INFO, "probe %d, SQN %d, old_wa_val %d, new_wa_val %d", probe, sq_upd, old_wa_val, sqr->wa_val );
-	
-}
-*/
-
-
 
 void update_lounged_metric(uint8_t probe, uint8_t lounge_size, SQ_TYPE sqn_incm, SQ_TYPE sqn_max, struct sq_record *sqr, uint8_t ws)
 {
@@ -111,12 +68,20 @@ void update_lounged_metric(uint8_t probe, uint8_t lounge_size, SQ_TYPE sqn_incm,
 
 	if ( probe /* &&  sqr->wa_set_sqn != sq_upd */  ) {
 
-                paranoia( -500197, (sqr->wa_set_sqn == sq_upd) /*check validate_considered_order()*/ );
+                // paranoia( -500197, (sqr->wa_set_sqn == sq_upd) /*check validate_considered_order()*/ );
 
-		sqr->wa_unscaled += ( (probe * WA_SCALE_FACTOR) / m_weight );
+                if ( sqr->wa_set_sqn != sq_upd ) {
+                        sqr->wa_unscaled += ((probe * WA_SCALE_FACTOR) / m_weight);
 
-		sqr->wa_set_sqn = sq_upd;
-	}
+                        sqr->wa_set_sqn = sq_upd;
+                } else {
+
+                        dbg_mute( 20, DBGL_SYS, DBGT_ERR,
+                                "update_lounged_metric() probe %d ls %d sqn_in %d sqn_max %d ws %d",
+                                probe, lounge_size, sqn_incm, sqn_max, ws );
+
+                }
+        }
 
 	sqr->wa_val = sqr->wa_unscaled/WA_SCALE_FACTOR;
 
