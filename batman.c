@@ -554,6 +554,7 @@ static int32_t opt_srvs ( uint8_t cmd, uint8_t _save, struct opt_type *opt, stru
 	int dbg_ogm_out = 0;
 	static char dbg_ogm_str[MAX_DBG_STR_SIZE + 1]; // TBD: must be checked for overflow when 
         struct orig_node *on;
+        struct avl_node *an;
 	uint16_t srv_count = 0;
 
 	if ( cmd != OPT_APPLY )
@@ -563,7 +564,7 @@ static int32_t opt_srvs ( uint8_t cmd, uint8_t _save, struct opt_type *opt, stru
 
         uint32_t orig_ip = 0;
 
-        while ((on = (struct orig_node*) avl_next(&orig_avl, &orig_ip))) {
+        while ((on = (struct orig_node*) ((an = avl_next(&orig_avl, &orig_ip)) ? an->key : NULL))) {
 
                 orig_ip = on->orig;
 

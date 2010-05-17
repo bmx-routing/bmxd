@@ -145,13 +145,14 @@ static int32_t opt_gsf_map_global ( uint8_t cmd, uint8_t _save, struct opt_type 
 	if ( cmd == OPT_APPLY  &&  cn ) {
 	
 	struct orig_node *orig_node;
+        struct avl_node *an;
 	uint32_t count=0;
 
 	dbg_printf( cn, "\nall_nodes = {\n" "  '%s' : {\n", ipStr(primary_addr) );
 
         uint32_t orig_ip = 0;
 
-        while ((orig_node = (struct orig_node*) avl_next(&orig_avl, &orig_ip))) {
+        while ((orig_node = (struct orig_node*) ((an=avl_next(&orig_avl, &orig_ip)) ? an->key : NULL ))) {
 
                 orig_ip = orig_node->orig;
 

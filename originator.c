@@ -922,11 +922,11 @@ int tq_power( int tq_rate_value, int range ) {
 static
 int8_t validate_considered_order( struct orig_node *orig_node, SQ_TYPE seqno, uint32_t neigh, struct batman_if *iif ) {
 
-
-	struct neigh_node *nn;
         struct neigh_node_key key = {neigh, iif};
+        struct avl_node *an = avl_find( &orig_node->neigh_avl, &key );
+        struct neigh_node *nn = an ? (struct neigh_node*) an->key : NULL;
 
-        if ( (nn = (struct neigh_node*)avl_find( &orig_node->neigh_avl, &key )) ) {
+        if (nn) {
 
                 paranoia( -500198, (nn->nnkey_addr != neigh || nn->nnkey_iif != iif ) );
 
@@ -960,7 +960,9 @@ int8_t validate_considered_order( struct orig_node *orig_node, SQ_TYPE seqno, ui
 struct orig_node *get_orig_node( uint32_t addr, uint8_t create ) {
 	
 	prof_start( PROF_get_orig_node );
-	struct orig_node *orig_node = ((struct orig_node *)avl_find( &orig_avl, &addr));
+        struct avl_node *an = avl_find( &orig_avl, &addr);
+
+        struct orig_node *orig_node = an ? (struct orig_node *) an->key : NULL;
 
 	if ( !create ) {
 		prof_stop( PROF_get_orig_node );
@@ -1017,6 +1019,7 @@ void purge_orig( uint32_t curr_time, struct batman_if *bif ) {
 	prof_start( PROF_purge_originator );
 	struct list_head *neigh_pos, *neigh_temp, *neigh_prev;
 	struct orig_node *orig_node = NULL;
+        struct avl_node *an;
 	struct neigh_node *neigh_node;
 	static char neigh_str[ADDR_STR_LEN];
 	
@@ -1027,7 +1030,7 @@ void purge_orig( uint32_t curr_time, struct batman_if *bif ) {
 	/* for all origins... */
         uint32_t orig_ip = 0;
 
-        while ( (orig_node = (struct orig_node*)avl_next( &orig_avl, &orig_ip ) ) ) {
+        while ((orig_node = (struct orig_node*) ((an = avl_next(&orig_avl, &orig_ip)) ? an->key : NULL))) {
 
                 orig_ip = orig_node->orig;
 
@@ -1512,6 +1515,7 @@ static
 int32_t opt_show_origs ( uint8_t cmd, uint8_t _save, struct opt_type *opt, struct opt_parent *patch, struct ctrl_node *cn ) {
 	
 	struct orig_node *orig_node;
+        struct avl_node *an;
 	uint16_t batman_count = 0;
 	
 	int dbg_ogm_out = 0, rq, tq, rtq;
@@ -1530,7 +1534,7 @@ int32_t opt_show_origs ( uint8_t cmd, uint8_t _save, struct opt_type *opt, struc
 			            "knownSince lsqn(diff) lvld pws ~ogi cpu hop\n");
                         uint32_t orig_ip = 0;
 
-                        while ((orig_node = (struct orig_node*) avl_next(&orig_avl, &orig_ip))) {
+                        while ((orig_node = (struct orig_node*) ((an = avl_next(&orig_avl, &orig_ip)) ? an->key : NULL))) {
 
                                 orig_ip = orig_node->orig;
 
@@ -1612,8 +1616,8 @@ int32_t opt_show_origs ( uint8_t cmd, uint8_t _save, struct opt_type *opt, struc
 
                         uint32_t orig_ip = 0;
                         struct link_node * ln;
-                        
-                        while ((ln = (struct link_node*) avl_next(&link_avl, &orig_ip))) {
+
+                        while ((ln = (struct link_node*) ((an = avl_next(&link_avl, &orig_ip)) ? an->key : NULL))) {
 
                                 orig_ip = ln->orig_addr;
 
@@ -1683,7 +1687,7 @@ int32_t opt_show_origs ( uint8_t cmd, uint8_t _save, struct opt_type *opt, struc
 			
                         uint32_t orig_ip = 0;
 
-                        while ((orig_node = (struct orig_node*) avl_next(&orig_avl, &orig_ip))) {
+                        while ((orig_node = (struct orig_node*) ((an = avl_next(&orig_avl, &orig_ip)) ? an->key : NULL))) {
 
                                 orig_ip = orig_node->orig;
 

@@ -47,8 +47,8 @@ static AVL_TREE( hna_avl, sizeof(struct hna_key) );
 // an hna entry for the given hna address, anetmask, and atype 
 static struct hna_node *get_hna_node( struct hna_key *hk, uint8_t create ) {
 	
-	struct hna_node *hn;
-	hn = ((struct hna_node *)avl_find( &hna_avl, hk ));
+        struct avl_node *an = avl_find( &hna_avl, hk );
+        struct hna_node *hn = an ? (struct hna_node*) an->key : NULL;
 	
 	if ( hn ) {
 		
@@ -198,7 +198,8 @@ static int8_t add_del_hna( uint8_t del, struct orig_node *other_orig, struct nei
 		uint16_t array_len = 0;
 
                 struct hna_key hk = {0,{0,0}};
-                while ( (hn = avl_next( &hna_avl, &hk))) {
+                struct avl_node *an;
+                while ((hn = ((an = avl_next(&hna_avl, &hk)) ? an->key : NULL))) {
                         hk = hn->key;
 			
 			if ( hn->status == HNA_HASH_NODE_MYONE ) {
@@ -386,6 +387,7 @@ static int32_t opt_show_hnas ( uint8_t cmd, uint8_t _save, struct opt_type *opt,
 	struct hna_key key;
 	struct hna_node *hn;
 	struct orig_node *orig_node;
+        struct avl_node *an;
 	
 	if ( cmd == OPT_APPLY ) {
 		
@@ -393,7 +395,7 @@ static int32_t opt_show_hnas ( uint8_t cmd, uint8_t _save, struct opt_type *opt,
 
                 uint32_t orig_ip = 0;
 
-                while ((orig_node = (struct orig_node*) avl_next(&orig_avl, &orig_ip))) {
+                while ((orig_node = (struct orig_node*) ((an = avl_next(&orig_avl, &orig_ip)) ? an->key : NULL))) {
 
                         orig_ip = orig_node->orig;
 
