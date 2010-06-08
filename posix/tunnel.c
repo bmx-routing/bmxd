@@ -1846,7 +1846,7 @@ static void cb_choose_gw( void* unused ) {
 
 	if ( routing_class == 0  ||  curr_gateway ||
 	     ((routing_class == 1 || routing_class == 2 ) && 
-	      ( batman_time_sec < COMMON_OBSERVATION_WINDOW  )) ) {
+	      ( batman_time_sec < (COMMON_OBSERVATION_WINDOW/1000)  )) ) {
 
 		return;
 	}
@@ -1993,7 +1993,7 @@ static int32_t opt_gateways ( uint8_t cmd, uint8_t _save, struct opt_type *opt, 
 			get_gw_speeds( tuno->tun_array[0].EXT_GW_FIELD_GWFLAGS, &download_speed, &upload_speed );
 			
 			dbg_printf( cn, "%s %-15s %15s %3i, gw_class %2i - %i%s/%i%s, reliability: %i, supported tunnel types %s, %s \n",
-				curr_gateway == gw_node ? "=>" : "  ",
+				(gwc_args && curr_gateway == gw_node) ? "=>" : "  ",
 				ipStr(on->orig) , ipStr(on->router->nnkey_addr),
 			        gw_node->orig_node->router->longtm_sqr.wa_val/PROBE_TO100,
 				tuno->tun_array[0].EXT_GW_FIELD_GWFLAGS,
