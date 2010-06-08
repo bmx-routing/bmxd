@@ -48,15 +48,52 @@
 
 
 #define ARG_UNRESP_GW_CHK "unresp_gateway_check"
+static int32_t unresp_gw_chk;
 
 #define ARG_TWO_WAY_TUNNEL "two_way_tunnel"
+static int32_t one_way_tunnel;
 
 #define ARG_ONE_WAY_TUNNEL "one_way_tunnel"
+static int32_t two_way_tunnel;
+
 
 #define ARG_GW_HYSTERESIS "gateway_hysteresis"
 #define MIN_GW_HYSTERE    1
 #define MAX_GW_HYSTERE    PROBE_RANGE/PROBE_TO100
 #define DEF_GW_HYSTERE    2
+static int32_t gw_hysteresis;
+
+
+#define DEF_GWTUN_NETW_PREFIX  "169.254.0.0" /* 0x0000FEA9 */
+static uint32_t gw_tunnel_prefix;
+
+#define MIN_GWTUN_NETW_MASK 20
+#define MAX_GWTUN_NETW_MASK 30
+#define DEF_GWTUN_NETW_MASK 22
+static uint32_t gw_tunnel_netmask;
+
+#define MIN_TUN_LTIME 60 /*seconds*/
+#define MAX_TUN_LTIME 60000
+#define DEF_TUN_LTIME 600
+#define ARG_TUN_LTIME "tunnel_lease_time"
+static int32_t Tun_leasetime = DEF_TUN_LTIME;
+
+
+/* "-r" is the command line switch for the routing class,
+ * 0 set no default route
+ * 1 use fast internet connection
+ * 2 use stable internet connection
+ * 3 use use best statistic (olsr style)
+ * this option is used to set the routing behaviour
+ */
+
+#define MIN_RT_CLASS 0
+#define MAX_RT_CLASS 3
+static int32_t routing_class = 0;
+
+static uint32_t pref_gateway = 0;
+
+
 
 
 #define BATMAN_TUN_PREFIX "bat"
@@ -80,22 +117,8 @@
 #define MAX_TUNNEL_IP_REQUESTS 60 //12
 #define TUNNEL_IP_REQUEST_TIMEOUT 1000 // msec
 
-#define DEF_GWTUN_NETW_PREFIX  "169.254.0.0" /* 0x0000FEA9 */
-
-#define MIN_GWTUN_NETW_MASK 20
-#define MAX_GWTUN_NETW_MASK 30
-#define DEF_GWTUN_NETW_MASK 22
-
-#define MIN_TUN_LTIME 60 /*seconds*/
-#define MAX_TUN_LTIME 60000
-#define DEF_TUN_LTIME 600
-#define ARG_TUN_LTIME "tunnel_lease_time"
 
 #define DEF_TUN_PERSIST 1
-
-
-#define MIN_RT_CLASS 0
-#define MAX_RT_CLASS 3
 
 
 static int32_t Tun_persist = DEF_TUN_PERSIST;
@@ -108,32 +131,6 @@ static int32_t tun_orig_registry = FAILURE;
 static SIMPEL_LIST( gw_list );
 
 
-/* "-r" is the command line switch for the routing class,
- * 0 set no default route
- * 1 use fast internet connection
- * 2 use stable internet connection
- * 3 use use best statistic (olsr style)
- * this option is used to set the routing behaviour
- */
-
-static int32_t routing_class = 0;
-
-static int32_t unresp_gw_chk;
-
-static int32_t one_way_tunnel;
-
-static int32_t two_way_tunnel;
-
-static int32_t gw_hysteresis;
-
-static uint32_t gw_tunnel_prefix;
-
-static uint32_t gw_tunnel_netmask;
-
-static int32_t Tun_leasetime = DEF_TUN_LTIME;
-
-
-static uint32_t pref_gateway = 0;
 
 
 
@@ -659,7 +656,8 @@ static int32_t cb_tun_ogm_hook( struct msg_buff *mb, uint16_t oCtx, struct neigh
 		routing_class == 3  &&
 		tuno  &&
 		tuno->tun_array[0].EXT_GW_FIELD_GWFLAGS  &&
-		(tuno->tun_array[0].EXT_GW_FIELD_GWTYPES & ((two_way_tunnel?TWO_WAY_TUNNEL_FLAG:0) | (one_way_tunnel?ONE_WAY_TUNNEL_FLAG:0)))  &&
+                ( tuno->tun_array[0].EXT_GW_FIELD_GWTYPES &
+                  ((two_way_tunnel ? TWO_WAY_TUNNEL_FLAG : 0) | (one_way_tunnel ? ONE_WAY_TUNNEL_FLAG : 0))) &&
 		curr_gateway->orig_node != on  &&
 		(	( pref_gateway == on->orig )  ||
 			( pref_gateway != curr_gateway->orig_node->orig  &&  
