@@ -61,7 +61,7 @@
  * Global Variables and definitions 
  */
 
-#define SOURCE_VERSION "0.3-rc1" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
+#define SOURCE_VERSION "0.3" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
 
 #define COMPAT_VERSION 10 
 

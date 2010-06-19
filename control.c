@@ -227,7 +227,7 @@ static void activate_debug_system( void ) {
 		
 		dbgf_all( DBGT_INFO, "activated level %d", debug_level);
 		
-		dbg( DBGL_CHANGES, DBGT_INFO, "BatMan-eXp %s%s (compatibility version %d): %s",
+		dbg( DBGL_CHANGES, DBGT_INFO, "BMX %s%s (compatibility version %d): %s",
 		     SOURCE_VERSION,
 		     strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "",
 		     COMPAT_VERSION, init_string);
@@ -3163,7 +3163,7 @@ static int32_t opt_help ( uint8_t cmd, uint8_t _save, struct opt_type *opt, stru
 		
 	} else if ( !strcmp(opt->long_name, ARG_VERSION) ) {
 		
-		dbg_printf( cn, "BatMan-eXp %s%s (compatibility version %i)\n", 
+		dbg_printf( cn, "BMX %s%s (compatibility version %i)\n", 
 		            SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
 		
 #ifndef NOTRAILER

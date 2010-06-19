@@ -463,8 +463,7 @@ static int8_t set_tun_addr( int32_t fd, uint32_t tun_addr, char *tun_dev ) {
 static void get_gw_speeds( unsigned char class, int *down, int *up ) {
 
 	char sbit    = (class&0x80)>>7;
-//	char dpart   = (class&0x7C)>>3;
-        char dpart   = (class&0x78)>>3;
+	char dpart   = (class&0x78)>>3;
 	char upart   = (class&0x07);
 
 	*down= 32*(sbit+2)*(1<<dpart);
