@@ -180,7 +180,6 @@ static int32_t vis_port = DEF_VIS_PORT;
 static void send_vis_packet( void *unused ) {
 	
 	struct vis_if *vis = vis_if;
-	struct vis_data *vis_data;
 	struct list_head *list_pos;
 	struct batman_if *batman_if;
 	//struct hna_node *hna_node;
@@ -207,6 +206,8 @@ static void send_vis_packet( void *unused ) {
 	((struct vis_packet *)vis_packet)->gw_class = Gateway_class;
 	((struct vis_packet *)vis_packet)->seq_range = (PROBE_RANGE/PROBE_TO100);
 
+        dbgf_all(DBGT_INFO, "sender_ip=%s version=%d gw_class=%d seq_range=%d",
+                ipStr(primary_addr), VIS_COMPAT_VERSION, Gateway_class, (PROBE_RANGE/PROBE_TO100));
 	
 	/* iterate link list */
 	list_for_each( link_pos, &link_list ) {
@@ -217,14 +218,17 @@ static void send_vis_packet( void *unused ) {
 			continue;
 		
 		uint32_t q_max = 0;
+                struct vis_data *vis_data = NULL;
 		
 		list_for_each( lndev_pos, &link_node->lndev_list ) {
 		
 			struct link_node_dev *lndev = list_entry( lndev_pos, struct link_node_dev, list );
-			
-			q_max = MAX( lndev->rq_sqr.wa_val , q_max) ;
-			
-			if ( q_max ) {
+
+                        if (!lndev->rq_sqr.wa_val)
+                                continue;
+
+			if ( !vis_data ) {
+
 				vis_packet_size += sizeof(struct vis_data);
 		
 				vis_packet = debugRealloc( vis_packet, vis_packet_size, 105 );
@@ -232,11 +236,21 @@ static void send_vis_packet( void *unused ) {
 				vis_data = (struct vis_data *)
 					(vis_packet + vis_packet_size - sizeof(struct vis_data));
 		
+                        }
+
+                        if (vis_data && lndev->rq_sqr.wa_val > q_max) {
+
 				vis_data->ip = link_node->orig_node->orig;
-		
-				vis_data->data = q_max/PROBE_TO100;
+				vis_data->data = lndev->rq_sqr.wa_val/PROBE_TO100;
 				vis_data->type = DATA_TYPE_NEIGH;
+
+                                dbgf_all(DBGT_INFO, "link to NB=%s lq=%d (dev=%s)",
+                                        ipStr(link_node->orig_node->orig), lndev->rq_sqr.wa_val, lndev->bif->dev);
+
 			}
+
+                        q_max = MAX(lndev->rq_sqr.wa_val, q_max);
+
 		}
 	}
 
@@ -249,17 +263,22 @@ static void send_vis_packet( void *unused ) {
 	
 		if ( ((struct vis_packet *)vis_packet)->sender_ip == batman_if->if_addr )
 			continue;
-	
+
+                if (!batman_if->if_active)
+			continue;
+
 		vis_packet_size += sizeof(struct vis_data);
 	
 		vis_packet = debugRealloc( vis_packet, vis_packet_size, 106 );
-	
-		vis_data = (struct vis_data *)(vis_packet + vis_packet_size - sizeof(struct vis_data));
+
+                struct vis_data *vis_data = (struct vis_data *) (vis_packet + vis_packet_size - sizeof (struct vis_data));
 	
 		vis_data->ip = batman_if->if_addr;
 	
 		vis_data->data = 0;
 		vis_data->type = DATA_TYPE_SEC_IF;
+
+                dbgf_all(DBGT_INFO, "interface %s (dev=%s)", ipStr(batman_if->if_addr), batman_if->dev);
 	
 	}
 
@@ -307,18 +326,18 @@ static void send_vis_packet( void *unused ) {
 
 static int32_t opt_vis ( uint8_t cmd, uint8_t _save, struct opt_type *opt, struct opt_parent *patch, struct ctrl_node *cn ) {
 	
-	uint32_t test_ip = 0;
+	uint32_t vis_ip = 0;
 	
 	if ( cmd == OPT_CHECK  ||  cmd == OPT_APPLY ) {
 		
 		if ( patch->p_diff == DEL )
-			test_ip = 0;
+			vis_ip = 0;
 		
-		else if ( str2netw( patch->p_val, &test_ip, '/', cn, NULL, 0 ) == FAILURE  )
+		else if ( str2netw( patch->p_val, &vis_ip, '/', cn, NULL, 0 ) == FAILURE  )
 			return FAILURE;
 	}
 		
-	if ( cmd == OPT_APPLY  &&  test_ip ) {
+	if ( cmd == OPT_APPLY  &&  vis_ip ) {
 		
 		remove_task( send_vis_packet, NULL );
 
@@ -332,14 +351,14 @@ static int32_t opt_vis ( uint8_t cmd, uint8_t _save, struct opt_type *opt, struc
 
 		vis_if->addr.sin_family = AF_INET;
 		vis_if->addr.sin_port = htons( vis_port );
-		vis_if->addr.sin_addr.s_addr = test_ip;
+		vis_if->addr.sin_addr.s_addr = vis_ip;
 		vis_if->sock = socket( PF_INET, SOCK_DGRAM, 0 );
 
 		register_task( 1000, send_vis_packet, NULL );
 	}
 	
 	
-	if ( ( cmd == OPT_APPLY  &&  !test_ip ) || cmd == OPT_UNREGISTER ) {
+	if ( ( cmd == OPT_APPLY  &&  !vis_ip ) || cmd == OPT_UNREGISTER ) {
 
 		remove_task( send_vis_packet, NULL );
 
