@@ -205,7 +205,7 @@ static void send_vis_packet( void *unused ) {
 	((struct vis_packet *)vis_packet)->sender_ip = primary_addr;
 	((struct vis_packet *)vis_packet)->version = VIS_COMPAT_VERSION;
 	((struct vis_packet *)vis_packet)->gw_class = Gateway_class;
-	((struct vis_packet *)vis_packet)->seq_range = local_lws;
+	((struct vis_packet *)vis_packet)->seq_range = (PROBE_RANGE/PROBE_TO100);
 
 	
 	/* iterate link list */
